@@ -1,0 +1,291 @@
+package database_test
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/acbgbca/xmltvguide/internal/database"
+	"github.com/acbgbca/xmltvguide/internal/xmltv"
+)
+
+func TestMain(m *testing.M) {
+	time.Local = time.UTC
+	os.Exit(m.Run())
+}
+
+func openTestDB(t *testing.T) *database.DB {
+	t.Helper()
+	dir := t.TempDir()
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
+func sampleTV() *xmltv.TV {
+	return &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{
+				ID:           "ch1",
+				DisplayNames: []xmltv.Name{{Value: "ABC"}},
+				Icons:        []xmltv.Icon{{Src: "https://example.com/abc.png"}},
+			},
+			{
+				ID:           "ch2",
+				DisplayNames: []xmltv.Name{{Value: "SBS"}},
+			},
+		},
+		Programmes: []xmltv.Programme{
+			{
+				Start:       xmltv.XmltvTime{Time: time.Date(2026, 3, 28, 23, 0, 0, 0, time.UTC)},
+				Stop:        xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 1, 0, 0, 0, time.UTC)},
+				Channel:     "ch2",
+				Titles:      []xmltv.Name{{Value: "Late Night Movie"}},
+				Descs:       []xmltv.Name{{Value: "A classic late night movie spanning midnight."}},
+				Categories:  []xmltv.Name{{Value: "Movie"}},
+			},
+			{
+				Start:      xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 6, 0, 0, 0, time.UTC)},
+				Stop:       xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 7, 0, 0, 0, time.UTC)},
+				Channel:    "ch1",
+				Titles:     []xmltv.Name{{Value: "Morning News"}},
+				Descs:      []xmltv.Name{{Value: "The latest news to start your day."}},
+				Categories: []xmltv.Name{{Value: "News"}},
+				Ratings:    []xmltv.Rating{{Value: "G", System: "ABA"}},
+			},
+			{
+				Start:       xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 7, 0, 0, 0, time.UTC)},
+				Stop:        xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 9, 0, 0, 0, time.UTC)},
+				Channel:     "ch1",
+				Titles:      []xmltv.Name{{Value: "Sunrise"}},
+				SubTitles:   []xmltv.Name{{Value: "Monday Edition"}},
+				Descs:       []xmltv.Name{{Value: "Morning breakfast television programme."}},
+				Categories:  []xmltv.Name{{Value: "Entertainment"}},
+				EpisodeNums: []xmltv.EpisodeNum{
+					{Value: "5.12.0/1", System: "xmltv_ns"},
+					{Value: "S06 E13", System: "onscreen"},
+				},
+				StarRatings:     []xmltv.StarRating{{Value: "3.5/5", System: "imdb"}},
+				PreviouslyShown: &xmltv.PreviouslyShown{},
+			},
+			{
+				Start:      xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 6, 30, 0, 0, time.UTC)},
+				Stop:       xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 7, 30, 0, 0, time.UTC)},
+				Channel:    "ch2",
+				Titles:     []xmltv.Name{{Value: "World News"}},
+				SubTitles:  []xmltv.Name{{Value: "International Edition"}},
+				Descs:      []xmltv.Name{{Value: "Comprehensive international news coverage."}},
+				Categories: []xmltv.Name{{Value: "News"}, {Value: "International"}},
+				Date:       "2026",
+				Premiere:   &xmltv.Name{Value: "First broadcast"},
+			},
+		},
+	}
+}
+
+func TestOpen_EmptyDB(t *testing.T) {
+	db := openTestDB(t)
+	channels, err := db.GetChannels()
+	if err != nil {
+		t.Fatalf("GetChannels: %v", err)
+	}
+	if channels == nil {
+		t.Fatal("expected non-nil slice, got nil")
+	}
+	if len(channels) != 0 {
+		t.Fatalf("expected 0 channels, got %d", len(channels))
+	}
+}
+
+func TestRefresh_ChannelCount(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(sampleTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	channels, err := db.GetChannels()
+	if err != nil {
+		t.Fatalf("GetChannels: %v", err)
+	}
+	if len(channels) != 2 {
+		t.Fatalf("expected 2 channels, got %d", len(channels))
+	}
+}
+
+func TestRefresh_ChannelOrder(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(sampleTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	channels, err := db.GetChannels()
+	if err != nil {
+		t.Fatalf("GetChannels: %v", err)
+	}
+	if len(channels) < 2 {
+		t.Fatalf("expected at least 2 channels, got %d", len(channels))
+	}
+	if channels[0].ID != "ch1" {
+		t.Errorf("expected first channel to be ch1, got %q", channels[0].ID)
+	}
+	if channels[1].ID != "ch2" {
+		t.Errorf("expected second channel to be ch2, got %q", channels[1].ID)
+	}
+}
+
+func TestRefresh_ChannelFields(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(sampleTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	channels, err := db.GetChannels()
+	if err != nil {
+		t.Fatalf("GetChannels: %v", err)
+	}
+	if len(channels) < 2 {
+		t.Fatalf("expected at least 2 channels, got %d", len(channels))
+	}
+	ch1 := channels[0]
+	if ch1.DisplayName != "ABC" {
+		t.Errorf("ch1 DisplayName: expected %q, got %q", "ABC", ch1.DisplayName)
+	}
+	if ch1.Icon != "https://example.com/abc.png" {
+		t.Errorf("ch1 Icon: expected %q, got %q", "https://example.com/abc.png", ch1.Icon)
+	}
+	ch2 := channels[1]
+	if ch2.Icon != "" {
+		t.Errorf("ch2 Icon: expected empty, got %q", ch2.Icon)
+	}
+}
+
+func TestGetAirings_OverlapDate(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(sampleTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	date := time.Date(2026, 3, 29, 0, 0, 0, 0, time.UTC)
+	airings, err := db.GetAirings(date)
+	if err != nil {
+		t.Fatalf("GetAirings: %v", err)
+	}
+	if len(airings) != 4 {
+		t.Fatalf("expected 4 airings, got %d", len(airings))
+	}
+}
+
+func TestGetAirings_ExcludesOtherDate(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(sampleTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	date := time.Date(2026, 3, 27, 0, 0, 0, 0, time.UTC)
+	airings, err := db.GetAirings(date)
+	if err != nil {
+		t.Fatalf("GetAirings: %v", err)
+	}
+	if len(airings) != 0 {
+		t.Fatalf("expected 0 airings, got %d", len(airings))
+	}
+}
+
+func TestGetAirings_FieldMapping(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(sampleTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	date := time.Date(2026, 3, 29, 0, 0, 0, 0, time.UTC)
+	airings, err := db.GetAirings(date)
+	if err != nil {
+		t.Fatalf("GetAirings: %v", err)
+	}
+	var sunrise *database.Airing
+	for i := range airings {
+		if airings[i].Title == "Sunrise" {
+			sunrise = &airings[i]
+			break
+		}
+	}
+	if sunrise == nil {
+		t.Fatal("could not find Sunrise airing")
+	}
+	if !sunrise.IsRepeat {
+		t.Error("expected IsRepeat=true for Sunrise")
+	}
+	if sunrise.EpisodeNum != "5.12.0/1" {
+		t.Errorf("EpisodeNum: expected %q, got %q", "5.12.0/1", sunrise.EpisodeNum)
+	}
+	if sunrise.EpisodeNumDisplay != "S06 E13" {
+		t.Errorf("EpisodeNumDisplay: expected %q, got %q", "S06 E13", sunrise.EpisodeNumDisplay)
+	}
+	if sunrise.StarRating != "3.5/5" {
+		t.Errorf("StarRating: expected %q, got %q", "3.5/5", sunrise.StarRating)
+	}
+	if sunrise.SubTitle != "Monday Edition" {
+		t.Errorf("SubTitle: expected %q, got %q", "Monday Edition", sunrise.SubTitle)
+	}
+}
+
+func TestGetAirings_PremiereFlagAndCategories(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(sampleTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	date := time.Date(2026, 3, 29, 0, 0, 0, 0, time.UTC)
+	airings, err := db.GetAirings(date)
+	if err != nil {
+		t.Fatalf("GetAirings: %v", err)
+	}
+	var worldNews *database.Airing
+	for i := range airings {
+		if airings[i].Title == "World News" {
+			worldNews = &airings[i]
+			break
+		}
+	}
+	if worldNews == nil {
+		t.Fatal("could not find World News airing")
+	}
+	if !worldNews.IsPremiere {
+		t.Error("expected IsPremiere=true for World News")
+	}
+	if len(worldNews.Categories) != 2 {
+		t.Fatalf("expected 2 categories, got %d", len(worldNews.Categories))
+	}
+	hasNews := false
+	hasInternational := false
+	for _, c := range worldNews.Categories {
+		if c == "News" {
+			hasNews = true
+		}
+		if c == "International" {
+			hasInternational = true
+		}
+	}
+	if !hasNews {
+		t.Error("expected category 'News'")
+	}
+	if !hasInternational {
+		t.Error("expected category 'International'")
+	}
+}
+
+func TestRefresh_Upsert_NoDuplicates(t *testing.T) {
+	db := openTestDB(t)
+	tv := sampleTV()
+	if err := db.Refresh(tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("first Refresh: %v", err)
+	}
+	if err := db.Refresh(tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("second Refresh: %v", err)
+	}
+	date := time.Date(2026, 3, 29, 0, 0, 0, 0, time.UTC)
+	airings, err := db.GetAirings(date)
+	if err != nil {
+		t.Fatalf("GetAirings: %v", err)
+	}
+	if len(airings) != 4 {
+		t.Fatalf("expected 4 airings after double refresh, got %d", len(airings))
+	}
+}

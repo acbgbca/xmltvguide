@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE tv SYSTEM "xmltv.dtd">
+<tv>
+  <channel id="ch1">
+    <display-name>ABC</display-name>
+    <icon src="https://example.com/abc.png"/>
+  </channel>
+  <channel id="ch2">
+    <display-name>SBS</display-name>
+  </channel>
+  <programme start="20260328230000 +0000" stop="20260329010000 +0000" channel="ch2">
+    <title>Late Night Movie</title>
+    <desc>A classic late night movie spanning midnight.</desc>
+    <category>Movie</category>
+  </programme>
+  <programme start="20260329060000 +0000" stop="20260329070000 +0000" channel="ch1">
+    <title>Morning News</title>
+    <desc>The latest news to start your day.</desc>
+    <category>News</category>
+    <rating system="ABA">
+      <value>G</value>
+    </rating>
+  </programme>
+  <programme start="20260329070000 +0000" stop="20260329090000 +0000" channel="ch1">
+    <title>Sunrise</title>
+    <sub-title>Monday Edition</sub-title>
+    <desc>Morning breakfast television programme.</desc>
+    <category>Entertainment</category>
+    <episode-num system="xmltv_ns">5.12.0/1</episode-num>
+    <episode-num system="onscreen">S06 E13</episode-num>
+    <star-rating system="imdb">
+      <value>3.5/5</value>
+    </star-rating>
+    <previously-shown/>
+  </programme>
+  <programme start="20260329063000 +0000" stop="20260329073000 +0000" channel="ch2">
+    <title>World News</title>
+    <sub-title>International Edition</sub-title>
+    <desc>Comprehensive international news coverage.</desc>
+    <category>News</category>
+    <category>International</category>
+    <date>2026</date>
+    <premiere>First broadcast</premiere>
+  </programme>
+</tv>
