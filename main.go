@@ -7,10 +7,12 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/acbgbca/xmltvguide/internal/api"
-	"github.com/acbgbca/xmltvguide/internal/store"
+	"github.com/acbgbca/xmltvguide/internal/database"
 	"github.com/acbgbca/xmltvguide/internal/xmltv"
 )
 
@@ -32,22 +34,45 @@ func main() {
 		pollInterval = d
 	}
 
+	retentionDays := 7
+	if v := os.Getenv("RETENTION_DAYS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			log.Fatalf("invalid RETENTION_DAYS %q: must be a positive integer", v)
+		}
+		retentionDays = n
+	}
+
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "/data/tvguide.db"
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	s := store.New(xmltvURL)
+	// Ensure the database directory exists (relevant when running outside Docker).
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+		log.Fatalf("creating database directory %s: %v", filepath.Dir(dbPath), err)
+	}
 
-	// Perform initial data fetch before accepting requests
-	if err := refresh(s, xmltvURL, pollInterval); err != nil {
+	db, err := database.Open(dbPath, retentionDays, xmltvURL)
+	if err != nil {
+		log.Fatalf("opening database: %v", err)
+	}
+	defer db.Close()
+
+	// Perform initial data fetch before accepting requests.
+	if err := refresh(db, xmltvURL, pollInterval); err != nil {
 		log.Printf("warning: initial fetch failed: %v", err)
 	}
 
-	// Background refresh goroutine
+	// Background refresh goroutine.
 	go func() {
 		for range time.Tick(pollInterval) {
-			if err := refresh(s, xmltvURL, pollInterval); err != nil {
+			if err := refresh(db, xmltvURL, pollInterval); err != nil {
 				log.Printf("refresh error: %v", err)
 			}
 		}
@@ -55,7 +80,7 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	apiHandler := api.New(s)
+	apiHandler := api.New(db)
 	apiHandler.RegisterRoutes(mux)
 
 	webContent, err := fs.Sub(webFS, "web")
@@ -64,17 +89,20 @@ func main() {
 	}
 	mux.Handle("/", http.FileServer(http.FS(webContent)))
 
-	log.Printf("TV Guide starting on :%s (poll interval: %s)", port, pollInterval)
+	log.Printf("TV Guide starting on :%s (poll: %s, retention: %d days, db: %s)",
+		port, pollInterval, retentionDays, dbPath)
 	log.Fatal(http.ListenAndServe(":"+port, mux))
 }
 
-func refresh(s *store.Store, url string, interval time.Duration) error {
+func refresh(db *database.DB, url string, interval time.Duration) error {
 	log.Printf("fetching XMLTV from %s", url)
 	tv, err := xmltv.Fetch(url)
 	if err != nil {
 		return fmt.Errorf("fetch: %w", err)
 	}
-	s.SetData(tv, time.Now().Add(interval))
+	if err := db.Refresh(tv, time.Now().Add(interval)); err != nil {
+		return fmt.Errorf("storing data: %w", err)
+	}
 	log.Printf("loaded %d channels, %d programmes", len(tv.Channels), len(tv.Programmes))
 	return nil
 }

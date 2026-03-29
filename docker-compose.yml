@@ -13,10 +13,17 @@ services:
       # Optional overrides (defaults shown):
       # POLL_INTERVAL: "12h"
       # PORT: "8080"
+      # RETENTION_DAYS: "7"
+      # DB_PATH: "/data/tvguide.db"
     ports:
       - "8080:8080"
+    volumes:
+      - tvguide_data:/data
     # If running behind Traefik, replace the ports block above with labels:
     # labels:
     #   - "traefik.enable=true"
     #   - "traefik.http.routers.tvguide.rule=Host(`tvguide.yourdomain.com`)"
     #   - "traefik.http.services.tvguide.loadbalancer.server.port=8080"
+
+volumes:
+  tvguide_data:

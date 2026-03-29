@@ -428,13 +428,28 @@ body {
     right: 12px;
 }
 
-.modal-category {
+.modal-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+    padding-right: 32px;
+}
+
+.modal-category,
+.modal-rating,
+.modal-year {
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.6px;
     color: var(--text-muted);
-    margin-bottom: 8px;
-    padding-right: 32px;
+}
+
+.modal-rating {
+    border: 1px solid var(--text-muted);
+    border-radius: 3px;
+    padding: 1px 5px;
 }
 
 .modal-title {
@@ -451,11 +466,33 @@ body {
     margin-bottom: 6px;
 }
 
+.modal-episode {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
 .modal-subtitle {
     font-size: 13px;
     font-style: italic;
     color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.modal-badges {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
     margin-bottom: 12px;
+}
+
+.badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
 }
 
 .modal-desc {

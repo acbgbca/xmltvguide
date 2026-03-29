@@ -21,15 +21,24 @@ type Channel struct {
 	Icons        []Icon `xml:"icon"`
 }
 
-// Programme represents a single broadcast programme.
+// Programme represents a single broadcast slot.
 type Programme struct {
-	Start      XmltvTime `xml:"start,attr"`
-	Stop       XmltvTime `xml:"stop,attr"`
-	Channel    string    `xml:"channel,attr"`
-	Titles     []Name    `xml:"title"`
-	SubTitles  []Name    `xml:"sub-title"`
-	Descs      []Name    `xml:"desc"`
-	Categories []Name    `xml:"category"`
+	Start           XmltvTime        `xml:"start,attr"`
+	Stop            XmltvTime        `xml:"stop,attr"`
+	Channel         string           `xml:"channel,attr"`
+	Titles          []Name           `xml:"title"`
+	SubTitles       []Name           `xml:"sub-title"`
+	Descs           []Name           `xml:"desc"`
+	Categories      []Name           `xml:"category"`
+	EpisodeNums     []EpisodeNum     `xml:"episode-num"`
+	StarRatings     []StarRating     `xml:"star-rating"`
+	Ratings         []Rating         `xml:"rating"`
+	PreviouslyShown *PreviouslyShown `xml:"previously-shown"`
+	Premiere        *Name            `xml:"premiere"`
+	New             *EmptyElement    `xml:"new"`
+	Date            string           `xml:"date"`
+	Icons           []Icon           `xml:"icon"`
+	Country         []Name           `xml:"country"`
 }
 
 // Name is a text element with an optional language attribute,
@@ -43,6 +52,37 @@ type Name struct {
 type Icon struct {
 	Src string `xml:"src,attr"`
 }
+
+// EpisodeNum holds an episode number in a specific numbering system.
+// Common systems: "xmltv_ns" (0-indexed season.episode.part),
+// "onscreen" (human-readable e.g. "S02 E04"), "dd_progid" (TMS/Gracenote ID).
+type EpisodeNum struct {
+	Value  string `xml:",chardata"`
+	System string `xml:"system,attr"`
+}
+
+// StarRating holds a star rating value (e.g. "4/5").
+type StarRating struct {
+	Value  string `xml:"value"`
+	System string `xml:"system,attr"`
+}
+
+// Rating holds a content classification (e.g. "M", "PG", "MA15+").
+type Rating struct {
+	Value  string `xml:"value"`
+	System string `xml:"system,attr"`
+}
+
+// PreviouslyShown indicates a repeat broadcast.
+// Its presence on a Programme means the programme has aired before.
+type PreviouslyShown struct {
+	Start   string `xml:"start,attr"`
+	Channel string `xml:"channel,attr"`
+}
+
+// EmptyElement is used for XML elements whose mere presence carries meaning
+// (e.g. <new/> indicating a first-run programme).
+type EmptyElement struct{}
 
 // XmltvTime wraps time.Time to handle XMLTV's non-standard time format.
 type XmltvTime struct {
@@ -59,7 +99,7 @@ func (t *XmltvTime) UnmarshalXMLAttr(attr xml.Attr) error {
 	return nil
 }
 
-// XMLTV timestamps use the format "YYYYMMDDHHmmss +HHMM".
+// XMLTV timestamps use the format "YYYYMMDDHHmmss ±HHMM".
 // The timezone offset may or may not include a colon separator.
 var xmltvLayouts = []string{
 	"20060102150405 -0700",
