@@ -1,0 +1,24 @@
+{
+    "name": "TV Guide",
+    "image": "mcr.microsoft.com/devcontainers/go:1-1.24-bookworm",
+
+    "features": {
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+    },
+
+    "forwardPorts": [8080],
+    "portsAttributes": {
+        "8080": { "label": "TV Guide" }
+    },
+
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "golang.go"
+            ]
+        }
+    },
+
+    // Resolve Go dependencies on container creation so the dev env is ready to build.
+    "postCreateCommand": "GOTOOLCHAIN=auto go mod tidy || true"
+}

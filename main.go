@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+	_ "time/tzdata" // embed IANA timezone database so the binary works on scratch
 
 	"github.com/acbgbca/xmltvguide/internal/api"
 	"github.com/acbgbca/xmltvguide/internal/database"

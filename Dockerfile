@@ -1,6 +1,10 @@
 # ── Build stage ──────────────────────────────────────────────────
 FROM golang:1.24-alpine AS builder
 
+# ca-certificates is needed at runtime for HTTPS; install here so we can
+# copy just the cert bundle into the scratch image.
+RUN apk --no-cache add ca-certificates
+
 WORKDIR /app
 
 # Copy all source first so go mod tidy can resolve imports.
@@ -18,15 +22,14 @@ RUN go mod tidy
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o tvguide .
 
 # ── Runtime stage ─────────────────────────────────────────────────
-FROM alpine:3.20
+# scratch: zero OS overhead (~0 MB vs ~8 MB for alpine).
+# Timezone data is embedded in the binary via `import _ "time/tzdata"`,
+# so only the CA certificate bundle needs to be copied in.
+FROM scratch
 
-# ca-certificates: needed for HTTPS requests to fetch the XMLTV URL
-# tzdata: needed so the TZ env var correctly sets the server's local timezone
-RUN apk --no-cache add ca-certificates tzdata
-
-WORKDIR /app
-COPY --from=builder /app/tvguide ./
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /app/tvguide /tvguide
 
 EXPOSE 8080
 
-ENTRYPOINT ["./tvguide"]
+ENTRYPOINT ["/tvguide"]
