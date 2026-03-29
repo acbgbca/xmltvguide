@@ -1,0 +1,9 @@
+{
+    "name": "TV Guide",
+    "short_name": "TV Guide",
+    "description": "Personal TV Guide",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0d1117",
+    "theme_color": "#161b22"
+}

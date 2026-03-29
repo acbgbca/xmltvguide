@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#161b22">
+    <title>TV Guide</title>
+    <link rel="manifest" href="/manifest.json">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+    <header class="top-bar">
+        <span class="app-title">TV Guide</span>
+        <div class="top-bar-center">
+            <button class="nav-btn" id="prevDay" title="Previous day" disabled>&#8249;</button>
+            <span id="dateDisplay"></span>
+            <button class="nav-btn" id="nextDay" title="Next day" disabled>&#8250;</button>
+        </div>
+        <div class="top-bar-actions">
+            <button class="action-btn" id="nowBtn">Now</button>
+            <button class="action-btn" id="settingsBtn">Channels</button>
+        </div>
+    </header>
+
+    <!--
+        Guide grid: 2x2 CSS grid
+          [corner]        [time-axis]
+          [channel-col]   [programmes]
+    -->
+    <div class="guide-container">
+
+        <div class="guide-corner"></div>
+
+        <!-- Time axis: overflow hidden, scrollLeft synced with programmes -->
+        <div class="time-axis-outer" id="timeAxisOuter">
+            <div class="time-axis" id="timeAxis"></div>
+        </div>
+
+        <!-- Channel column: overflow hidden, scrollTop synced with programmes -->
+        <div class="channel-col-outer" id="channelColOuter">
+            <div class="channel-col" id="channelCol"></div>
+        </div>
+
+        <!-- Main scroll container — drives scroll sync for the other two -->
+        <div class="programmes-outer" id="programmesOuter">
+            <div class="programmes-inner" id="programmesInner">
+                <div class="now-line" id="nowLine"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Settings slide-out panel -->
+    <div class="settings-overlay" id="settingsOverlay"></div>
+    <aside class="settings-panel" id="settingsPanel">
+        <div class="settings-header">
+            <h2>Channels</h2>
+            <button class="close-btn" id="settingsClose">&#10005;</button>
+        </div>
+        <div class="settings-list" id="settingsList"></div>
+    </aside>
+
+    <!-- Programme details modal -->
+    <div class="modal-backdrop" id="modalBackdrop">
+        <div class="modal" id="programmeModal">
+            <button class="close-btn modal-close-btn" id="modalClose">&#10005;</button>
+            <div class="modal-category" id="modalCategory"></div>
+            <h2 class="modal-title" id="modalTitle"></h2>
+            <div class="modal-time" id="modalTime"></div>
+            <div class="modal-subtitle" id="modalSubtitle"></div>
+            <p class="modal-desc" id="modalDesc"></p>
+        </div>
+    </div>
+
+    <!-- Full-screen loading overlay -->
+    <div class="loading-screen" id="loadingScreen">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <p id="loadingText">Loading TV guide...</p>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+
+</body>
+</html>

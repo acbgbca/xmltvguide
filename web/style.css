@@ -1,0 +1,503 @@
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    --bg-primary:      #0d1117;
+    --bg-secondary:    #161b22;
+    --bg-card:         #1c2128;
+    --bg-programme:    #1f4e79;
+    --bg-prog-hover:   #2563a8;
+    --text-primary:    #e6edf3;
+    --text-secondary:  #8b949e;
+    --text-muted:      #6e7681;
+    --border:          #30363d;
+    --accent-now:      #f85149;
+    --accent-fav:      #d29922;
+
+    /* Layout dimensions — changing these values adjusts the whole guide */
+    --top-bar-height:      48px;
+    --channel-col-width:   160px;
+    --time-row-height:     36px;
+    --row-height:          54px; /* keep in sync with ROW_HEIGHT in app.js */
+}
+
+body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ── Top bar ──────────────────────────────────────────────────── */
+
+.top-bar {
+    height: var(--top-bar-height);
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    flex-shrink: 0;
+    gap: 12px;
+    z-index: 20;
+}
+
+.app-title {
+    font-weight: 600;
+    font-size: 15px;
+    white-space: nowrap;
+}
+
+.top-bar-center {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.top-bar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.nav-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 18px;
+    line-height: 1;
+    transition: background 0.15s;
+}
+
+.nav-btn:hover:not(:disabled) {
+    background: var(--bg-card);
+}
+
+.nav-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.action-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+
+.action-btn:hover {
+    background: var(--bg-card);
+}
+
+/* ── Guide grid ───────────────────────────────────────────────── */
+
+.guide-container {
+    flex: 1;
+    min-height: 0; /* required for flex child to respect overflow */
+    display: grid;
+    grid-template-columns: var(--channel-col-width) 1fr;
+    grid-template-rows: var(--time-row-height) 1fr;
+}
+
+.guide-corner {
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    z-index: 10;
+}
+
+/* Time axis */
+
+.time-axis-outer {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    overflow: hidden; /* scrollLeft driven by JS scroll sync */
+    position: relative;
+}
+
+.time-axis {
+    position: relative;
+    height: 100%;
+}
+
+.time-label {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding-left: 8px;
+    user-select: none;
+    white-space: nowrap;
+}
+
+/* Channel column */
+
+.channel-col-outer {
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    overflow: hidden; /* scrollTop driven by JS scroll sync */
+    position: relative;
+}
+
+.channel-col {
+    position: relative;
+}
+
+.channel-label {
+    position: absolute;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--border);
+    overflow: hidden;
+    cursor: default;
+}
+
+.channel-label.is-favourite {
+    border-left: 3px solid var(--accent-fav);
+}
+
+.channel-icon {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+    flex-shrink: 0;
+    border-radius: 3px;
+}
+
+.channel-name {
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Programmes area */
+
+.programmes-outer {
+    overflow: auto; /* this is the master scroll container */
+    position: relative;
+    scroll-behavior: smooth;
+}
+
+.programmes-inner {
+    position: relative;
+}
+
+.programme-row {
+    position: absolute;
+    left: 0;
+}
+
+.programme {
+    position: absolute;
+    top: 3px;
+    height: calc(var(--row-height) - 6px);
+    background: var(--bg-programme);
+    border-radius: 4px;
+    padding: 4px 7px;
+    overflow: hidden;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    transition: background 0.12s, filter 0.12s;
+}
+
+.programme:hover {
+    background: var(--bg-prog-hover);
+    filter: brightness(1.1);
+    z-index: 2;
+}
+
+.prog-title {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+}
+
+.prog-time {
+    display: block;
+    font-size: 11px;
+    color: rgba(230, 237, 243, 0.55);
+    white-space: nowrap;
+    overflow: hidden;
+    margin-top: 2px;
+}
+
+/* Hide time label in very narrow cells */
+.programme.narrow .prog-time {
+    display: none;
+}
+
+/* Now indicator line */
+
+.now-line {
+    position: absolute;
+    top: 0;
+    width: 2px;
+    background: var(--accent-now);
+    pointer-events: none;
+    z-index: 5;
+    display: none;
+}
+
+.now-line::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: -4px;
+    width: 10px;
+    height: 10px;
+    background: var(--accent-now);
+    border-radius: 50%;
+}
+
+/* ── Settings panel ───────────────────────────────────────────── */
+
+.settings-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 30;
+    display: none;
+}
+
+.settings-overlay.open {
+    display: block;
+}
+
+.settings-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 300px;
+    background: var(--bg-secondary);
+    border-left: 1px solid var(--border);
+    z-index: 31;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+}
+
+.settings-panel.open {
+    transform: translateX(0);
+}
+
+.settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.settings-header h2 {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    line-height: 1;
+    transition: color 0.15s, background 0.15s;
+}
+
+.close-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-card);
+}
+
+.settings-list {
+    overflow-y: auto;
+    flex: 1;
+}
+
+.settings-item {
+    display: flex;
+    align-items: center;
+    padding: 7px 16px;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+}
+
+.settings-item.is-hidden .settings-name {
+    opacity: 0.4;
+}
+
+.settings-name {
+    flex: 1;
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.settings-icon-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 5px;
+    border-radius: 4px;
+    font-size: 15px;
+    color: var(--text-muted);
+    transition: color 0.15s, background 0.15s;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.settings-icon-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-card);
+}
+
+.settings-icon-btn.fav-btn.active {
+    color: var(--accent-fav);
+}
+
+.settings-icon-btn.hide-btn.active {
+    color: var(--text-muted);
+    opacity: 0.45;
+}
+
+/* ── Programme details modal ──────────────────────────────────── */
+
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    z-index: 40;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.modal-backdrop.open {
+    display: flex;
+}
+
+.modal {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    max-width: 480px;
+    width: 100%;
+    position: relative;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.modal-close-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+}
+
+.modal-category {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    padding-right: 32px;
+}
+
+.modal-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    padding-right: 32px;
+    line-height: 1.3;
+}
+
+.modal-time {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.modal-subtitle {
+    font-size: 13px;
+    font-style: italic;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+
+.modal-desc {
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--text-secondary);
+}
+
+/* ── Loading screen ───────────────────────────────────────────── */
+
+.loading-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+}
+
+.loading-screen.hidden {
+    display: none;
+}
+
+.loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.loading-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--text-secondary);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}

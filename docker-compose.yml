@@ -1,0 +1,22 @@
+services:
+  tvguide:
+    build: .
+    restart: unless-stopped
+    environment:
+      # Required: URL of the XMLTV data source
+      XMLTV_URL: "http://xmltv.net/xml_files/Melbourne.xml"
+
+      # Set this to your local timezone so dates resolve correctly.
+      # Find your value at: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+      TZ: "Australia/Melbourne"
+
+      # Optional overrides (defaults shown):
+      # POLL_INTERVAL: "12h"
+      # PORT: "8080"
+    ports:
+      - "8080:8080"
+    # If running behind Traefik, replace the ports block above with labels:
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.tvguide.rule=Host(`tvguide.yourdomain.com`)"
+    #   - "traefik.http.services.tvguide.loadbalancer.server.port=8080"
