@@ -106,6 +106,7 @@ func Open(path string, retentionDays int, sourceURL string) (*DB, error) {
 		"PRAGMA journal_mode=WAL",
 		"PRAGMA foreign_keys=ON",
 		"PRAGMA synchronous=NORMAL",
+		"PRAGMA temp_store=MEMORY", // scratch image has no /tmp; keep all temp data in RAM
 	} {
 		if _, err := db.Exec(pragma); err != nil {
 			db.Close()
