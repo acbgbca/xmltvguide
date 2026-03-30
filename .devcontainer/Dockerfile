@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/devcontainers/go:1-1.24-bookworm
+FROM mcr.microsoft.com/devcontainers/go:2-1.25-trixie
 
 # Install Docker CE CLI + Compose plugin directly from Docker's apt repo.
 # This avoids the devcontainer docker-outside-of-docker feature, whose install
