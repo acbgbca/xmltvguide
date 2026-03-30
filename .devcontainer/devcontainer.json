@@ -1,14 +1,13 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/go .
 {
-    "name": "TV Guide",
-    "build": { "dockerfile": "Dockerfile" },
-
-    // Mount the host Docker socket so `docker` and `docker compose` work inside
-    // the dev container without a nested daemon (docker-outside-of-docker).
-    "mounts": [
-        "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
-    ],
-
-    "forwardPorts": [8080],
+	"name": "XML TV Guide",
+	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
+	"image": "mcr.microsoft.com/devcontainers/go:2-1.25-bookworm",
+	"features": {
+		"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+	},
+	"forwardPorts": [8080],
     "portsAttributes": {
         "8080": { "label": "TV Guide" }
     },
@@ -19,8 +18,20 @@
                 "golang.go"
             ]
         }
-    },
+    }
 
-    // Resolve Go dependencies on container creation so the dev env is ready to build.
-    "postCreateCommand": "GOTOOLCHAIN=auto go mod tidy || true"
+	// Features to add to the dev container. More info: https://containers.dev/features.
+	// "features": {},
+
+	// Use 'forwardPorts' to make a list of ports inside the container available locally.
+	// "forwardPorts": [],
+
+	// Use 'postCreateCommand' to run commands after the container is created.
+	// "postCreateCommand": "go version",
+
+	// Configure tool-specific properties.
+	// "customizations": {},
+
+	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+	// "remoteUser": "root"
 }
