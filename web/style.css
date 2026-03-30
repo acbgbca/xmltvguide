@@ -50,9 +50,10 @@ body {
 }
 
 .app-title {
-    font-weight: 600;
-    font-size: 15px;
-    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    color: var(--text-primary);
 }
 
 .top-bar-center {

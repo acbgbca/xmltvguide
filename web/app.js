@@ -78,7 +78,7 @@ function formatTime(date) {
 function formatDateLong(dateStr) {
     const [y, m, d] = dateStr.split('-').map(Number);
     return new Date(y, m - 1, d).toLocaleDateString([], {
-        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+        weekday: 'short', day: 'numeric', month: 'short',
     });
 }
 
