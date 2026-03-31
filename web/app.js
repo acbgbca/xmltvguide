@@ -122,6 +122,9 @@ function addDays(dateStr, days) {
 // Loads the guide for `dateStr`, updates state, re-renders, and scrolls.
 // Pass { pushState: false } when called from a popstate handler.
 async function navigateToDate(dateStr, { pushState = true } = {}) {
+    document.getElementById('prevDay').disabled = true;
+    document.getElementById('nextDay').disabled = true;
+
     state.currentDate = dateStr;
     if (pushState) setDateInURL(dateStr);
     document.getElementById('dateDisplay').textContent = formatDateLong(dateStr);
@@ -131,12 +134,24 @@ async function navigateToDate(dateStr, { pushState = true } = {}) {
         renderGuide();
         if (dateStr === getTodayString()) {
             scrollToNow();
-        } else {
-            document.getElementById('programmesOuter').scrollLeft = 0;
         }
+        // For other dates, preserve the current horizontal scroll position.
     } catch (err) {
         console.error('Failed to load guide for', dateStr, err);
     }
+
+    await updateNavButtons();
+}
+
+// Probes the guide API for the previous and next days and enables/disables
+// the navigation buttons based on whether data exists for those dates.
+async function updateNavButtons() {
+    const [prevData, nextData] = await Promise.all([
+        fetchGuide(addDays(state.currentDate, -1)),
+        fetchGuide(addDays(state.currentDate,  1)),
+    ]);
+    document.getElementById('prevDay').disabled = prevData.length === 0;
+    document.getElementById('nextDay').disabled = nextData.length === 0;
 }
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -468,8 +483,18 @@ async function init() {
 
     document.getElementById('dateDisplay').textContent = formatDateLong(state.currentDate);
 
+    // Disable nav buttons until we know which adjacent days have data
+    document.getElementById('prevDay').disabled = true;
+    document.getElementById('nextDay').disabled = true;
+
     // Wire up controls
-    document.getElementById('nowBtn').addEventListener('click', scrollToNow);
+    document.getElementById('nowBtn').addEventListener('click', () => {
+        if (state.currentDate === getTodayString()) {
+            scrollToNow();
+        } else {
+            navigateToDate(getTodayString());
+        }
+    });
     document.getElementById('prevDay').addEventListener('click', () => navigateToDate(addDays(state.currentDate, -1)));
     document.getElementById('nextDay').addEventListener('click', () => navigateToDate(addDays(state.currentDate, 1)));
     document.getElementById('settingsBtn').addEventListener('click', openSettings);
@@ -503,6 +528,8 @@ async function init() {
 
         // Keep the now-line position current
         setInterval(() => updateNowLine(dateMidnight(state.currentDate)), 60_000);
+
+        await updateNavButtons();
 
     } catch (err) {
         console.error('Failed to load guide data:', err);
