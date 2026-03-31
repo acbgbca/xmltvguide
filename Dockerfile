@@ -13,6 +13,12 @@ RUN go mod download
 
 # Now copy source and build.
 COPY . .
+
+# Stamp the service-worker cache name with the build version so that a new
+# deployment always invalidates the PWA cache on the client.
+ARG VERSION=dev
+RUN sed -i "s/__CACHE_VERSION__/${VERSION}/" web/sw.js
+
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o tvguide .
 
 # ── Runtime stage ─────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-const CACHE = 'tvguide-v1';
+const CACHE = 'tvguide-__CACHE_VERSION__';
 const STATIC = ['/', '/index.html', '/style.css', '/app.js', '/manifest.json'];
 
 self.addEventListener('install', event => {

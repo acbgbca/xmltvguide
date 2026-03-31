@@ -27,3 +27,5 @@ jobs:
           context: .
           push: true
           tags: ghcr.io/${{ github.repository }}:latest
+          build-args: |
+            VERSION=${{ github.sha }}
