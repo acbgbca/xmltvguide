@@ -55,6 +55,25 @@ function toggleFavourite(channelId) {
     renderSettingsPanel();
 }
 
+// ── URL state management ──────────────────────────────────────────────────────
+
+function getDateFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    const date = params.get('date');
+    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+    return getTodayString();
+}
+
+function setDateInURL(dateStr) {
+    const url = new URL(window.location.href);
+    if (dateStr === getTodayString()) {
+        url.searchParams.delete('date');
+    } else {
+        url.searchParams.set('date', dateStr);
+    }
+    history.pushState(null, '', url);
+}
+
 // ── Date / time utilities ─────────────────────────────────────────────────────
 
 function getTodayString() {
@@ -87,6 +106,81 @@ function minutesToHHMM(minutes) {
     const h = Math.floor(minutes / 60) % 24;
     const m = minutes % 60;
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+// Returns a new date string offset by `days` from the given 'YYYY-MM-DD' string.
+function addDays(dateStr, days) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d + days);
+    return [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, '0'),
+        String(date.getDate()).padStart(2, '0'),
+    ].join('-');
+}
+
+// Loads the guide for `dateStr`, updates state, re-renders, and scrolls.
+// Pass { pushState: false } when called from a popstate handler.
+async function navigateToDate(dateStr, { pushState = true } = {}) {
+    document.getElementById('guideLoadingOverlay').classList.add('visible');
+    document.getElementById('guideEmpty').classList.remove('visible');
+    document.getElementById('prevDay').disabled = true;
+    document.getElementById('nextDay').disabled = true;
+
+    state.currentDate = dateStr;
+    if (pushState) setDateInURL(dateStr);
+    document.getElementById('dateDisplay').textContent = formatDateLong(dateStr);
+
+    try {
+        state.programmes = await fetchGuide(dateStr);
+        if (!hasAiringsStartingOn(state.programmes, dateStr)) {
+            document.getElementById('guideEmpty').classList.add('visible');
+        }
+        renderGuide();
+        if (dateStr === getTodayString()) {
+            scrollToNow();
+        }
+        // For other dates, preserve the current horizontal scroll position.
+        await updateNavButtons();
+    } catch (err) {
+        console.error('Failed to navigate to', dateStr, err);
+        document.getElementById('prevDay').disabled = true;
+        document.getElementById('nextDay').disabled = true;
+    } finally {
+        document.getElementById('guideLoadingOverlay').classList.remove('visible');
+    }
+}
+
+// Returns true only if any airing in `airings` starts within `dateStr`'s
+// calendar day (local time). Airings that merely overlap from the previous
+// day (stop_time crosses midnight) are excluded, so a day that contains
+// nothing but spillover is treated as having no data.
+function hasAiringsStartingOn(airings, dateStr) {
+    const dayStart  = dateMidnight(dateStr);
+    const dayEnd    = dateMidnight(addDays(dateStr, 1));
+    return airings.some(p => {
+        const start = new Date(p.start);
+        return start >= dayStart && start < dayEnd;
+    });
+}
+
+// Probes the guide API for the previous and next days and enables/disables
+// the navigation buttons based on whether data exists for those dates.
+// Uses Promise.allSettled so a failure on one side never affects the other
+// button, and the function itself never throws.
+async function updateNavButtons() {
+    const prevDate = addDays(state.currentDate, -1);
+    const nextDate = addDays(state.currentDate,  1);
+    const [prevResult, nextResult] = await Promise.allSettled([
+        fetchGuide(prevDate),
+        fetchGuide(nextDate),
+    ]);
+    if (prevResult.status === 'fulfilled') {
+        document.getElementById('prevDay').disabled = !hasAiringsStartingOn(prevResult.value, prevDate);
+    }
+    if (nextResult.status === 'fulfilled') {
+        document.getElementById('nextDay').disabled = !hasAiringsStartingOn(nextResult.value, nextDate);
+    }
 }
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -409,14 +503,29 @@ function closeModal() {
 // ── Initialisation ────────────────────────────────────────────────────────────
 
 async function init() {
+    // Resolve the active date from the URL (falls back to today)
+    state.currentDate = getDateFromURL();
+
     // Render static parts that don't depend on data
     renderTimeAxis();
     setupScrollSync();
 
     document.getElementById('dateDisplay').textContent = formatDateLong(state.currentDate);
 
+    // Disable nav buttons until we know which adjacent days have data
+    document.getElementById('prevDay').disabled = true;
+    document.getElementById('nextDay').disabled = true;
+
     // Wire up controls
-    document.getElementById('nowBtn').addEventListener('click', scrollToNow);
+    document.getElementById('nowBtn').addEventListener('click', () => {
+        if (state.currentDate === getTodayString()) {
+            scrollToNow();
+        } else {
+            navigateToDate(getTodayString());
+        }
+    });
+    document.getElementById('prevDay').addEventListener('click', () => navigateToDate(addDays(state.currentDate, -1)));
+    document.getElementById('nextDay').addEventListener('click', () => navigateToDate(addDays(state.currentDate, 1)));
     document.getElementById('settingsBtn').addEventListener('click', openSettings);
     document.getElementById('settingsClose').addEventListener('click', closeSettings);
     document.getElementById('settingsOverlay').addEventListener('click', closeSettings);
@@ -424,6 +533,9 @@ async function init() {
     document.getElementById('modalBackdrop').addEventListener('click', (e) => {
         if (e.target === e.currentTarget) closeModal();
     });
+
+    // Sync navigation when the user presses the browser back/forward buttons
+    window.addEventListener('popstate', () => navigateToDate(getDateFromURL(), { pushState: false }));
 
     // Load data
     try {
@@ -435,11 +547,16 @@ async function init() {
         state.channels   = channels;
         state.programmes = programmes;
 
+        if (!hasAiringsStartingOn(state.programmes, state.currentDate)) {
+            document.getElementById('guideEmpty').classList.add('visible');
+        }
         renderGuide();
         renderSettingsPanel();
 
         // Small delay lets the browser complete layout before scrolling
-        setTimeout(scrollToNow, 50);
+        setTimeout(() => {
+            if (state.currentDate === getTodayString()) scrollToNow();
+        }, 50);
 
         // Keep the now-line position current
         setInterval(() => updateNowLine(dateMidnight(state.currentDate)), 60_000);
@@ -450,6 +567,10 @@ async function init() {
             'Failed to load guide data. Is the server running?';
         return; // leave loading screen visible as an error state
     }
+
+    // Run outside the server-error catch so a probe failure here never
+    // produces the misleading "Is the server running?" message.
+    await updateNavButtons();
 
     document.getElementById('loadingScreen').classList.add('hidden');
 }

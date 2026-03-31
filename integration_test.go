@@ -326,6 +326,62 @@ func TestIntegration_Status(t *testing.T) {
 // TestIntegration_ChannelIconProxy verifies the full icon proxy flow end-to-end:
 // refresh downloads the icon, /api/channels returns the proxy URL, and
 // GET /images/channel/{id} serves the image content.
+// TestIntegration_Navigation_ButtonsEnabled verifies that the prevDay and
+// nextDay buttons are present in the served HTML and are not disabled — a
+// pre-condition for the multi-day navigation feature to work.
+func TestIntegration_Navigation_ButtonsEnabled(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	resp, err := http.Get(srv.URL + "/")
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var buf strings.Builder
+	io.Copy(&buf, resp.Body) //nolint:errcheck
+	body := buf.String()
+
+	if strings.Contains(body, `id="prevDay" title="Previous day" disabled`) {
+		t.Error("prevDay button should not have the disabled attribute")
+	}
+	if strings.Contains(body, `id="nextDay" title="Next day" disabled`) {
+		t.Error("nextDay button should not have the disabled attribute")
+	}
+}
+
+// TestIntegration_Navigation_JSFunctions verifies that app.js exports the
+// functions required for multi-day navigation.
+func TestIntegration_Navigation_JSFunctions(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	resp, err := http.Get(srv.URL + "/app.js")
+	if err != nil {
+		t.Fatalf("GET /app.js: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var buf strings.Builder
+	io.Copy(&buf, resp.Body) //nolint:errcheck
+	body := buf.String()
+
+	for _, fn := range []string{"getDateFromURL", "setDateInURL", "navigateToDate", "addDays"} {
+		if !strings.Contains(body, fn) {
+			t.Errorf("expected app.js to define %s", fn)
+		}
+	}
+}
+
 func TestIntegration_ChannelIconProxy(t *testing.T) {
 	// Mock server serves both XMLTV data and icon images.
 	iconRequests := 0

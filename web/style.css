@@ -111,11 +111,42 @@ body {
 /* ── Guide grid ───────────────────────────────────────────────── */
 
 .guide-container {
+    position: relative; /* anchor for the guide-loading-overlay */
     flex: 1;
     min-height: 0; /* required for flex child to respect overflow */
     display: grid;
     grid-template-columns: var(--channel-col-width) 1fr;
     grid-template-rows: var(--time-row-height) 1fr;
+}
+
+.guide-loading-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(13, 17, 23, 0.55);
+    z-index: 15;
+    align-items: center;
+    justify-content: center;
+}
+
+.guide-loading-overlay.visible {
+    display: flex;
+}
+
+.guide-empty {
+    display: none;
+    position: absolute;
+    inset: 0;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+    pointer-events: none;
+    z-index: 14; /* below loading overlay (15) */
+}
+
+.guide-empty.visible {
+    display: flex;
 }
 
 .guide-corner {
