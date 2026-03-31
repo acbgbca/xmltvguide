@@ -18,6 +18,7 @@ type TV struct {
 type Channel struct {
 	ID           string `xml:"id,attr"`
 	DisplayNames []Name `xml:"display-name"`
+	LCN          string `xml:"lcn"`
 	Icons        []Icon `xml:"icon"`
 }
 

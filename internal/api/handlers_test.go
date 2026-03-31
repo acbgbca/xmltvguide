@@ -33,6 +33,7 @@ func newSeededServer(t *testing.T) *httptest.Server {
 			{
 				ID:           "ch1",
 				DisplayNames: []xmltv.Name{{Value: "ABC"}},
+				LCN:          "2",
 			},
 			{
 				ID:           "ch2",
@@ -110,6 +111,45 @@ func TestGetChannels_Order(t *testing.T) {
 	}
 	if result[0].ID != "ch1" {
 		t.Errorf("expected first channel ID %q, got %q", "ch1", result[0].ID)
+	}
+}
+
+func TestGetChannels_LCN(t *testing.T) {
+	srv := newSeededServer(t)
+	resp, err := http.Get(srv.URL + "/api/channels")
+	if err != nil {
+		t.Fatalf("GET /api/channels: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var result []struct {
+		ID  string `json:"id"`
+		LCN *int   `json:"lcn"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(result) < 2 {
+		t.Fatalf("expected at least 2 channels, got %d", len(result))
+	}
+	// ch1 was seeded with LCN=2
+	var ch1, ch2 *struct {
+		ID  string `json:"id"`
+		LCN *int   `json:"lcn"`
+	}
+	for i := range result {
+		if result[i].ID == "ch1" {
+			ch1 = &result[i]
+		}
+		if result[i].ID == "ch2" {
+			ch2 = &result[i]
+		}
+	}
+	if ch1 == nil || ch1.LCN == nil || *ch1.LCN != 2 {
+		t.Errorf("ch1 LCN: expected 2, got %v", ch1)
+	}
+	if ch2 == nil || ch2.LCN != nil {
+		t.Errorf("ch2 LCN: expected nil, got %v", ch2.LCN)
 	}
 }
 

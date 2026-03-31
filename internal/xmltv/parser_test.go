@@ -80,6 +80,7 @@ const minimalXML = `<?xml version="1.0" encoding="UTF-8"?>
 <tv>
   <channel id="ch1">
     <display-name>ABC</display-name>
+    <lcn>2</lcn>
   </channel>
   <channel id="ch2">
     <display-name>SBS</display-name>
@@ -88,6 +89,31 @@ const minimalXML = `<?xml version="1.0" encoding="UTF-8"?>
     <title>Morning News</title>
   </programme>
 </tv>`
+
+func TestParse_ChannelLCN(t *testing.T) {
+	tv, err := xmltv.Parse(strings.NewReader(minimalXML))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(tv.Channels) != 2 {
+		t.Fatalf("expected 2 channels, got %d", len(tv.Channels))
+	}
+	var ch1, ch2 *xmltv.Channel
+	for i := range tv.Channels {
+		if tv.Channels[i].ID == "ch1" {
+			ch1 = &tv.Channels[i]
+		}
+		if tv.Channels[i].ID == "ch2" {
+			ch2 = &tv.Channels[i]
+		}
+	}
+	if ch1 == nil || ch1.LCN != "2" {
+		t.Errorf("ch1 LCN: expected %q, got %q", "2", ch1.LCN)
+	}
+	if ch2 == nil || ch2.LCN != "" {
+		t.Errorf("ch2 LCN: expected empty, got %q", ch2.LCN)
+	}
+}
 
 func TestParse_Channels(t *testing.T) {
 	tv, err := xmltv.Parse(strings.NewReader(minimalXML))

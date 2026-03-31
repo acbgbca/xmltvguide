@@ -105,11 +105,19 @@ async function fetchGuide(dateStr) {
 
 // ── Channel ordering ──────────────────────────────────────────────────────────
 
-// Returns visible channels with favourites first, then source order.
+// Returns visible channels with favourites first, then remaining channels
+// sorted by lcn (if present), falling back to source order for channels
+// without an lcn.
 function orderedVisibleChannels() {
     const visible = state.channels.filter(ch => !isHidden(ch.id));
     const favs    = visible.filter(ch =>  isFavourite(ch.id));
     const rest    = visible.filter(ch => !isFavourite(ch.id));
+    rest.sort((a, b) => {
+        if (a.lcn != null && b.lcn != null) return a.lcn - b.lcn;
+        if (a.lcn != null) return -1;
+        if (b.lcn != null) return  1;
+        return 0; // both absent — preserve source order
+    });
     return [...favs, ...rest];
 }
 
@@ -151,15 +159,26 @@ function renderGuide() {
         label.style.top    = top + 'px';
         label.style.height = CONFIG.ROW_HEIGHT + 'px';
 
+        // Top row: icon + LCN
+        const topRow = document.createElement('div');
+        topRow.className = 'channel-top-row';
         if (ch.icon) {
             const img = document.createElement('img');
             img.src       = ch.icon;
             img.alt       = '';
             img.className = 'channel-icon';
             img.onerror   = () => img.remove();
-            label.appendChild(img);
+            topRow.appendChild(img);
         }
+        if (ch.lcn != null) {
+            const lcnEl = document.createElement('span');
+            lcnEl.className   = 'channel-lcn';
+            lcnEl.textContent = ch.lcn;
+            topRow.appendChild(lcnEl);
+        }
+        label.appendChild(topRow);
 
+        // Bottom row: channel name
         const nameEl = document.createElement('span');
         nameEl.className   = 'channel-name';
         nameEl.textContent = ch.displayName;

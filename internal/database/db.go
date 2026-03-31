@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +19,8 @@ CREATE TABLE IF NOT EXISTS channels (
 	id           TEXT    PRIMARY KEY,
 	display_name TEXT    NOT NULL,
 	icon         TEXT,
-	sort_order   INTEGER NOT NULL
+	sort_order   INTEGER NOT NULL,
+	lcn          INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS airings (
@@ -51,6 +53,7 @@ type Channel struct {
 	ID          string `json:"id"`
 	DisplayName string `json:"displayName"`
 	Icon        string `json:"icon,omitempty"`
+	LCN         *int   `json:"lcn,omitempty"`
 }
 
 // Airing holds all data for a single broadcast slot.
@@ -119,6 +122,10 @@ func Open(path string, retentionDays int, sourceURL string) (*DB, error) {
 		return nil, fmt.Errorf("applying schema: %w", err)
 	}
 
+	// Migration: add lcn column to existing databases that predate this column.
+	// SQLite returns an error if the column already exists; we intentionally ignore it.
+	_, _ = db.Exec(`ALTER TABLE channels ADD COLUMN lcn INTEGER`)
+
 	return &DB{
 		db:            db,
 		retentionDays: retentionDays,
@@ -138,8 +145,8 @@ func (d *DB) Refresh(tv *xmltv.TV, nextRefresh time.Time) error {
 	defer tx.Rollback()
 
 	chStmt, err := tx.Prepare(`
-		INSERT OR REPLACE INTO channels (id, display_name, icon, sort_order)
-		VALUES (?, ?, ?, ?)
+		INSERT OR REPLACE INTO channels (id, display_name, icon, sort_order, lcn)
+		VALUES (?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return fmt.Errorf("preparing channel upsert: %w", err)
@@ -155,7 +162,13 @@ func (d *DB) Refresh(tv *xmltv.TV, nextRefresh time.Time) error {
 		if len(ch.Icons) > 0 {
 			icon = ch.Icons[0].Src
 		}
-		if _, err := chStmt.Exec(ch.ID, name, icon, i); err != nil {
+		var lcn any
+		if ch.LCN != "" {
+			if n, err := strconv.Atoi(ch.LCN); err == nil {
+				lcn = n
+			}
+		}
+		if _, err := chStmt.Exec(ch.ID, name, icon, i, lcn); err != nil {
 			return fmt.Errorf("upserting channel %s: %w", ch.ID, err)
 		}
 	}
@@ -226,7 +239,7 @@ func (d *DB) Refresh(tv *xmltv.TV, nextRefresh time.Time) error {
 // GetChannels returns all channels ordered by their source sort order.
 func (d *DB) GetChannels() ([]Channel, error) {
 	rows, err := d.db.Query(`
-		SELECT id, display_name, COALESCE(icon, '')
+		SELECT id, display_name, COALESCE(icon, ''), lcn
 		FROM channels
 		ORDER BY sort_order
 	`)
@@ -238,8 +251,13 @@ func (d *DB) GetChannels() ([]Channel, error) {
 	channels := []Channel{}
 	for rows.Next() {
 		var ch Channel
-		if err := rows.Scan(&ch.ID, &ch.DisplayName, &ch.Icon); err != nil {
+		var lcn sql.NullInt64
+		if err := rows.Scan(&ch.ID, &ch.DisplayName, &ch.Icon, &lcn); err != nil {
 			return nil, fmt.Errorf("scanning channel: %w", err)
+		}
+		if lcn.Valid {
+			n := int(lcn.Int64)
+			ch.LCN = &n
 		}
 		channels = append(channels, ch)
 	}
@@ -366,7 +384,7 @@ func airingFromXMLTV(p xmltv.Programme) Airing {
 		switch strings.ToLower(en.System) {
 		case "xmltv_ns":
 			a.EpisodeNum = strings.TrimSpace(en.Value)
-		case "onscreen":
+		case "onscreen", "sxxexx":
 			a.EpisodeNumDisplay = strings.TrimSpace(en.Value)
 		case "dd_progid":
 			a.ProgID = strings.TrimSpace(en.Value)
