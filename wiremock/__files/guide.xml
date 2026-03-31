@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE tv SYSTEM "xmltv.dtd">
+<tv>
+  <channel id="ch1">
+    <display-name>ABC</display-name>
+    <icon src="https://example.com/abc.png"/>
+  </channel>
+  <channel id="ch2">
+    <display-name>SBS</display-name>
+  </channel>
+
+  <!-- Yesterday: late night movie spanning midnight into today -->
+  <programme start="{{now offset='-1 days' format='yyyyMMdd' timezone='UTC'}}230000 +0000" stop="{{now format='yyyyMMdd' timezone='UTC'}}010000 +0000" channel="ch2">
+    <title>Late Night Movie</title>
+    <desc>A classic late night movie spanning midnight.</desc>
+    <category>Movie</category>
+  </programme>
+
+  <!-- Today's programmes -->
+  <programme start="{{now format='yyyyMMdd' timezone='UTC'}}060000 +0000" stop="{{now format='yyyyMMdd' timezone='UTC'}}070000 +0000" channel="ch1">
+    <title>Morning News</title>
+    <desc>The latest news to start your day.</desc>
+    <category>News</category>
+    <rating system="ABA">
+      <value>G</value>
+    </rating>
+  </programme>
+  <programme start="{{now format='yyyyMMdd' timezone='UTC'}}063000 +0000" stop="{{now format='yyyyMMdd' timezone='UTC'}}073000 +0000" channel="ch2">
+    <title>World News</title>
+    <sub-title>International Edition</sub-title>
+    <desc>Comprehensive international news coverage.</desc>
+    <category>News</category>
+    <category>International</category>
+    <date>{{now format='yyyy' timezone='UTC'}}</date>
+    <premiere>First broadcast</premiere>
+  </programme>
+  <programme start="{{now format='yyyyMMdd' timezone='UTC'}}070000 +0000" stop="{{now format='yyyyMMdd' timezone='UTC'}}090000 +0000" channel="ch1">
+    <title>Sunrise</title>
+    <sub-title>Daily Edition</sub-title>
+    <desc>Morning breakfast television programme.</desc>
+    <category>Entertainment</category>
+    <episode-num system="xmltv_ns">5.12.0/1</episode-num>
+    <episode-num system="onscreen">S06 E13</episode-num>
+    <star-rating system="imdb">
+      <value>3.5/5</value>
+    </star-rating>
+    <previously-shown/>
+  </programme>
+  <programme start="{{now format='yyyyMMdd' timezone='UTC'}}120000 +0000" stop="{{now format='yyyyMMdd' timezone='UTC'}}130000 +0000" channel="ch1">
+    <title>Midday Report</title>
+    <desc>News and current affairs at midday.</desc>
+    <category>News</category>
+    <rating system="ABA">
+      <value>G</value>
+    </rating>
+  </programme>
+  <programme start="{{now format='yyyyMMdd' timezone='UTC'}}190000 +0000" stop="{{now format='yyyyMMdd' timezone='UTC'}}193000 +0000" channel="ch1">
+    <title>Evening News</title>
+    <desc>Your nightly news bulletin.</desc>
+    <category>News</category>
+  </programme>
+  <programme start="{{now format='yyyyMMdd' timezone='UTC'}}193000 +0000" stop="{{now format='yyyyMMdd' timezone='UTC'}}210000 +0000" channel="ch2">
+    <title>The Drama</title>
+    <sub-title>Season Finale</sub-title>
+    <desc>The gripping conclusion to the season.</desc>
+    <category>Drama</category>
+    <episode-num system="onscreen">S03 E10</episode-num>
+    <premiere>Season finale</premiere>
+  </programme>
+  <programme start="{{now format='yyyyMMdd' timezone='UTC'}}210000 +0000" stop="{{now format='yyyyMMdd' timezone='UTC'}}230000 +0000" channel="ch1">
+    <title>Documentary Night</title>
+    <desc>An in-depth look at the natural world.</desc>
+    <category>Documentary</category>
+    <star-rating>
+      <value>4/5</value>
+    </star-rating>
+  </programme>
+
+  <!-- Tomorrow's programmes -->
+  <programme start="{{now offset='1 days' format='yyyyMMdd' timezone='UTC'}}060000 +0000" stop="{{now offset='1 days' format='yyyyMMdd' timezone='UTC'}}070000 +0000" channel="ch1">
+    <title>Morning News</title>
+    <desc>The latest news to start your day.</desc>
+    <category>News</category>
+    <rating system="ABA">
+      <value>G</value>
+    </rating>
+  </programme>
+  <programme start="{{now offset='1 days' format='yyyyMMdd' timezone='UTC'}}070000 +0000" stop="{{now offset='1 days' format='yyyyMMdd' timezone='UTC'}}090000 +0000" channel="ch1">
+    <title>Weekend Sunrise</title>
+    <desc>Start your morning right.</desc>
+    <category>Entertainment</category>
+  </programme>
+  <programme start="{{now offset='1 days' format='yyyyMMdd' timezone='UTC'}}190000 +0000" stop="{{now offset='1 days' format='yyyyMMdd' timezone='UTC'}}210000 +0000" channel="ch2">
+    <title>Feature Film</title>
+    <desc>A critically acclaimed feature film.</desc>
+    <category>Movie</category>
+    <star-rating>
+      <value>4.5/5</value>
+    </star-rating>
+  </programme>
+</tv>

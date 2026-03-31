@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -30,7 +31,7 @@ func startWiremock(t *testing.T) string {
 	ctx := context.Background()
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "wiremock/wiremock:3",
+			Image:        "wiremock/wiremock:latest",
 			ExposedPorts: []string{"8080/tcp"},
 			WaitingFor:   wait.ForHTTP("/__admin/mappings").WithPort("8080/tcp"),
 		},
@@ -146,7 +147,7 @@ func TestIntegration_StaticFiles(t *testing.T) {
 			t.Errorf("Content-Type: expected text/html, got %q", ct)
 		}
 		var buf strings.Builder
-		buf.ReadFrom(resp.Body)
+		io.Copy(&buf, resp.Body) //nolint:errcheck
 		body := buf.String()
 		if !strings.Contains(body, "TV Guide") {
 			t.Error("expected body to contain 'TV Guide'")
@@ -233,6 +234,136 @@ func TestIntegration_Guide(t *testing.T) {
 	}
 	if len(result) != 4 {
 		t.Fatalf("expected 4 airings, got %d", len(result))
+	}
+}
+
+// wiremockRequestCount returns the number of requests WireMock received matching
+// the given method and exact URL path.
+func wiremockRequestCount(t *testing.T, baseURL, method, urlPath string) int {
+	t.Helper()
+	body := fmt.Sprintf(`{"method": %q, "url": %q}`, method, urlPath)
+	resp, err := http.Post(baseURL+"/__admin/requests/count", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("wiremock request count: %v", err)
+	}
+	defer resp.Body.Close()
+	var result struct {
+		Count int `json:"count"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode count response: %v", err)
+	}
+	return result.Count
+}
+
+// resetWiremockRequests clears WireMock's request journal so counts reflect
+// only actions taken after the reset.
+func resetWiremockRequests(t *testing.T, baseURL string) {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodDelete, baseURL+"/__admin/requests", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("reset wiremock requests: %v", err)
+	}
+	resp.Body.Close()
+}
+
+func TestStartup_FreshInstall_AlwaysFetches(t *testing.T) {
+	baseURL := startWiremock(t)
+
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	configureWiremockStub(t, baseURL, string(xmlBytes))
+
+	dir := t.TempDir()
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, baseURL+"/xmltv")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	// Empty database, refreshOnStart=false (the default). Fresh install should
+	// always fetch regardless.
+	runInitialRefresh(db, baseURL+"/xmltv", time.Hour, false)
+
+	if count := wiremockRequestCount(t, baseURL, "GET", "/xmltv"); count != 1 {
+		t.Errorf("expected 1 XMLTV request on fresh install, got %d", count)
+	}
+	if !db.HasData() {
+		t.Error("expected database to contain data after initial fetch")
+	}
+}
+
+func TestStartup_ExistingData_SkipsFetch(t *testing.T) {
+	baseURL := startWiremock(t)
+
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	configureWiremockStub(t, baseURL, string(xmlBytes))
+
+	dir := t.TempDir()
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, baseURL+"/xmltv")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	// Pre-populate the database to simulate a prior successful run.
+	tv, err := xmltv.Fetch(baseURL + "/xmltv")
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if err := db.Refresh(tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	// Reset the journal so we only count requests made by runInitialRefresh.
+	resetWiremockRequests(t, baseURL)
+
+	// Simulate a restart with data present and refreshOnStart=false (the default).
+	runInitialRefresh(db, baseURL+"/xmltv", time.Hour, false)
+
+	if count := wiremockRequestCount(t, baseURL, "GET", "/xmltv"); count != 0 {
+		t.Errorf("expected 0 XMLTV requests when data exists and REFRESH_ON_START=false, got %d", count)
+	}
+}
+
+func TestStartup_RefreshOnStart_FetchesEvenWithData(t *testing.T) {
+	baseURL := startWiremock(t)
+
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	configureWiremockStub(t, baseURL, string(xmlBytes))
+
+	dir := t.TempDir()
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, baseURL+"/xmltv")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	// Pre-populate the database.
+	tv, err := xmltv.Fetch(baseURL + "/xmltv")
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if err := db.Refresh(tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	resetWiremockRequests(t, baseURL)
+
+	// REFRESH_ON_START=true must always fetch, even when data is already present.
+	runInitialRefresh(db, baseURL+"/xmltv", time.Hour, true)
+
+	if count := wiremockRequestCount(t, baseURL, "GET", "/xmltv"); count != 1 {
+		t.Errorf("expected 1 XMLTV request with REFRESH_ON_START=true, got %d", count)
 	}
 }
 

@@ -20,7 +20,7 @@ func startWiremock(t *testing.T) string {
 	ctx := context.Background()
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "wiremock/wiremock:3",
+			Image:        "wiremock/wiremock:latest",
 			ExposedPorts: []string{"8080/tcp"},
 			WaitingFor:   wait.ForHTTP("/__admin/mappings").WithPort("8080/tcp"),
 		},

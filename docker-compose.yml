@@ -15,6 +15,7 @@ services:
       # PORT: "8080"
       # RETENTION_DAYS: "7"
       # DB_PATH: "/data/tvguide.db"
+      # REFRESH_ON_START: "false"
     ports:
       - "8080:8080"
     volumes:

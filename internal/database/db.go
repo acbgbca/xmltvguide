@@ -235,7 +235,7 @@ func (d *DB) GetChannels() ([]Channel, error) {
 	}
 	defer rows.Close()
 
-	var channels []Channel
+	channels := []Channel{}
 	for rows.Next() {
 		var ch Channel
 		if err := rows.Scan(&ch.ID, &ch.DisplayName, &ch.Icon); err != nil {
@@ -316,6 +316,21 @@ func (d *DB) GetStatus() Status {
 		NextRefresh: d.nextRefresh,
 		SourceURL:   d.sourceURL,
 	}
+}
+
+// HasData reports whether the database contains any channels.
+func (d *DB) HasData() bool {
+	var count int
+	d.db.QueryRow(`SELECT COUNT(*) FROM channels`).Scan(&count) //nolint:errcheck — zero count on error is the safe default
+	return count > 0
+}
+
+// SetNextRefresh updates the in-memory next refresh time without performing a fetch.
+// Call this when the startup fetch is skipped so that /api/status reflects the correct schedule.
+func (d *DB) SetNextRefresh(t time.Time) {
+	d.mu.Lock()
+	d.nextRefresh = t
+	d.mu.Unlock()
 }
 
 // Close closes the underlying database connection.
