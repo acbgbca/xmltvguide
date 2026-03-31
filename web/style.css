@@ -19,7 +19,7 @@
 
     /* Layout dimensions — changing these values adjusts the whole guide */
     --top-bar-height:      48px;
-    --channel-col-width:   160px;
+    --channel-col-width:   120px;
     --time-row-height:     36px;
     --row-height:          54px; /* keep in sync with ROW_HEIGHT in app.js */
 }
