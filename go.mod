@@ -1,6 +1,7 @@
 module github.com/acbgbca/xmltvguide
 
 go 1.25.0
+toolchain go1.25.8
 
 require (
 	github.com/testcontainers/testcontainers-go v0.41.0

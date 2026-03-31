@@ -7,18 +7,12 @@ RUN apk --no-cache add ca-certificates
 
 WORKDIR /app
 
-# Copy all source first so go mod tidy can resolve imports.
-# tidy scans .go files, downloads dependencies, and writes go.mod + go.sum.
-# This means Go does not need to be installed on the host machine.
-#
-# GOTOOLCHAIN=auto allows the Go toolchain to upgrade itself if a dependency
-# requires a newer Go version than the base image provides.
-#
-# After the first successful build, commit the updated go.mod and go.sum
-# back to the repository for reproducible builds.
+# Copy module manifests first so this layer is cached until dependencies change.
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Now copy source and build.
 COPY . .
-ENV GOTOOLCHAIN=auto
-RUN go mod tidy
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o tvguide .
 
 # ── Runtime stage ─────────────────────────────────────────────────
