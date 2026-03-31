@@ -235,7 +235,7 @@ func (d *DB) GetChannels() ([]Channel, error) {
 	}
 	defer rows.Close()
 
-	var channels []Channel
+	channels := []Channel{}
 	for rows.Next() {
 		var ch Channel
 		if err := rows.Scan(&ch.ID, &ch.DisplayName, &ch.Icon); err != nil {

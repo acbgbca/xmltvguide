@@ -66,18 +66,7 @@ func main() {
 	defer db.Close()
 
 	refreshOnStart := os.Getenv("REFRESH_ON_START") == "true"
-
-	// Perform initial data fetch only when explicitly requested or when the
-	// database is empty (fresh install). Otherwise schedule the first refresh
-	// at the normal poll interval so restarts don't hammer the XMLTV source.
-	if refreshOnStart || !db.HasData() {
-		if err := refresh(db, xmltvURL, pollInterval); err != nil {
-			log.Printf("warning: initial fetch failed: %v", err)
-		}
-	} else {
-		db.SetNextRefresh(time.Now().Add(pollInterval))
-		log.Printf("skipping initial fetch, data already present (next refresh in %s)", pollInterval)
-	}
+	runInitialRefresh(db, xmltvURL, pollInterval, refreshOnStart)
 
 	// Background refresh goroutine.
 	go func() {
@@ -102,6 +91,20 @@ func main() {
 	log.Printf("TV Guide starting on :%s (poll: %s, retention: %d days, db: %s)",
 		port, pollInterval, retentionDays, dbPath)
 	log.Fatal(http.ListenAndServe(":"+port, mux))
+}
+
+func runInitialRefresh(db *database.DB, xmltvURL string, pollInterval time.Duration, refreshOnStart bool) {
+	// Perform initial data fetch only when explicitly requested or when the
+	// database is empty (fresh install). Otherwise schedule the first refresh
+	// at the normal poll interval so restarts don't hammer the XMLTV source.
+	if refreshOnStart || !db.HasData() {
+		if err := refresh(db, xmltvURL, pollInterval); err != nil {
+			log.Printf("warning: initial fetch failed: %v", err)
+		}
+	} else {
+		db.SetNextRefresh(time.Now().Add(pollInterval))
+		log.Printf("skipping initial fetch, data already present (next refresh in %s)", pollInterval)
+	}
 }
 
 func refresh(db *database.DB, url string, interval time.Duration) error {
