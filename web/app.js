@@ -145,15 +145,30 @@ async function navigateToDate(dateStr, { pushState = true } = {}) {
     document.getElementById('guideLoadingOverlay').classList.remove('visible');
 }
 
+// Returns true only if any airing in `airings` starts within `dateStr`'s
+// calendar day (local time). Airings that merely overlap from the previous
+// day (stop_time crosses midnight) are excluded, so a day that contains
+// nothing but spillover is treated as having no data.
+function hasAiringsStartingOn(airings, dateStr) {
+    const dayStart  = dateMidnight(dateStr);
+    const dayEnd    = dateMidnight(addDays(dateStr, 1));
+    return airings.some(p => {
+        const start = new Date(p.start);
+        return start >= dayStart && start < dayEnd;
+    });
+}
+
 // Probes the guide API for the previous and next days and enables/disables
 // the navigation buttons based on whether data exists for those dates.
 async function updateNavButtons() {
+    const prevDate = addDays(state.currentDate, -1);
+    const nextDate = addDays(state.currentDate,  1);
     const [prevData, nextData] = await Promise.all([
-        fetchGuide(addDays(state.currentDate, -1)),
-        fetchGuide(addDays(state.currentDate,  1)),
+        fetchGuide(prevDate),
+        fetchGuide(nextDate),
     ]);
-    document.getElementById('prevDay').disabled = prevData.length === 0;
-    document.getElementById('nextDay').disabled = nextData.length === 0;
+    document.getElementById('prevDay').disabled = !hasAiringsStartingOn(prevData, prevDate);
+    document.getElementById('nextDay').disabled = !hasAiringsStartingOn(nextData, nextDate);
 }
 
 // ── API ───────────────────────────────────────────────────────────────────────
