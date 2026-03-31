@@ -98,6 +98,88 @@ type DB struct {
 	nextRefresh time.Time
 }
 
+const createMigrationsTable = `
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version    INTEGER PRIMARY KEY,
+    applied_at TEXT    NOT NULL
+);`
+
+// migrations is the ordered list of schema changes applied after the base schema.
+// Append new entries; never modify or remove existing ones.
+var migrations = []struct {
+	version int
+	sql     string
+}{
+	{1, `ALTER TABLE channels ADD COLUMN lcn INTEGER`},
+}
+
+func applyMigrations(db *sql.DB) error {
+	if _, err := db.Exec(createMigrationsTable); err != nil {
+		return fmt.Errorf("creating migrations table: %w", err)
+	}
+	for _, m := range migrations {
+		var count int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, m.version).Scan(&count); err != nil {
+			return fmt.Errorf("checking migration %d: %w", m.version, err)
+		}
+		if count > 0 {
+			continue
+		}
+		// Before running, check whether the effect is already present.
+		// This handles databases that were created with the column already in the
+		// base schema, or that ran the old silent ALTER TABLE approach.
+		if already, err := migrationAlreadyApplied(db, m.version); err != nil {
+			return fmt.Errorf("pre-checking migration %d: %w", m.version, err)
+		} else if already {
+			if _, err := db.Exec(`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
+				m.version, time.Now().UTC().Format(time.RFC3339)); err != nil {
+				return fmt.Errorf("recording migration %d: %w", m.version, err)
+			}
+			continue
+		}
+		if _, err := db.Exec(m.sql); err != nil {
+			return fmt.Errorf("applying migration %d: %w", m.version, err)
+		}
+		if _, err := db.Exec(`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
+			m.version, time.Now().UTC().Format(time.RFC3339)); err != nil {
+			return fmt.Errorf("recording migration %d: %w", m.version, err)
+		}
+	}
+	return nil
+}
+
+// migrationAlreadyApplied reports whether migration n's schema change is
+// detectably present, even when it was applied outside the version table
+// (e.g. by the old silent ALTER TABLE approach, or from the base schema).
+func migrationAlreadyApplied(db *sql.DB, version int) (bool, error) {
+	switch version {
+	case 1:
+		return columnExists(db, "channels", "lcn")
+	}
+	return false, nil
+}
+
+// columnExists reports whether the named column is present in the given table.
+func columnExists(db *sql.DB, table, column string) (bool, error) {
+	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, colType string
+		var dfltValue sql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
+
 // Open opens (or creates) a SQLite database at path and applies the schema.
 func Open(path string, retentionDays int, sourceURL string) (*DB, error) {
 	db, err := sql.Open("sqlite", path)
@@ -122,9 +204,10 @@ func Open(path string, retentionDays int, sourceURL string) (*DB, error) {
 		return nil, fmt.Errorf("applying schema: %w", err)
 	}
 
-	// Migration: add lcn column to existing databases that predate this column.
-	// SQLite returns an error if the column already exists; we intentionally ignore it.
-	_, _ = db.Exec(`ALTER TABLE channels ADD COLUMN lcn INTEGER`)
+	if err := applyMigrations(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 
 	return &DB{
 		db:            db,
