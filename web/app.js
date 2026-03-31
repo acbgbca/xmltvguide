@@ -123,6 +123,7 @@ function addDays(dateStr, days) {
 // Pass { pushState: false } when called from a popstate handler.
 async function navigateToDate(dateStr, { pushState = true } = {}) {
     document.getElementById('guideLoadingOverlay').classList.add('visible');
+    document.getElementById('guideEmpty').classList.remove('visible');
     document.getElementById('prevDay').disabled = true;
     document.getElementById('nextDay').disabled = true;
 
@@ -132,17 +133,22 @@ async function navigateToDate(dateStr, { pushState = true } = {}) {
 
     try {
         state.programmes = await fetchGuide(dateStr);
+        if (!hasAiringsStartingOn(state.programmes, dateStr)) {
+            document.getElementById('guideEmpty').classList.add('visible');
+        }
         renderGuide();
         if (dateStr === getTodayString()) {
             scrollToNow();
         }
         // For other dates, preserve the current horizontal scroll position.
+        await updateNavButtons();
     } catch (err) {
-        console.error('Failed to load guide for', dateStr, err);
+        console.error('Failed to navigate to', dateStr, err);
+        document.getElementById('prevDay').disabled = true;
+        document.getElementById('nextDay').disabled = true;
+    } finally {
+        document.getElementById('guideLoadingOverlay').classList.remove('visible');
     }
-
-    await updateNavButtons();
-    document.getElementById('guideLoadingOverlay').classList.remove('visible');
 }
 
 // Returns true only if any airing in `airings` starts within `dateStr`'s
@@ -535,6 +541,9 @@ async function init() {
         state.channels   = channels;
         state.programmes = programmes;
 
+        if (!hasAiringsStartingOn(state.programmes, state.currentDate)) {
+            document.getElementById('guideEmpty').classList.add('visible');
+        }
         renderGuide();
         renderSettingsPanel();
 
