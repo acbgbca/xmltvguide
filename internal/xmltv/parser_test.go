@@ -1,6 +1,7 @@
 package xmltv_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -196,7 +197,7 @@ func TestFetch_ViaHTTP(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	tv, err := xmltv.Fetch(srv.URL)
+	tv, err := xmltv.Fetch(context.Background(), &http.Client{}, srv.URL)
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}

@@ -67,15 +67,17 @@ func main() {
 		log.Fatalf("opening database: %v", err)
 	}
 
+	httpClient := &http.Client{Timeout: 5 * time.Minute}
+
 	refreshOnStart := os.Getenv("REFRESH_ON_START") == "true"
-	runInitialRefresh(db, xmltvURL, pollInterval, refreshOnStart)
+	runInitialRefresh(db, httpClient, xmltvURL, pollInterval, refreshOnStart)
 
 	// Background refresh goroutine.
 	ticker := time.NewTicker(pollInterval)
 	go func() {
 		defer ticker.Stop()
 		for range ticker.C {
-			if err := refresh(db, xmltvURL, pollInterval); err != nil {
+			if err := refresh(db, httpClient, xmltvURL, pollInterval); err != nil {
 				log.Printf("refresh error: %v", err)
 			}
 		}
@@ -121,12 +123,12 @@ func main() {
 	db.Close()
 }
 
-func runInitialRefresh(db *database.DB, xmltvURL string, pollInterval time.Duration, refreshOnStart bool) {
+func runInitialRefresh(db *database.DB, client *http.Client, xmltvURL string, pollInterval time.Duration, refreshOnStart bool) {
 	// Perform initial data fetch only when explicitly requested or when the
 	// database is empty (fresh install). Otherwise schedule the first refresh
 	// at the normal poll interval so restarts don't hammer the XMLTV source.
 	if refreshOnStart || !db.HasData() {
-		if err := refresh(db, xmltvURL, pollInterval); err != nil {
+		if err := refresh(db, client, xmltvURL, pollInterval); err != nil {
 			log.Printf("warning: initial fetch failed: %v", err)
 		}
 	} else {
@@ -135,9 +137,9 @@ func runInitialRefresh(db *database.DB, xmltvURL string, pollInterval time.Durat
 	}
 }
 
-func refresh(db *database.DB, url string, interval time.Duration) error {
+func refresh(db *database.DB, client *http.Client, url string, interval time.Duration) error {
 	log.Printf("fetching XMLTV from %s", url)
-	tv, err := xmltv.Fetch(url)
+	tv, err := xmltv.Fetch(context.Background(), client, url)
 	if err != nil {
 		return fmt.Errorf("fetch: %w", err)
 	}

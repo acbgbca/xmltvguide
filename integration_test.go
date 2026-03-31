@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -67,7 +68,7 @@ func newIntegrationServer(t *testing.T, xmltvURL string) *httptest.Server {
 		t.Fatalf("Open: %v", err)
 	}
 
-	tv, err := xmltv.Fetch(xmltvURL + "/xmltv")
+	tv, err := xmltv.Fetch(context.Background(), &http.Client{}, xmltvURL+"/xmltv")
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -219,7 +220,7 @@ func TestStartup_FreshInstall_AlwaysFetches(t *testing.T) {
 
 	// Empty database, refreshOnStart=false (the default). Fresh install should
 	// always fetch regardless.
-	runInitialRefresh(db, mockSrv.URL+"/xmltv", time.Hour, false)
+	runInitialRefresh(db, &http.Client{}, mockSrv.URL+"/xmltv", time.Hour, false)
 
 	if count := mockSrv.requestCount(); count != 1 {
 		t.Errorf("expected 1 XMLTV request on fresh install, got %d", count)
@@ -244,7 +245,7 @@ func TestStartup_ExistingData_SkipsFetch(t *testing.T) {
 	defer db.Close()
 
 	// Pre-populate the database to simulate a prior successful run.
-	tv, err := xmltv.Fetch(mockSrv.URL + "/xmltv")
+	tv, err := xmltv.Fetch(context.Background(), &http.Client{}, mockSrv.URL+"/xmltv")
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -256,7 +257,7 @@ func TestStartup_ExistingData_SkipsFetch(t *testing.T) {
 	mockSrv.resetRequests()
 
 	// Simulate a restart with data present and refreshOnStart=false (the default).
-	runInitialRefresh(db, mockSrv.URL+"/xmltv", time.Hour, false)
+	runInitialRefresh(db, &http.Client{}, mockSrv.URL+"/xmltv", time.Hour, false)
 
 	if count := mockSrv.requestCount(); count != 0 {
 		t.Errorf("expected 0 XMLTV requests when data exists and REFRESH_ON_START=false, got %d", count)
@@ -278,7 +279,7 @@ func TestStartup_RefreshOnStart_FetchesEvenWithData(t *testing.T) {
 	defer db.Close()
 
 	// Pre-populate the database.
-	tv, err := xmltv.Fetch(mockSrv.URL + "/xmltv")
+	tv, err := xmltv.Fetch(context.Background(), &http.Client{}, mockSrv.URL+"/xmltv")
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -289,7 +290,7 @@ func TestStartup_RefreshOnStart_FetchesEvenWithData(t *testing.T) {
 	mockSrv.resetRequests()
 
 	// REFRESH_ON_START=true must always fetch, even when data is already present.
-	runInitialRefresh(db, mockSrv.URL+"/xmltv", time.Hour, true)
+	runInitialRefresh(db, &http.Client{}, mockSrv.URL+"/xmltv", time.Hour, true)
 
 	if count := mockSrv.requestCount(); count != 1 {
 		t.Errorf("expected 1 XMLTV request with REFRESH_ON_START=true, got %d", count)
