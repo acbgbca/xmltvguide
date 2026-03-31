@@ -27,6 +27,10 @@ test-api:
 test-integration:
 	go test -timeout $(TIMEOUT) .
 
+## dev: run the development environment (tvguide + WireMock)
+dev:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
 ## clean: remove build output
 clean:
 	rm -f $(BINARY)
