@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"time"
 	_ "time/tzdata" // embed IANA timezone database so the binary works on scratch
 
@@ -63,7 +66,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("opening database: %v", err)
 	}
-	defer db.Close()
 
 	refreshOnStart := os.Getenv("REFRESH_ON_START") == "true"
 	runInitialRefresh(db, xmltvURL, pollInterval, refreshOnStart)
@@ -90,9 +92,33 @@ func main() {
 	}
 	mux.Handle("/", http.FileServer(http.FS(webContent)))
 
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: mux,
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %v", err)
+		}
+	}()
+
 	log.Printf("TV Guide starting on :%s (poll: %s, retention: %d days, db: %s)",
 		port, pollInterval, retentionDays, dbPath)
-	log.Fatal(http.ListenAndServe(":"+port, mux))
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("shutting down...")
+
+	ticker.Stop()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("forced shutdown: %v", err)
+	}
+	db.Close()
 }
 
 func runInitialRefresh(db *database.DB, xmltvURL string, pollInterval time.Duration, refreshOnStart bool) {
