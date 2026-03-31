@@ -166,15 +166,21 @@ function hasAiringsStartingOn(airings, dateStr) {
 
 // Probes the guide API for the previous and next days and enables/disables
 // the navigation buttons based on whether data exists for those dates.
+// Uses Promise.allSettled so a failure on one side never affects the other
+// button, and the function itself never throws.
 async function updateNavButtons() {
     const prevDate = addDays(state.currentDate, -1);
     const nextDate = addDays(state.currentDate,  1);
-    const [prevData, nextData] = await Promise.all([
+    const [prevResult, nextResult] = await Promise.allSettled([
         fetchGuide(prevDate),
         fetchGuide(nextDate),
     ]);
-    document.getElementById('prevDay').disabled = !hasAiringsStartingOn(prevData, prevDate);
-    document.getElementById('nextDay').disabled = !hasAiringsStartingOn(nextData, nextDate);
+    if (prevResult.status === 'fulfilled') {
+        document.getElementById('prevDay').disabled = !hasAiringsStartingOn(prevResult.value, prevDate);
+    }
+    if (nextResult.status === 'fulfilled') {
+        document.getElementById('nextDay').disabled = !hasAiringsStartingOn(nextResult.value, nextDate);
+    }
 }
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -555,14 +561,16 @@ async function init() {
         // Keep the now-line position current
         setInterval(() => updateNowLine(dateMidnight(state.currentDate)), 60_000);
 
-        await updateNavButtons();
-
     } catch (err) {
         console.error('Failed to load guide data:', err);
         document.getElementById('loadingText').textContent =
             'Failed to load guide data. Is the server running?';
         return; // leave loading screen visible as an error state
     }
+
+    // Run outside the server-error catch so a probe failure here never
+    // produces the misleading "Is the server running?" message.
+    await updateNavButtons();
 
     document.getElementById('loadingScreen').classList.add('hidden');
 }
