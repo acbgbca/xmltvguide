@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"time"
 	_ "time/tzdata" // embed IANA timezone database so the binary works on scratch
 
@@ -63,15 +66,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("opening database: %v", err)
 	}
-	defer db.Close()
+
+	httpClient := &http.Client{Timeout: 5 * time.Minute}
 
 	refreshOnStart := os.Getenv("REFRESH_ON_START") == "true"
-	runInitialRefresh(db, xmltvURL, pollInterval, refreshOnStart)
+	runInitialRefresh(db, httpClient, xmltvURL, pollInterval, refreshOnStart)
 
 	// Background refresh goroutine.
+	ticker := time.NewTicker(pollInterval)
 	go func() {
-		for range time.Tick(pollInterval) {
-			if err := refresh(db, xmltvURL, pollInterval); err != nil {
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := refresh(db, httpClient, xmltvURL, pollInterval); err != nil {
 				log.Printf("refresh error: %v", err)
 			}
 		}
@@ -88,17 +94,41 @@ func main() {
 	}
 	mux.Handle("/", http.FileServer(http.FS(webContent)))
 
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: mux,
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %v", err)
+		}
+	}()
+
 	log.Printf("TV Guide starting on :%s (poll: %s, retention: %d days, db: %s)",
 		port, pollInterval, retentionDays, dbPath)
-	log.Fatal(http.ListenAndServe(":"+port, mux))
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("shutting down...")
+
+	ticker.Stop()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("forced shutdown: %v", err)
+	}
+	db.Close()
 }
 
-func runInitialRefresh(db *database.DB, xmltvURL string, pollInterval time.Duration, refreshOnStart bool) {
+func runInitialRefresh(db *database.DB, client *http.Client, xmltvURL string, pollInterval time.Duration, refreshOnStart bool) {
 	// Perform initial data fetch only when explicitly requested or when the
 	// database is empty (fresh install). Otherwise schedule the first refresh
 	// at the normal poll interval so restarts don't hammer the XMLTV source.
 	if refreshOnStart || !db.HasData() {
-		if err := refresh(db, xmltvURL, pollInterval); err != nil {
+		if err := refresh(db, client, xmltvURL, pollInterval); err != nil {
 			log.Printf("warning: initial fetch failed: %v", err)
 		}
 	} else {
@@ -107,9 +137,9 @@ func runInitialRefresh(db *database.DB, xmltvURL string, pollInterval time.Durat
 	}
 }
 
-func refresh(db *database.DB, url string, interval time.Duration) error {
+func refresh(db *database.DB, client *http.Client, url string, interval time.Duration) error {
 	log.Printf("fetching XMLTV from %s", url)
-	tv, err := xmltv.Fetch(url)
+	tv, err := xmltv.Fetch(context.Background(), client, url)
 	if err != nil {
 		return fmt.Errorf("fetch: %w", err)
 	}

@@ -8,13 +8,20 @@ import (
 	"github.com/acbgbca/xmltvguide/internal/database"
 )
 
+// store is the narrow interface the Handler needs from the database layer.
+type store interface {
+	GetChannels() ([]database.Channel, error)
+	GetAirings(date time.Time) ([]database.Airing, error)
+	GetStatus() database.Status
+}
+
 // Handler holds the HTTP handler dependencies.
 type Handler struct {
-	db *database.DB
+	db store
 }
 
 // New creates a new Handler backed by db.
-func New(db *database.DB) *Handler {
+func New(db store) *Handler {
 	return &Handler{db: db}
 }
 

@@ -1,6 +1,7 @@
 package xmltv
 
 import (
+	"context"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -117,20 +118,17 @@ func parseXmltvTime(s string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("cannot parse xmltv time: %q", s)
 }
 
-var httpClient = &http.Client{
-	Timeout: 5 * time.Minute,
-}
-
 // Fetch downloads and parses an XMLTV document from the given URL.
-func Fetch(url string) (*TV, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+// The provided context controls the lifetime of the HTTP request.
+func Fetch(ctx context.Context, client *http.Client, url string) (*TV, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("building request: %w", err)
 	}
 	req.Header.Set("Accept", "text/xml, application/xml, */*")
 	req.Header.Set("User-Agent", "xmltvguide/1.0")
 
-	resp, err := httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetching %s: %w", url, err)
 	}

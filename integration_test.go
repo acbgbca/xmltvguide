@@ -11,14 +11,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/acbgbca/xmltvguide/internal/api"
 	"github.com/acbgbca/xmltvguide/internal/database"
 	"github.com/acbgbca/xmltvguide/internal/xmltv"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 func TestMain(m *testing.M) {
@@ -26,65 +25,39 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func startWiremock(t *testing.T) string {
-	t.Helper()
-	ctx := context.Background()
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "wiremock/wiremock:latest",
-			ExposedPorts: []string{"8080/tcp"},
-			WaitingFor:   wait.ForHTTP("/__admin/mappings").WithPort("8080/tcp"),
-		},
-		Started: true,
-	})
-	if err != nil {
-		t.Fatalf("start wiremock: %v", err)
-	}
-	t.Cleanup(func() {
-		cleanupCtx := context.Background()
-		if err := container.Terminate(cleanupCtx); err != nil {
-			t.Logf("terminate wiremock: %v", err)
-		}
-	})
-	host, err := container.Host(ctx)
-	if err != nil {
-		t.Fatalf("wiremock host: %v", err)
-	}
-	port, err := container.MappedPort(ctx, "8080/tcp")
-	if err != nil {
-		t.Fatalf("wiremock port: %v", err)
-	}
-	return fmt.Sprintf("http://%s:%s", host, port.Port())
+// countingServer wraps httptest.Server and tracks the number of requests served.
+type countingServer struct {
+	*httptest.Server
+	mu    sync.Mutex
+	count int
 }
 
-func configureWiremockStub(t *testing.T, baseURL, xmlContent string) {
-	t.Helper()
-	escapedBody, err := json.Marshal(xmlContent)
-	if err != nil {
-		t.Fatalf("marshal xml content: %v", err)
-	}
-	stubJSON := fmt.Sprintf(`{
-		"request": {
-			"method": "GET",
-			"url": "/xmltv"
-		},
-		"response": {
-			"status": 200,
-			"body": %s,
-			"headers": {
-				"Content-Type": "text/xml"
-			}
-		}
-	}`, string(escapedBody))
+func (s *countingServer) requestCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.count
+}
 
-	resp, err := http.Post(baseURL+"/__admin/mappings", "application/json", strings.NewReader(stubJSON))
-	if err != nil {
-		t.Fatalf("configure wiremock stub: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		t.Fatalf("configure wiremock stub: unexpected status %d", resp.StatusCode)
-	}
+func (s *countingServer) resetRequests() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.count = 0
+}
+
+// startMockXMLTVServer starts an in-process HTTP server that serves xmlContent
+// for any request. It registers a cleanup to close the server when the test ends.
+func startMockXMLTVServer(t *testing.T, xmlContent string) *countingServer {
+	t.Helper()
+	cs := &countingServer{}
+	cs.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cs.mu.Lock()
+		cs.count++
+		cs.mu.Unlock()
+		w.Header().Set("Content-Type", "text/xml")
+		fmt.Fprint(w, xmlContent)
+	}))
+	t.Cleanup(cs.Server.Close)
+	return cs
 }
 
 func newIntegrationServer(t *testing.T, xmltvURL string) *httptest.Server {
@@ -95,7 +68,7 @@ func newIntegrationServer(t *testing.T, xmltvURL string) *httptest.Server {
 		t.Fatalf("Open: %v", err)
 	}
 
-	tv, err := xmltv.Fetch(xmltvURL + "/xmltv")
+	tv, err := xmltv.Fetch(context.Background(), &http.Client{}, xmltvURL+"/xmltv")
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -123,15 +96,13 @@ func newIntegrationServer(t *testing.T, xmltvURL string) *httptest.Server {
 }
 
 func TestIntegration_StaticFiles(t *testing.T) {
-	baseURL := startWiremock(t)
-
 	xmlBytes, err := os.ReadFile("testdata/sample.xml")
 	if err != nil {
 		t.Fatalf("read sample.xml: %v", err)
 	}
-	configureWiremockStub(t, baseURL, string(xmlBytes))
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 
-	srv := newIntegrationServer(t, baseURL)
+	srv := newIntegrationServer(t, mockSrv.URL)
 
 	t.Run("index_html", func(t *testing.T) {
 		resp, err := http.Get(srv.URL + "/")
@@ -182,15 +153,13 @@ func TestIntegration_StaticFiles(t *testing.T) {
 }
 
 func TestIntegration_Channels(t *testing.T) {
-	baseURL := startWiremock(t)
-
 	xmlBytes, err := os.ReadFile("testdata/sample.xml")
 	if err != nil {
 		t.Fatalf("read sample.xml: %v", err)
 	}
-	configureWiremockStub(t, baseURL, string(xmlBytes))
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 
-	srv := newIntegrationServer(t, baseURL)
+	srv := newIntegrationServer(t, mockSrv.URL)
 
 	resp, err := http.Get(srv.URL + "/api/channels")
 	if err != nil {
@@ -210,15 +179,13 @@ func TestIntegration_Channels(t *testing.T) {
 }
 
 func TestIntegration_Guide(t *testing.T) {
-	baseURL := startWiremock(t)
-
 	xmlBytes, err := os.ReadFile("testdata/sample.xml")
 	if err != nil {
 		t.Fatalf("read sample.xml: %v", err)
 	}
-	configureWiremockStub(t, baseURL, string(xmlBytes))
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 
-	srv := newIntegrationServer(t, baseURL)
+	srv := newIntegrationServer(t, mockSrv.URL)
 
 	resp, err := http.Get(srv.URL + "/api/guide?date=2026-03-29")
 	if err != nil {
@@ -237,48 +204,15 @@ func TestIntegration_Guide(t *testing.T) {
 	}
 }
 
-// wiremockRequestCount returns the number of requests WireMock received matching
-// the given method and exact URL path.
-func wiremockRequestCount(t *testing.T, baseURL, method, urlPath string) int {
-	t.Helper()
-	body := fmt.Sprintf(`{"method": %q, "url": %q}`, method, urlPath)
-	resp, err := http.Post(baseURL+"/__admin/requests/count", "application/json", strings.NewReader(body))
-	if err != nil {
-		t.Fatalf("wiremock request count: %v", err)
-	}
-	defer resp.Body.Close()
-	var result struct {
-		Count int `json:"count"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		t.Fatalf("decode count response: %v", err)
-	}
-	return result.Count
-}
-
-// resetWiremockRequests clears WireMock's request journal so counts reflect
-// only actions taken after the reset.
-func resetWiremockRequests(t *testing.T, baseURL string) {
-	t.Helper()
-	req, _ := http.NewRequest(http.MethodDelete, baseURL+"/__admin/requests", nil)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("reset wiremock requests: %v", err)
-	}
-	resp.Body.Close()
-}
-
 func TestStartup_FreshInstall_AlwaysFetches(t *testing.T) {
-	baseURL := startWiremock(t)
-
 	xmlBytes, err := os.ReadFile("testdata/sample.xml")
 	if err != nil {
 		t.Fatalf("read sample.xml: %v", err)
 	}
-	configureWiremockStub(t, baseURL, string(xmlBytes))
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, baseURL+"/xmltv")
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -286,9 +220,9 @@ func TestStartup_FreshInstall_AlwaysFetches(t *testing.T) {
 
 	// Empty database, refreshOnStart=false (the default). Fresh install should
 	// always fetch regardless.
-	runInitialRefresh(db, baseURL+"/xmltv", time.Hour, false)
+	runInitialRefresh(db, &http.Client{}, mockSrv.URL+"/xmltv", time.Hour, false)
 
-	if count := wiremockRequestCount(t, baseURL, "GET", "/xmltv"); count != 1 {
+	if count := mockSrv.requestCount(); count != 1 {
 		t.Errorf("expected 1 XMLTV request on fresh install, got %d", count)
 	}
 	if !db.HasData() {
@@ -297,23 +231,21 @@ func TestStartup_FreshInstall_AlwaysFetches(t *testing.T) {
 }
 
 func TestStartup_ExistingData_SkipsFetch(t *testing.T) {
-	baseURL := startWiremock(t)
-
 	xmlBytes, err := os.ReadFile("testdata/sample.xml")
 	if err != nil {
 		t.Fatalf("read sample.xml: %v", err)
 	}
-	configureWiremockStub(t, baseURL, string(xmlBytes))
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, baseURL+"/xmltv")
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	defer db.Close()
 
 	// Pre-populate the database to simulate a prior successful run.
-	tv, err := xmltv.Fetch(baseURL + "/xmltv")
+	tv, err := xmltv.Fetch(context.Background(), &http.Client{}, mockSrv.URL+"/xmltv")
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -321,35 +253,33 @@ func TestStartup_ExistingData_SkipsFetch(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 
-	// Reset the journal so we only count requests made by runInitialRefresh.
-	resetWiremockRequests(t, baseURL)
+	// Reset the counter so we only count requests made by runInitialRefresh.
+	mockSrv.resetRequests()
 
 	// Simulate a restart with data present and refreshOnStart=false (the default).
-	runInitialRefresh(db, baseURL+"/xmltv", time.Hour, false)
+	runInitialRefresh(db, &http.Client{}, mockSrv.URL+"/xmltv", time.Hour, false)
 
-	if count := wiremockRequestCount(t, baseURL, "GET", "/xmltv"); count != 0 {
+	if count := mockSrv.requestCount(); count != 0 {
 		t.Errorf("expected 0 XMLTV requests when data exists and REFRESH_ON_START=false, got %d", count)
 	}
 }
 
 func TestStartup_RefreshOnStart_FetchesEvenWithData(t *testing.T) {
-	baseURL := startWiremock(t)
-
 	xmlBytes, err := os.ReadFile("testdata/sample.xml")
 	if err != nil {
 		t.Fatalf("read sample.xml: %v", err)
 	}
-	configureWiremockStub(t, baseURL, string(xmlBytes))
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, baseURL+"/xmltv")
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	defer db.Close()
 
 	// Pre-populate the database.
-	tv, err := xmltv.Fetch(baseURL + "/xmltv")
+	tv, err := xmltv.Fetch(context.Background(), &http.Client{}, mockSrv.URL+"/xmltv")
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -357,26 +287,24 @@ func TestStartup_RefreshOnStart_FetchesEvenWithData(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 
-	resetWiremockRequests(t, baseURL)
+	mockSrv.resetRequests()
 
 	// REFRESH_ON_START=true must always fetch, even when data is already present.
-	runInitialRefresh(db, baseURL+"/xmltv", time.Hour, true)
+	runInitialRefresh(db, &http.Client{}, mockSrv.URL+"/xmltv", time.Hour, true)
 
-	if count := wiremockRequestCount(t, baseURL, "GET", "/xmltv"); count != 1 {
+	if count := mockSrv.requestCount(); count != 1 {
 		t.Errorf("expected 1 XMLTV request with REFRESH_ON_START=true, got %d", count)
 	}
 }
 
 func TestIntegration_Status(t *testing.T) {
-	baseURL := startWiremock(t)
-
 	xmlBytes, err := os.ReadFile("testdata/sample.xml")
 	if err != nil {
 		t.Fatalf("read sample.xml: %v", err)
 	}
-	configureWiremockStub(t, baseURL, string(xmlBytes))
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 
-	srv := newIntegrationServer(t, baseURL)
+	srv := newIntegrationServer(t, mockSrv.URL)
 
 	resp, err := http.Get(srv.URL + "/api/status")
 	if err != nil {
@@ -390,7 +318,7 @@ func TestIntegration_Status(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if !strings.Contains(result.SourceUrl, baseURL) {
-		t.Errorf("sourceUrl: expected to contain %q, got %q", baseURL, result.SourceUrl)
+	if !strings.Contains(result.SourceUrl, mockSrv.URL) {
+		t.Errorf("sourceUrl: expected to contain %q, got %q", mockSrv.URL, result.SourceUrl)
 	}
 }

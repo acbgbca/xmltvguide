@@ -2,79 +2,16 @@ package xmltv_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/acbgbca/xmltvguide/internal/xmltv"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
-
-func startWiremock(t *testing.T) string {
-	t.Helper()
-	ctx := context.Background()
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "wiremock/wiremock:latest",
-			ExposedPorts: []string{"8080/tcp"},
-			WaitingFor:   wait.ForHTTP("/__admin/mappings").WithPort("8080/tcp"),
-		},
-		Started: true,
-	})
-	if err != nil {
-		t.Fatalf("start wiremock: %v", err)
-	}
-	t.Cleanup(func() {
-		cleanupCtx := context.Background()
-		if err := container.Terminate(cleanupCtx); err != nil {
-			t.Logf("terminate wiremock: %v", err)
-		}
-	})
-	host, err := container.Host(ctx)
-	if err != nil {
-		t.Fatalf("wiremock host: %v", err)
-	}
-	port, err := container.MappedPort(ctx, "8080/tcp")
-	if err != nil {
-		t.Fatalf("wiremock port: %v", err)
-	}
-	return fmt.Sprintf("http://%s:%s", host, port.Port())
-}
-
-func configureWiremockStub(t *testing.T, baseURL, xmlContent string) {
-	t.Helper()
-	escapedBody, err := json.Marshal(xmlContent)
-	if err != nil {
-		t.Fatalf("marshal xml content: %v", err)
-	}
-	stubJSON := fmt.Sprintf(`{
-		"request": {
-			"method": "GET",
-			"url": "/xmltv"
-		},
-		"response": {
-			"status": 200,
-			"body": %s,
-			"headers": {
-				"Content-Type": "text/xml"
-			}
-		}
-	}`, string(escapedBody))
-
-	resp, err := http.Post(baseURL+"/__admin/mappings", "application/json", strings.NewReader(stubJSON))
-	if err != nil {
-		t.Fatalf("configure wiremock stub: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		t.Fatalf("configure wiremock stub: unexpected status %d", resp.StatusCode)
-	}
-}
 
 const minimalXML = `<?xml version="1.0" encoding="UTF-8"?>
 <tv>
@@ -248,16 +185,19 @@ func TestParse_TimeFormats(t *testing.T) {
 	})
 }
 
-func TestFetch_ViaWiremock(t *testing.T) {
-	baseURL := startWiremock(t)
-
+func TestFetch_ViaHTTP(t *testing.T) {
 	xmlBytes, err := os.ReadFile("../../testdata/sample.xml")
 	if err != nil {
 		t.Fatalf("read sample.xml: %v", err)
 	}
-	configureWiremockStub(t, baseURL, string(xmlBytes))
 
-	tv, err := xmltv.Fetch(baseURL + "/xmltv")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/xml")
+		fmt.Fprint(w, string(xmlBytes))
+	}))
+	t.Cleanup(srv.Close)
+
+	tv, err := xmltv.Fetch(context.Background(), &http.Client{}, srv.URL)
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
