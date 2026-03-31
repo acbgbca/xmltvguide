@@ -445,6 +445,8 @@ func (d *DB) downloadAndSaveIcon(ctx context.Context, channelID, iconURL string)
 	if err != nil {
 		return "", fmt.Errorf("building request: %w", err)
 	}
+	req.Header.Set("Accept", "image/*,*/*")
+	req.Header.Set("User-Agent", "xmltvguide/1.0")
 	resp, err := d.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("downloading: %w", err)

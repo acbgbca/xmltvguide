@@ -67,6 +67,58 @@ func startIconServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
+// startStrictIconServer starts a test HTTP server that returns 406 unless the
+// request includes both an Accept header and a User-Agent header, mimicking
+// servers (e.g. xmltv.net) that enforce content negotiation.
+func startStrictIconServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Accept") == "" || r.Header.Get("User-Agent") == "" {
+			w.WriteHeader(http.StatusNotAcceptable)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Write([]byte("\x89PNG\r\n\x1a\n"))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestRefresh_IconDownload_SetsRequiredHeaders verifies that icon download
+// requests include Accept and User-Agent headers. Servers such as xmltv.net
+// return 406 when these headers are absent, causing icons to silently fail.
+// The test uses a strict server that returns 406 unless both headers are
+// present, then asserts that EnsureChannelIcon returns a valid local path
+// (meaning the download actually succeeded — not just that icon_url was stored).
+func TestRefresh_IconDownload_SetsRequiredHeaders(t *testing.T) {
+	iconSrv := startStrictIconServer(t)
+	tv := &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{
+				ID:           "ch1",
+				DisplayNames: []xmltv.Name{{Value: "ABC"}},
+				Icons:        []xmltv.Icon{{Src: iconSrv.URL + "/abc.png"}},
+			},
+		},
+	}
+	db := openTestDBWithIconServer(t, iconSrv)
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	// EnsureChannelIcon must return a valid local path, proving the download
+	// succeeded. Without Accept/User-Agent headers the strict server returns 406,
+	// Refresh stores icon="" (no local file), and EnsureChannelIcon subsequently
+	// fails when it tries to re-download on demand.
+	localPath, err := db.EnsureChannelIcon(context.Background(), "ch1")
+	if err != nil {
+		t.Fatalf("EnsureChannelIcon: %v — icon download likely failed due to missing Accept/User-Agent headers", err)
+	}
+	if localPath == "" {
+		t.Error("expected non-empty local path; icon download likely failed due to missing request headers (Accept/User-Agent)")
+	}
+}
+
 func sampleTV() *xmltv.TV {
 	return &xmltv.TV{
 		Channels: []xmltv.Channel{
