@@ -69,8 +69,10 @@ func main() {
 	runInitialRefresh(db, xmltvURL, pollInterval, refreshOnStart)
 
 	// Background refresh goroutine.
+	ticker := time.NewTicker(pollInterval)
 	go func() {
-		for range time.Tick(pollInterval) {
+		defer ticker.Stop()
+		for range ticker.C {
 			if err := refresh(db, xmltvURL, pollInterval); err != nil {
 				log.Printf("refresh error: %v", err)
 			}
