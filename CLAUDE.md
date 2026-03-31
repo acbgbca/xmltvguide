@@ -128,6 +128,32 @@ Favourites appear at the top of the guide, above the regular channel order. Hidd
 - Large files (e.g. Melbourne.xml ~50MB) are parsed fully into memory on each poll, then written to SQLite in a single transaction.
 - The HTTP request sets `Accept: text/xml, application/xml, */*` and `User-Agent: xmltvguide/1.0` — required because some XMLTV hosts return 406 without an explicit Accept header.
 
+## Testing
+
+### Test levels
+
+The application has three levels of tests:
+
+| Level | Scope | Dependencies |
+|---|---|---|
+| **Component tests** | Database and API logic in isolation | Real SQLite database; WireMock for external HTTP (XMLTV source) |
+| **API integration tests** | Full API end-to-end | Real SQLite database; WireMock simulating the XMLTV source |
+| **UI tests** | Full application E2E in a browser | Real API + database; WireMock simulating external services |
+
+### Development approach
+
+New features must be built using **TDD**:
+
+1. Write the tests first (they will fail — that is expected).
+2. Implement just enough code so that everything compiles but the tests still fail.
+3. Iterate until all tests pass.
+
+Do not skip ahead to writing implementation code before the tests exist.
+
+### Documentation hygiene
+
+After completing any change, verify that CLAUDE.md (and any other relevant docs) still accurately reflects the current state of the application. Update stale sections before closing the task — documentation drift is a bug.
+
 ## Deferred / future requirements
 
 These were discussed and intentionally excluded from the MVP:
