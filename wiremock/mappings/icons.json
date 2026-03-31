@@ -1,0 +1,14 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPattern": "/icons/[^/]+\\.svg"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "image/svg+xml"
+    },
+    "bodyFileName": "icons/{{request.pathSegments.[1]}}",
+    "transformers": ["response-template"]
+  }
+}
