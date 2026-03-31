@@ -168,9 +168,10 @@ body {
     left: 0;
     right: 0;
     display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 10px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 4px 10px;
     border-bottom: 1px solid var(--border);
     overflow: hidden;
     cursor: default;
@@ -180,19 +181,33 @@ body {
     border-left: 3px solid var(--accent-fav);
 }
 
+.channel-top-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
 .channel-icon {
-    width: 28px;
-    height: 28px;
+    width: 22px;
+    height: 22px;
     object-fit: contain;
     flex-shrink: 0;
     border-radius: 3px;
 }
 
+.channel-lcn {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    white-space: nowrap;
+}
+
 .channel-name {
-    font-size: 13px;
+    font-size: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    color: var(--text-secondary);
 }
 
 /* Programmes area */

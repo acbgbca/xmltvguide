@@ -72,14 +72,15 @@ SQLite file at `DB_PATH` (default `/data/tvguide.db`). Mount `/data` as a named 
 ### Schema
 
 ```sql
-channels (id PK, display_name, icon, sort_order)
+channels (id PK, display_name, icon, sort_order, lcn)
+-- lcn: logical channel number from <lcn> element (nullable); used for display ordering
 
 airings (
   channel_id + start_time  -- composite PK
   stop_time, title, sub_title, description,
   categories               -- JSON array e.g. '["News","Sport"]'
   episode_num              -- xmltv_ns format: "1.2.0/1"
-  episode_num_display      -- onscreen format: "S02 E04"
+  episode_num_display      -- onscreen/SxxExx format: "S02E04"
   prog_id                  -- dd_progid (TMS/Gracenote stable ID, if present)
   star_rating, content_rating, year, icon, country,
   is_repeat, is_premiere
@@ -112,7 +113,7 @@ Stored client-side in `localStorage` under the key `tvguide-prefs`:
 { "hidden": { "channel-id": true }, "favourites": { "channel-id": true } }
 ```
 
-Favourites appear at the top of the guide, above the regular channel order. Hidden channels are excluded from the guide view entirely. Both are managed via the "Channels" slide-out panel.
+Favourites appear at the top of the guide. The remaining visible channels are sorted by `lcn` (logical channel number) when present; channels without an `lcn` fall back to source order. Hidden channels are excluded from the guide view entirely. Both are managed via the "Channels" slide-out panel.
 
 ## Data flow
 

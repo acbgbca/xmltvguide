@@ -3,10 +3,12 @@
 <tv>
   <channel id="ch1">
     <display-name>ABC</display-name>
+    <lcn>2</lcn>
     <icon src="https://example.com/abc.png"/>
   </channel>
   <channel id="ch2">
     <display-name>SBS</display-name>
+    <lcn>3</lcn>
   </channel>
 
   <!-- Yesterday: late night movie spanning midnight into today -->

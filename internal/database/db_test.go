@@ -33,6 +33,7 @@ func sampleTV() *xmltv.TV {
 				ID:           "ch1",
 				DisplayNames: []xmltv.Name{{Value: "ABC"}},
 				Icons:        []xmltv.Icon{{Src: "https://example.com/abc.png"}},
+				LCN:          "2",
 			},
 			{
 				ID:           "ch2",
@@ -157,6 +158,68 @@ func TestRefresh_ChannelFields(t *testing.T) {
 	ch2 := channels[1]
 	if ch2.Icon != "" {
 		t.Errorf("ch2 Icon: expected empty, got %q", ch2.Icon)
+	}
+}
+
+func TestRefresh_ChannelLCN(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(sampleTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	channels, err := db.GetChannels()
+	if err != nil {
+		t.Fatalf("GetChannels: %v", err)
+	}
+	if len(channels) < 2 {
+		t.Fatalf("expected at least 2 channels, got %d", len(channels))
+	}
+	ch1 := channels[0]
+	if ch1.LCN == nil || *ch1.LCN != 2 {
+		t.Errorf("ch1 LCN: expected 2, got %v", ch1.LCN)
+	}
+	ch2 := channels[1]
+	if ch2.LCN != nil {
+		t.Errorf("ch2 LCN: expected nil, got %v", ch2.LCN)
+	}
+}
+
+func TestGetAirings_SxxExxEpisodeMapping(t *testing.T) {
+	db := openTestDB(t)
+	tv := sampleTV()
+	// Add a programme with SxxExx episode numbering (as used by this XMLTV source)
+	tv.Programmes = append(tv.Programmes, xmltv.Programme{
+		Start:   xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 9, 0, 0, 0, time.UTC)},
+		Stop:    xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 10, 0, 0, 0, time.UTC)},
+		Channel: "ch1",
+		Titles:  []xmltv.Name{{Value: "Drama Show"}},
+		EpisodeNums: []xmltv.EpisodeNum{
+			{Value: "S02E04", System: "SxxExx"},
+			{Value: "1.3.", System: "xmltv_ns"},
+		},
+	})
+	if err := db.Refresh(tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	date := time.Date(2026, 3, 29, 0, 0, 0, 0, time.UTC)
+	airings, err := db.GetAirings(date)
+	if err != nil {
+		t.Fatalf("GetAirings: %v", err)
+	}
+	var drama *database.Airing
+	for i := range airings {
+		if airings[i].Title == "Drama Show" {
+			drama = &airings[i]
+			break
+		}
+	}
+	if drama == nil {
+		t.Fatal("could not find Drama Show airing")
+	}
+	if drama.EpisodeNumDisplay != "S02E04" {
+		t.Errorf("EpisodeNumDisplay: expected %q, got %q", "S02E04", drama.EpisodeNumDisplay)
+	}
+	if drama.EpisodeNum != "1.3." {
+		t.Errorf("EpisodeNum: expected %q, got %q", "1.3.", drama.EpisodeNum)
 	}
 }
 
