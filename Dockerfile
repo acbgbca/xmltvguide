@@ -1,5 +1,5 @@
 # ── Build stage ──────────────────────────────────────────────────
-FROM golang:1.24-alpine AS builder
+FROM golang:1.25.8-alpine AS builder
 
 # ca-certificates is needed at runtime for HTTPS; install here so we can
 # copy just the cert bundle into the scratch image.
