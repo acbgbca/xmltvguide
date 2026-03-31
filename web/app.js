@@ -55,6 +55,25 @@ function toggleFavourite(channelId) {
     renderSettingsPanel();
 }
 
+// ── URL state management ──────────────────────────────────────────────────────
+
+function getDateFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    const date = params.get('date');
+    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+    return getTodayString();
+}
+
+function setDateInURL(dateStr) {
+    const url = new URL(window.location.href);
+    if (dateStr === getTodayString()) {
+        url.searchParams.delete('date');
+    } else {
+        url.searchParams.set('date', dateStr);
+    }
+    history.pushState(null, '', url);
+}
+
 // ── Date / time utilities ─────────────────────────────────────────────────────
 
 function getTodayString() {
@@ -87,6 +106,37 @@ function minutesToHHMM(minutes) {
     const h = Math.floor(minutes / 60) % 24;
     const m = minutes % 60;
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+// Returns a new date string offset by `days` from the given 'YYYY-MM-DD' string.
+function addDays(dateStr, days) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d + days);
+    return [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, '0'),
+        String(date.getDate()).padStart(2, '0'),
+    ].join('-');
+}
+
+// Loads the guide for `dateStr`, updates state, re-renders, and scrolls.
+// Pass { pushState: false } when called from a popstate handler.
+async function navigateToDate(dateStr, { pushState = true } = {}) {
+    state.currentDate = dateStr;
+    if (pushState) setDateInURL(dateStr);
+    document.getElementById('dateDisplay').textContent = formatDateLong(dateStr);
+
+    try {
+        state.programmes = await fetchGuide(dateStr);
+        renderGuide();
+        if (dateStr === getTodayString()) {
+            scrollToNow();
+        } else {
+            document.getElementById('programmesOuter').scrollLeft = 0;
+        }
+    } catch (err) {
+        console.error('Failed to load guide for', dateStr, err);
+    }
 }
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -409,6 +459,9 @@ function closeModal() {
 // ── Initialisation ────────────────────────────────────────────────────────────
 
 async function init() {
+    // Resolve the active date from the URL (falls back to today)
+    state.currentDate = getDateFromURL();
+
     // Render static parts that don't depend on data
     renderTimeAxis();
     setupScrollSync();
@@ -417,6 +470,8 @@ async function init() {
 
     // Wire up controls
     document.getElementById('nowBtn').addEventListener('click', scrollToNow);
+    document.getElementById('prevDay').addEventListener('click', () => navigateToDate(addDays(state.currentDate, -1)));
+    document.getElementById('nextDay').addEventListener('click', () => navigateToDate(addDays(state.currentDate, 1)));
     document.getElementById('settingsBtn').addEventListener('click', openSettings);
     document.getElementById('settingsClose').addEventListener('click', closeSettings);
     document.getElementById('settingsOverlay').addEventListener('click', closeSettings);
@@ -424,6 +479,9 @@ async function init() {
     document.getElementById('modalBackdrop').addEventListener('click', (e) => {
         if (e.target === e.currentTarget) closeModal();
     });
+
+    // Sync navigation when the user presses the browser back/forward buttons
+    window.addEventListener('popstate', () => navigateToDate(getDateFromURL(), { pushState: false }));
 
     // Load data
     try {
@@ -439,7 +497,9 @@ async function init() {
         renderSettingsPanel();
 
         // Small delay lets the browser complete layout before scrolling
-        setTimeout(scrollToNow, 50);
+        setTimeout(() => {
+            if (state.currentDate === getTodayString()) scrollToNow();
+        }, 50);
 
         // Keep the now-line position current
         setInterval(() => updateNowLine(dateMidnight(state.currentDate)), 60_000);
