@@ -1,9 +1,15 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -90,6 +96,8 @@ type DB struct {
 	db            *sql.DB
 	retentionDays int
 	sourceURL     string
+	imageCacheDir string
+	httpClient    *http.Client
 
 	// lastRefresh and nextRefresh are kept in memory — they reflect the current
 	// process's poll cycle and reset on restart, which is intentional.
@@ -111,6 +119,7 @@ var migrations = []struct {
 	sql     string
 }{
 	{1, `ALTER TABLE channels ADD COLUMN lcn INTEGER`},
+	{2, `ALTER TABLE channels ADD COLUMN icon_url TEXT`},
 }
 
 func applyMigrations(db *sql.DB) error {
@@ -155,6 +164,8 @@ func migrationAlreadyApplied(db *sql.DB, version int) (bool, error) {
 	switch version {
 	case 1:
 		return columnExists(db, "channels", "lcn")
+	case 2:
+		return columnExists(db, "channels", "icon_url")
 	}
 	return false, nil
 }
@@ -181,7 +192,9 @@ func columnExists(db *sql.DB, table, column string) (bool, error) {
 }
 
 // Open opens (or creates) a SQLite database at path and applies the schema.
-func Open(path string, retentionDays int, sourceURL string) (*DB, error) {
+// imageCacheDir is the directory used to store downloaded channel icons.
+// httpClient is used for icon downloads; pass nil to disable icon caching.
+func Open(path string, retentionDays int, sourceURL, imageCacheDir string, httpClient *http.Client) (*DB, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
@@ -213,6 +226,8 @@ func Open(path string, retentionDays int, sourceURL string) (*DB, error) {
 		db:            db,
 		retentionDays: retentionDays,
 		sourceURL:     sourceURL,
+		imageCacheDir: imageCacheDir,
+		httpClient:    httpClient,
 	}, nil
 }
 
@@ -220,7 +235,60 @@ func Open(path string, retentionDays int, sourceURL string) (*DB, error) {
 // then prunes airings older than the configured retention period.
 // Existing airings with the same (channel_id, start_time) are replaced
 // with fresh data; historical airings not present in the file are left intact.
-func (d *DB) Refresh(tv *xmltv.TV, nextRefresh time.Time) error {
+// Icons are downloaded when the URL has changed or the local file is missing.
+func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) error {
+	// Phase 1: Query current channel icon state so we can detect URL changes.
+	type iconState struct{ localPath, iconURL string }
+	currentIcons := map[string]iconState{}
+	if rows, err := d.db.QueryContext(ctx,
+		`SELECT id, COALESCE(icon, ''), COALESCE(icon_url, '') FROM channels`,
+	); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id, localPath, iconURL string
+			if rows.Scan(&id, &localPath, &iconURL) == nil {
+				currentIcons[id] = iconState{localPath, iconURL}
+			}
+		}
+	}
+
+	// Phase 2: Resolve icons — download when URL changed or file is absent.
+	type resolvedIcon struct{ localPath, iconURL string }
+	resolved := map[string]resolvedIcon{}
+
+	for _, ch := range tv.Channels {
+		if len(ch.Icons) == 0 {
+			continue
+		}
+		incomingURL := ch.Icons[0].Src
+		existing := currentIcons[ch.ID]
+
+		// Skip download if URL is unchanged and the cached file still exists.
+		if existing.iconURL == incomingURL && existing.localPath != "" {
+			if _, err := os.Stat(existing.localPath); err == nil {
+				resolved[ch.ID] = resolvedIcon{existing.localPath, incomingURL}
+				continue
+			}
+		}
+
+		// Attempt download only when the cache is configured.
+		if d.imageCacheDir != "" && d.httpClient != nil {
+			localPath, err := d.downloadAndSaveIcon(ctx, ch.ID, incomingURL)
+			if err != nil {
+				log.Printf("warning: failed to cache icon for channel %s: %v", ch.ID, err)
+				// Store icon_url even if download failed so the handler can
+				// re-download on demand.
+				resolved[ch.ID] = resolvedIcon{"", incomingURL}
+				continue
+			}
+			resolved[ch.ID] = resolvedIcon{localPath, incomingURL}
+			continue
+		}
+		// Cache not configured: store the URL for future use, no local file.
+		resolved[ch.ID] = resolvedIcon{"", incomingURL}
+	}
+
+	// Phase 3: Write everything to the database in a single transaction.
 	tx, err := d.db.Begin()
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
@@ -228,8 +296,8 @@ func (d *DB) Refresh(tv *xmltv.TV, nextRefresh time.Time) error {
 	defer tx.Rollback()
 
 	chStmt, err := tx.Prepare(`
-		INSERT OR REPLACE INTO channels (id, display_name, icon, sort_order, lcn)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT OR REPLACE INTO channels (id, display_name, icon, sort_order, lcn, icon_url)
+		VALUES (?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return fmt.Errorf("preparing channel upsert: %w", err)
@@ -241,9 +309,12 @@ func (d *DB) Refresh(tv *xmltv.TV, nextRefresh time.Time) error {
 		if len(ch.DisplayNames) > 0 && ch.DisplayNames[0].Value != "" {
 			name = ch.DisplayNames[0].Value
 		}
-		var icon any
-		if len(ch.Icons) > 0 {
-			icon = ch.Icons[0].Src
+		var icon, iconURL any
+		if ri, ok := resolved[ch.ID]; ok {
+			if ri.localPath != "" {
+				icon = ri.localPath
+			}
+			iconURL = ri.iconURL
 		}
 		var lcn any
 		if ch.LCN != "" {
@@ -251,7 +322,7 @@ func (d *DB) Refresh(tv *xmltv.TV, nextRefresh time.Time) error {
 				lcn = n
 			}
 		}
-		if _, err := chStmt.Exec(ch.ID, name, icon, i, lcn); err != nil {
+		if _, err := chStmt.Exec(ch.ID, name, icon, i, lcn, iconURL); err != nil {
 			return fmt.Errorf("upserting channel %s: %w", ch.ID, err)
 		}
 	}
@@ -319,10 +390,138 @@ func (d *DB) Refresh(tv *xmltv.TV, nextRefresh time.Time) error {
 	return nil
 }
 
+// EnsureChannelIcon ensures the channel's icon is present on disk and returns
+// its local file path. Returns ("", nil) when the channel has no icon or does
+// not exist. Re-downloads from the stored external URL if the cached file is
+// missing.
+func (d *DB) EnsureChannelIcon(ctx context.Context, channelID string) (string, error) {
+	var localPath, iconURL string
+	err := d.db.QueryRowContext(ctx,
+		`SELECT COALESCE(icon, ''), COALESCE(icon_url, '') FROM channels WHERE id = ?`,
+		channelID,
+	).Scan(&localPath, &iconURL)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("querying channel icon: %w", err)
+	}
+	if iconURL == "" {
+		return "", nil
+	}
+
+	// Return the cached path if the file still exists.
+	if localPath != "" {
+		if _, err := os.Stat(localPath); err == nil {
+			return localPath, nil
+		}
+	}
+
+	// File is missing — re-download.
+	if d.httpClient == nil || d.imageCacheDir == "" {
+		return "", fmt.Errorf("image cache not configured for re-download")
+	}
+	newPath, err := d.downloadAndSaveIcon(ctx, channelID, iconURL)
+	if err != nil {
+		return "", fmt.Errorf("re-downloading icon for %s: %w", channelID, err)
+	}
+
+	// Update the stored local path.
+	if _, err := d.db.ExecContext(ctx,
+		`UPDATE channels SET icon = ? WHERE id = ?`, newPath, channelID,
+	); err != nil {
+		log.Printf("warning: failed to update icon path for channel %s: %v", channelID, err)
+	}
+
+	return newPath, nil
+}
+
+// downloadAndSaveIcon fetches the image at iconURL, determines its file
+// extension from the Content-Type header (falling back to the URL extension or
+// ".jpg"), writes it to {imageCacheDir}/channels/{channelID}{ext}, and returns
+// the local path.
+func (d *DB) downloadAndSaveIcon(ctx context.Context, channelID, iconURL string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, iconURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("building request: %w", err)
+	}
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("downloading: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status %d from %s", resp.StatusCode, iconURL)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("reading body: %w", err)
+	}
+
+	ext := extFromContentType(resp.Header.Get("Content-Type"))
+	if ext == "" {
+		ext = extFromURL(iconURL)
+	}
+	if ext == "" {
+		ext = ".jpg"
+	}
+
+	dir := filepath.Join(d.imageCacheDir, "channels")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("creating image directory: %w", err)
+	}
+
+	localPath := filepath.Join(dir, channelID+ext)
+	if err := os.WriteFile(localPath, data, 0644); err != nil {
+		return "", fmt.Errorf("writing icon file: %w", err)
+	}
+
+	return localPath, nil
+}
+
+// extFromContentType maps a MIME type to a file extension.
+func extFromContentType(ct string) string {
+	if i := strings.Index(ct, ";"); i >= 0 {
+		ct = strings.TrimSpace(ct[:i])
+	}
+	switch ct {
+	case "image/png":
+		return ".png"
+	case "image/jpeg", "image/jpg":
+		return ".jpg"
+	case "image/gif":
+		return ".gif"
+	case "image/svg+xml", "image/svg":
+		return ".svg"
+	case "image/webp":
+		return ".webp"
+	default:
+		return ""
+	}
+}
+
+// extFromURL extracts a recognised image file extension from a URL path,
+// ignoring query parameters.
+func extFromURL(u string) string {
+	if i := strings.Index(u, "?"); i >= 0 {
+		u = u[:i]
+	}
+	ext := filepath.Ext(u)
+	switch strings.ToLower(ext) {
+	case ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp":
+		return ext
+	default:
+		return ""
+	}
+}
+
 // GetChannels returns all channels ordered by their source sort order.
+// The Icon field contains the proxy URL (/images/channel/{id}) for channels
+// that have an icon; it is empty for channels without one.
 func (d *DB) GetChannels() ([]Channel, error) {
 	rows, err := d.db.Query(`
-		SELECT id, display_name, COALESCE(icon, ''), lcn
+		SELECT id, display_name, COALESCE(icon_url, ''), lcn
 		FROM channels
 		ORDER BY sort_order
 	`)
@@ -335,8 +534,12 @@ func (d *DB) GetChannels() ([]Channel, error) {
 	for rows.Next() {
 		var ch Channel
 		var lcn sql.NullInt64
-		if err := rows.Scan(&ch.ID, &ch.DisplayName, &ch.Icon, &lcn); err != nil {
+		var iconURL string
+		if err := rows.Scan(&ch.ID, &ch.DisplayName, &iconURL, &lcn); err != nil {
 			return nil, fmt.Errorf("scanning channel: %w", err)
+		}
+		if iconURL != "" {
+			ch.Icon = "/images/channel/" + ch.ID
 		}
 		if lcn.Valid {
 			n := int(lcn.Int64)

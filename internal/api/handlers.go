@@ -1,8 +1,12 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"mime"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/acbgbca/xmltvguide/internal/database"
@@ -13,6 +17,7 @@ type store interface {
 	GetChannels() ([]database.Channel, error)
 	GetAirings(date time.Time) ([]database.Airing, error)
 	GetStatus() database.Status
+	EnsureChannelIcon(ctx context.Context, channelID string) (string, error)
 }
 
 // Handler holds the HTTP handler dependencies.
@@ -30,6 +35,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/channels", h.getChannels)
 	mux.HandleFunc("GET /api/guide", h.getGuide)
 	mux.HandleFunc("GET /api/status", h.getStatus)
+	mux.HandleFunc("GET /images/channel/{id}", h.serveChannelIcon)
 }
 
 func (h *Handler) getChannels(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +70,33 @@ func (h *Handler) getGuide(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.db.GetStatus())
+}
+
+func (h *Handler) serveChannelIcon(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	localPath, err := h.db.EnsureChannelIcon(r.Context(), id)
+	if err != nil {
+		http.Error(w, "failed to retrieve icon", http.StatusInternalServerError)
+		return
+	}
+	if localPath == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		http.Error(w, "failed to read icon", http.StatusInternalServerError)
+		return
+	}
+
+	contentType := mime.TypeByExtension(filepath.Ext(localPath))
+	if contentType == "" {
+		contentType = http.DetectContentType(data)
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Write(data) //nolint:errcheck
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

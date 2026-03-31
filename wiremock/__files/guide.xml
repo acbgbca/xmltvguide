@@ -4,27 +4,27 @@
   <channel id="92843auepg.com.au">
     <display-name>ABC TV Victoria</display-name>
     <lcn>2</lcn>
-    <icon src="/icons/abc.svg"/>
+    <icon src="http://wiremock:8080/icons/abc.svg"/>
   </channel>
   <channel id="273191auepg.com.au">
     <display-name>SBS Melbourne</display-name>
     <lcn>3</lcn>
-    <icon src="/icons/sbs.svg"/>
+    <icon src="http://wiremock:8080/icons/sbs.svg"/>
   </channel>
   <channel id="96100auepg.com.au">
     <display-name>7 Melbourne</display-name>
     <lcn>7</lcn>
-    <icon src="/icons/seven.svg"/>
+    <icon src="http://wiremock:8080/icons/seven.svg"/>
   </channel>
   <channel id="252342auepg.com.au">
     <display-name>Channel Nine Melbourne</display-name>
     <lcn>9</lcn>
-    <icon src="/icons/nine.svg"/>
+    <icon src="http://wiremock:8080/icons/nine.svg"/>
   </channel>
   <channel id="250185auepg.com.au">
     <display-name>10 Melbourne</display-name>
     <lcn>10</lcn>
-    <icon src="/icons/ten.svg"/>
+    <icon src="http://wiremock:8080/icons/ten.svg"/>
   </channel>
 
   <!-- Yesterday's programmes -->

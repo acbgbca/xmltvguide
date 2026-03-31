@@ -1,6 +1,10 @@
 package database_test
 
 import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,15 +19,52 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// failingTransport rejects every request immediately — used in tests that do not
+// exercise icon downloading so that no real network calls are made.
+type failingTransport struct{}
+
+func (f *failingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	return nil, fmt.Errorf("no network in tests: %s", r.URL)
+}
+
+// openTestDB opens a fresh database with a failing HTTP client so that icon
+// download attempts fail immediately without network I/O.
 func openTestDB(t *testing.T) *database.DB {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test")
+	client := &http.Client{Transport: &failingTransport{}}
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test", filepath.Join(dir, "images"), client)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
 	return db
+}
+
+// openTestDBWithIconServer opens a fresh database configured to download icons
+// from the given test server.
+func openTestDBWithIconServer(t *testing.T, iconServer *httptest.Server) *database.DB {
+	t.Helper()
+	dir := t.TempDir()
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test", filepath.Join(dir, "images"), iconServer.Client())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
+// startIconServer starts a test HTTP server that serves a small PNG-like
+// response (just enough bytes for Content-Type detection) for any request.
+func startIconServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		// Minimal valid PNG header bytes so the content type is unambiguous.
+		w.Write([]byte("\x89PNG\r\n\x1a\n"))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
 }
 
 func sampleTV() *xmltv.TV {
@@ -104,7 +145,7 @@ func TestOpen_EmptyDB(t *testing.T) {
 
 func TestRefresh_ChannelCount(t *testing.T) {
 	db := openTestDB(t)
-	if err := db.Refresh(sampleTV(), time.Now().Add(time.Hour)); err != nil {
+	if err := db.Refresh(context.Background(), sampleTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
 	channels, err := db.GetChannels()
@@ -118,7 +159,7 @@ func TestRefresh_ChannelCount(t *testing.T) {
 
 func TestRefresh_ChannelOrder(t *testing.T) {
 	db := openTestDB(t)
-	if err := db.Refresh(sampleTV(), time.Now().Add(time.Hour)); err != nil {
+	if err := db.Refresh(context.Background(), sampleTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
 	channels, err := db.GetChannels()
@@ -138,7 +179,7 @@ func TestRefresh_ChannelOrder(t *testing.T) {
 
 func TestRefresh_ChannelFields(t *testing.T) {
 	db := openTestDB(t)
-	if err := db.Refresh(sampleTV(), time.Now().Add(time.Hour)); err != nil {
+	if err := db.Refresh(context.Background(), sampleTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
 	channels, err := db.GetChannels()
@@ -152,8 +193,9 @@ func TestRefresh_ChannelFields(t *testing.T) {
 	if ch1.DisplayName != "ABC" {
 		t.Errorf("ch1 DisplayName: expected %q, got %q", "ABC", ch1.DisplayName)
 	}
-	if ch1.Icon != "https://example.com/abc.png" {
-		t.Errorf("ch1 Icon: expected %q, got %q", "https://example.com/abc.png", ch1.Icon)
+	// After migration, GetChannels returns the proxy URL (not the external URL).
+	if ch1.Icon != "/images/channel/ch1" {
+		t.Errorf("ch1 Icon: expected %q, got %q", "/images/channel/ch1", ch1.Icon)
 	}
 	ch2 := channels[1]
 	if ch2.Icon != "" {
@@ -163,7 +205,7 @@ func TestRefresh_ChannelFields(t *testing.T) {
 
 func TestRefresh_ChannelLCN(t *testing.T) {
 	db := openTestDB(t)
-	if err := db.Refresh(sampleTV(), time.Now().Add(time.Hour)); err != nil {
+	if err := db.Refresh(context.Background(), sampleTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
 	channels, err := db.GetChannels()
@@ -183,6 +225,224 @@ func TestRefresh_ChannelLCN(t *testing.T) {
 	}
 }
 
+// TestRefresh_IconDownloaded verifies that when a channel has an icon URL and a
+// working HTTP client, Refresh downloads the icon and the local file exists.
+func TestRefresh_IconDownloaded(t *testing.T) {
+	iconSrv := startIconServer(t)
+	tv := &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{
+				ID:           "ch1",
+				DisplayNames: []xmltv.Name{{Value: "ABC"}},
+				Icons:        []xmltv.Icon{{Src: iconSrv.URL + "/abc.png"}},
+			},
+		},
+	}
+	db := openTestDBWithIconServer(t, iconSrv)
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	channels, err := db.GetChannels()
+	if err != nil {
+		t.Fatalf("GetChannels: %v", err)
+	}
+	if len(channels) == 0 {
+		t.Fatal("expected channels")
+	}
+	if channels[0].Icon != "/images/channel/ch1" {
+		t.Errorf("Icon: expected proxy URL, got %q", channels[0].Icon)
+	}
+}
+
+// TestRefresh_IconSkipsIfUnchanged verifies that a second Refresh with the same
+// icon URL and an existing local file does NOT make a second download request.
+func TestRefresh_IconSkipsIfUnchanged(t *testing.T) {
+	requestCount := 0
+	iconSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.Header().Set("Content-Type", "image/png")
+		w.Write([]byte("\x89PNG\r\n\x1a\n"))
+	}))
+	t.Cleanup(iconSrv.Close)
+
+	tv := &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{
+				ID:           "ch1",
+				DisplayNames: []xmltv.Name{{Value: "ABC"}},
+				Icons:        []xmltv.Icon{{Src: iconSrv.URL + "/abc.png"}},
+			},
+		},
+	}
+	db := openTestDBWithIconServer(t, iconSrv)
+
+	// First refresh: should download.
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("first Refresh: %v", err)
+	}
+	if requestCount != 1 {
+		t.Fatalf("expected 1 icon request after first refresh, got %d", requestCount)
+	}
+
+	// Second refresh with same URL: file already exists → should NOT download again.
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("second Refresh: %v", err)
+	}
+	if requestCount != 1 {
+		t.Errorf("expected still 1 icon request after second refresh (cached), got %d", requestCount)
+	}
+}
+
+// TestRefresh_IconRedownloadsIfURLChanged verifies that when the icon URL changes
+// across refreshes, the new image is downloaded.
+func TestRefresh_IconRedownloadsIfURLChanged(t *testing.T) {
+	requestCount := 0
+	iconSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.Header().Set("Content-Type", "image/png")
+		w.Write([]byte("\x89PNG\r\n\x1a\n"))
+	}))
+	t.Cleanup(iconSrv.Close)
+
+	db := openTestDBWithIconServer(t, iconSrv)
+
+	tv1 := &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{
+				ID:           "ch1",
+				DisplayNames: []xmltv.Name{{Value: "ABC"}},
+				Icons:        []xmltv.Icon{{Src: iconSrv.URL + "/abc-v1.png"}},
+			},
+		},
+	}
+	if err := db.Refresh(context.Background(), tv1, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("first Refresh: %v", err)
+	}
+	if requestCount != 1 {
+		t.Fatalf("expected 1 request, got %d", requestCount)
+	}
+
+	// Change the icon URL.
+	tv2 := &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{
+				ID:           "ch1",
+				DisplayNames: []xmltv.Name{{Value: "ABC"}},
+				Icons:        []xmltv.Icon{{Src: iconSrv.URL + "/abc-v2.png"}},
+			},
+		},
+	}
+	if err := db.Refresh(context.Background(), tv2, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("second Refresh: %v", err)
+	}
+	if requestCount != 2 {
+		t.Errorf("expected 2 requests after URL change, got %d", requestCount)
+	}
+}
+
+// TestEnsureChannelIcon_ReturnsPath verifies that EnsureChannelIcon returns the
+// local file path when the icon has already been downloaded.
+func TestEnsureChannelIcon_ReturnsPath(t *testing.T) {
+	iconSrv := startIconServer(t)
+	tv := &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{
+				ID:           "ch1",
+				DisplayNames: []xmltv.Name{{Value: "ABC"}},
+				Icons:        []xmltv.Icon{{Src: iconSrv.URL + "/abc.png"}},
+			},
+		},
+	}
+	db := openTestDBWithIconServer(t, iconSrv)
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	localPath, err := db.EnsureChannelIcon(context.Background(), "ch1")
+	if err != nil {
+		t.Fatalf("EnsureChannelIcon: %v", err)
+	}
+	if localPath == "" {
+		t.Fatal("expected non-empty local path")
+	}
+	if _, err := os.Stat(localPath); err != nil {
+		t.Errorf("expected file to exist at %q: %v", localPath, err)
+	}
+}
+
+// TestEnsureChannelIcon_RedownloadsIfMissing verifies that EnsureChannelIcon
+// re-downloads the icon and returns a valid path when the cached file is missing.
+func TestEnsureChannelIcon_RedownloadsIfMissing(t *testing.T) {
+	iconSrv := startIconServer(t)
+	tv := &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{
+				ID:           "ch1",
+				DisplayNames: []xmltv.Name{{Value: "ABC"}},
+				Icons:        []xmltv.Icon{{Src: iconSrv.URL + "/abc.png"}},
+			},
+		},
+	}
+	db := openTestDBWithIconServer(t, iconSrv)
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	// Get the path and delete the file to simulate a missing cache entry.
+	localPath, err := db.EnsureChannelIcon(context.Background(), "ch1")
+	if err != nil || localPath == "" {
+		t.Fatalf("initial EnsureChannelIcon: path=%q err=%v", localPath, err)
+	}
+	os.Remove(localPath)
+
+	// EnsureChannelIcon should re-download and return a valid path.
+	newPath, err := db.EnsureChannelIcon(context.Background(), "ch1")
+	if err != nil {
+		t.Fatalf("EnsureChannelIcon after delete: %v", err)
+	}
+	if newPath == "" {
+		t.Fatal("expected non-empty path after re-download")
+	}
+	if _, err := os.Stat(newPath); err != nil {
+		t.Errorf("expected re-downloaded file to exist at %q: %v", newPath, err)
+	}
+}
+
+// TestEnsureChannelIcon_ReturnsEmptyIfNoIcon verifies that EnsureChannelIcon
+// returns ("", nil) for a channel that has no icon.
+func TestEnsureChannelIcon_ReturnsEmptyIfNoIcon(t *testing.T) {
+	db := openTestDB(t)
+	tv := &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{ID: "ch1", DisplayNames: []xmltv.Name{{Value: "ABC"}}},
+		},
+	}
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	localPath, err := db.EnsureChannelIcon(context.Background(), "ch1")
+	if err != nil {
+		t.Fatalf("EnsureChannelIcon: %v", err)
+	}
+	if localPath != "" {
+		t.Errorf("expected empty path for channel without icon, got %q", localPath)
+	}
+}
+
+// TestEnsureChannelIcon_ReturnsEmptyIfUnknownChannel verifies that
+// EnsureChannelIcon returns ("", nil) for a channel ID that does not exist.
+func TestEnsureChannelIcon_ReturnsEmptyIfUnknownChannel(t *testing.T) {
+	db := openTestDB(t)
+	localPath, err := db.EnsureChannelIcon(context.Background(), "nonexistent")
+	if err != nil {
+		t.Fatalf("EnsureChannelIcon: %v", err)
+	}
+	if localPath != "" {
+		t.Errorf("expected empty path for unknown channel, got %q", localPath)
+	}
+}
+
 func TestGetAirings_SxxExxEpisodeMapping(t *testing.T) {
 	db := openTestDB(t)
 	tv := sampleTV()
@@ -197,7 +457,7 @@ func TestGetAirings_SxxExxEpisodeMapping(t *testing.T) {
 			{Value: "1.3.", System: "xmltv_ns"},
 		},
 	})
-	if err := db.Refresh(tv, time.Now().Add(time.Hour)); err != nil {
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
 	date := time.Date(2026, 3, 29, 0, 0, 0, 0, time.UTC)
@@ -225,7 +485,7 @@ func TestGetAirings_SxxExxEpisodeMapping(t *testing.T) {
 
 func TestGetAirings_OverlapDate(t *testing.T) {
 	db := openTestDB(t)
-	if err := db.Refresh(sampleTV(), time.Now().Add(time.Hour)); err != nil {
+	if err := db.Refresh(context.Background(), sampleTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
 	date := time.Date(2026, 3, 29, 0, 0, 0, 0, time.UTC)
@@ -240,7 +500,7 @@ func TestGetAirings_OverlapDate(t *testing.T) {
 
 func TestGetAirings_ExcludesOtherDate(t *testing.T) {
 	db := openTestDB(t)
-	if err := db.Refresh(sampleTV(), time.Now().Add(time.Hour)); err != nil {
+	if err := db.Refresh(context.Background(), sampleTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
 	date := time.Date(2026, 3, 27, 0, 0, 0, 0, time.UTC)
@@ -255,7 +515,7 @@ func TestGetAirings_ExcludesOtherDate(t *testing.T) {
 
 func TestGetAirings_FieldMapping(t *testing.T) {
 	db := openTestDB(t)
-	if err := db.Refresh(sampleTV(), time.Now().Add(time.Hour)); err != nil {
+	if err := db.Refresh(context.Background(), sampleTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
 	date := time.Date(2026, 3, 29, 0, 0, 0, 0, time.UTC)
@@ -292,7 +552,7 @@ func TestGetAirings_FieldMapping(t *testing.T) {
 
 func TestGetAirings_PremiereFlagAndCategories(t *testing.T) {
 	db := openTestDB(t)
-	if err := db.Refresh(sampleTV(), time.Now().Add(time.Hour)); err != nil {
+	if err := db.Refresh(context.Background(), sampleTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
 	date := time.Date(2026, 3, 29, 0, 0, 0, 0, time.UTC)
@@ -337,10 +597,10 @@ func TestGetAirings_PremiereFlagAndCategories(t *testing.T) {
 func TestRefresh_Upsert_NoDuplicates(t *testing.T) {
 	db := openTestDB(t)
 	tv := sampleTV()
-	if err := db.Refresh(tv, time.Now().Add(time.Hour)); err != nil {
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("first Refresh: %v", err)
 	}
-	if err := db.Refresh(tv, time.Now().Add(time.Hour)); err != nil {
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("second Refresh: %v", err)
 	}
 	date := time.Date(2026, 3, 29, 0, 0, 0, 0, time.UTC)

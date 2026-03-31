@@ -40,6 +40,7 @@ tvguide/
 | `GET /api/channels` | All channels in source order |
 | `GET /api/guide?date=YYYY-MM-DD` | Airings overlapping the given date (local TZ). Defaults to today. |
 | `GET /api/status` | Last refresh time, next refresh time, source URL |
+| `GET /images/channel/{channel-id}` | Cached channel logo. Re-downloads from upstream if the local file is missing. Returns 404 if the channel has no icon. |
 | `GET /` | Serves the embedded frontend |
 
 ## Configuration (environment variables)
@@ -51,6 +52,7 @@ tvguide/
 | `POLL_INTERVAL` | `12h` | How often to re-fetch the XMLTV file. Accepts Go duration strings: `1h`, `30m`, etc. |
 | `RETENTION_DAYS` | `7` | Days of airing history to keep. Airings older than this are pruned on each refresh. |
 | `DB_PATH` | `/data/tvguide.db` | Path to the SQLite database file. Mount `/data` as a Docker volume. |
+| `IMAGE_CACHE_DIR` | `/data/images` | Directory for cached channel icon files. Files are stored at `{IMAGE_CACHE_DIR}/channels/{channel-id}.{ext}`. The directory is created on startup if absent. The `/data` volume already covers this path. |
 | `PORT` | `8080` | HTTP listen port |
 
 ## How to build and run
@@ -72,8 +74,10 @@ SQLite file at `DB_PATH` (default `/data/tvguide.db`). Mount `/data` as a named 
 ### Schema
 
 ```sql
-channels (id PK, display_name, icon, sort_order, lcn)
--- lcn: logical channel number from <lcn> element (nullable); used for display ordering
+channels (id PK, display_name, icon, sort_order, lcn, icon_url)
+-- lcn:     logical channel number from <lcn> element (nullable); used for display ordering
+-- icon:    local filesystem path of the cached icon file (e.g. /data/images/channels/ch1.png); NULL if not yet downloaded
+-- icon_url: original external URL from the XMLTV source; used to detect URL changes and to re-download if the local file goes missing
 
 airings (
   channel_id + start_time  -- composite PK
