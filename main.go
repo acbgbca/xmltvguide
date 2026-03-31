@@ -52,6 +52,11 @@ func main() {
 		dbPath = "/data/tvguide.db"
 	}
 
+	imageCacheDir := os.Getenv("IMAGE_CACHE_DIR")
+	if imageCacheDir == "" {
+		imageCacheDir = "/data/images"
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -62,12 +67,17 @@ func main() {
 		log.Fatalf("creating database directory %s: %v", filepath.Dir(dbPath), err)
 	}
 
-	db, err := database.Open(dbPath, retentionDays, xmltvURL)
-	if err != nil {
-		log.Fatalf("opening database: %v", err)
+	// Ensure the image cache directory exists.
+	if err := os.MkdirAll(filepath.Join(imageCacheDir, "channels"), 0755); err != nil {
+		log.Fatalf("creating image cache directory %s: %v", imageCacheDir, err)
 	}
 
 	httpClient := &http.Client{Timeout: 5 * time.Minute}
+
+	db, err := database.Open(dbPath, retentionDays, xmltvURL, imageCacheDir, httpClient)
+	if err != nil {
+		log.Fatalf("opening database: %v", err)
+	}
 
 	refreshOnStart := os.Getenv("REFRESH_ON_START") == "true"
 	runInitialRefresh(db, httpClient, xmltvURL, pollInterval, refreshOnStart)
@@ -143,7 +153,7 @@ func refresh(db *database.DB, client *http.Client, url string, interval time.Dur
 	if err != nil {
 		return fmt.Errorf("fetch: %w", err)
 	}
-	if err := db.Refresh(tv, time.Now().Add(interval)); err != nil {
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(interval)); err != nil {
 		return fmt.Errorf("storing data: %w", err)
 	}
 	log.Printf("loaded %d channels, %d programmes", len(tv.Channels), len(tv.Programmes))

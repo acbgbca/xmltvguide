@@ -63,7 +63,7 @@ func startMockXMLTVServer(t *testing.T, xmlContent string) *countingServer {
 func newIntegrationServer(t *testing.T, xmltvURL string) *httptest.Server {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, xmltvURL)
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, xmltvURL, filepath.Join(dir, "images"), &http.Client{})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -73,7 +73,7 @@ func newIntegrationServer(t *testing.T, xmltvURL string) *httptest.Server {
 		t.Fatalf("Fetch: %v", err)
 	}
 
-	if err := db.Refresh(tv, time.Now().Add(time.Hour)); err != nil {
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
 
@@ -212,7 +212,7 @@ func TestStartup_FreshInstall_AlwaysFetches(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv")
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv", filepath.Join(dir, "images"), &http.Client{})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestStartup_ExistingData_SkipsFetch(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv")
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv", filepath.Join(dir, "images"), &http.Client{})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -249,7 +249,7 @@ func TestStartup_ExistingData_SkipsFetch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
-	if err := db.Refresh(tv, time.Now().Add(time.Hour)); err != nil {
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
 
@@ -272,7 +272,7 @@ func TestStartup_RefreshOnStart_FetchesEvenWithData(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv")
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv", filepath.Join(dir, "images"), &http.Client{})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -283,7 +283,7 @@ func TestStartup_RefreshOnStart_FetchesEvenWithData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
-	if err := db.Refresh(tv, time.Now().Add(time.Hour)); err != nil {
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
 
@@ -320,5 +320,121 @@ func TestIntegration_Status(t *testing.T) {
 	}
 	if !strings.Contains(result.SourceUrl, mockSrv.URL) {
 		t.Errorf("sourceUrl: expected to contain %q, got %q", mockSrv.URL, result.SourceUrl)
+	}
+}
+
+// TestIntegration_ChannelIconProxy verifies the full icon proxy flow end-to-end:
+// refresh downloads the icon, /api/channels returns the proxy URL, and
+// GET /images/channel/{id} serves the image content.
+func TestIntegration_ChannelIconProxy(t *testing.T) {
+	// Mock server serves both XMLTV data and icon images.
+	iconRequests := 0
+	var mu sync.Mutex
+	mockSrv := &countingServer{}
+	mockSrv.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mockSrv.mu.Lock()
+		mockSrv.count++
+		mockSrv.mu.Unlock()
+
+		if strings.HasSuffix(r.URL.Path, ".png") {
+			mu.Lock()
+			iconRequests++
+			mu.Unlock()
+			w.Header().Set("Content-Type", "image/png")
+			w.Write([]byte("\x89PNG\r\n\x1a\n"))
+			return
+		}
+		// Serve XMLTV with icon pointing back to this server.
+		w.Header().Set("Content-Type", "text/xml")
+		fmt.Fprintf(w, `<?xml version="1.0"?>
+<tv>
+  <channel id="ch1">
+    <display-name>ABC</display-name>
+    <icon src="%s/abc.png"/>
+  </channel>
+  <channel id="ch2">
+    <display-name>SBS</display-name>
+  </channel>
+</tv>`, mockSrv.URL)
+	}))
+	t.Cleanup(mockSrv.Close)
+
+	dir := t.TempDir()
+	db, err := database.Open(
+		filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv",
+		filepath.Join(dir, "images"), mockSrv.Client(),
+	)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	tv, err := xmltv.Fetch(context.Background(), mockSrv.Client(), mockSrv.URL+"/xmltv")
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	api.New(db).RegisterRoutes(mux)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	// /api/channels must return proxy URL for ch1, empty icon for ch2.
+	resp, err := http.Get(srv.URL + "/api/channels")
+	if err != nil {
+		t.Fatalf("GET /api/channels: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var channels []struct {
+		ID   string `json:"id"`
+		Icon string `json:"icon"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&channels); err != nil {
+		t.Fatalf("decode channels: %v", err)
+	}
+
+	var ch1Icon, ch2Icon string
+	for _, ch := range channels {
+		if ch.ID == "ch1" {
+			ch1Icon = ch.Icon
+		}
+		if ch.ID == "ch2" {
+			ch2Icon = ch.Icon
+		}
+	}
+	if ch1Icon != "/images/channel/ch1" {
+		t.Errorf("ch1 icon: expected %q, got %q", "/images/channel/ch1", ch1Icon)
+	}
+	if ch2Icon != "" {
+		t.Errorf("ch2 icon: expected empty, got %q", ch2Icon)
+	}
+
+	// GET /images/channel/ch1 must serve the cached PNG.
+	iconResp, err := http.Get(srv.URL + "/images/channel/ch1")
+	if err != nil {
+		t.Fatalf("GET /images/channel/ch1: %v", err)
+	}
+	defer iconResp.Body.Close()
+
+	if iconResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", iconResp.StatusCode)
+	}
+	ct := iconResp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "image/png") {
+		t.Errorf("Content-Type: expected image/png, got %q", ct)
+	}
+
+	// GET /images/channel/ch2 must return 404 (no icon).
+	noIconResp, err := http.Get(srv.URL + "/images/channel/ch2")
+	if err != nil {
+		t.Fatalf("GET /images/channel/ch2: %v", err)
+	}
+	noIconResp.Body.Close()
+	if noIconResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404 for ch2 (no icon), got %d", noIconResp.StatusCode)
 	}
 }
