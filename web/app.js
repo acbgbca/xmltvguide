@@ -122,6 +122,7 @@ function addDays(dateStr, days) {
 // Loads the guide for `dateStr`, updates state, re-renders, and scrolls.
 // Pass { pushState: false } when called from a popstate handler.
 async function navigateToDate(dateStr, { pushState = true } = {}) {
+    document.getElementById('guideLoadingOverlay').classList.add('visible');
     document.getElementById('prevDay').disabled = true;
     document.getElementById('nextDay').disabled = true;
 
@@ -141,6 +142,7 @@ async function navigateToDate(dateStr, { pushState = true } = {}) {
     }
 
     await updateNavButtons();
+    document.getElementById('guideLoadingOverlay').classList.remove('visible');
 }
 
 // Probes the guide API for the previous and next days and enables/disables
