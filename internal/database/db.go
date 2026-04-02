@@ -91,6 +91,13 @@ type Status struct {
 	SourceURL   string    `json:"sourceUrl"`
 }
 
+// SearchResult extends Airing with additional fields needed by the search API.
+type SearchResult struct {
+	Airing
+	ChannelName string  `json:"channelName"`
+	Rank        float64 `json:"-"`
+}
+
 // DB wraps a SQLite database connection.
 type DB struct {
 	db            *sql.DB
@@ -766,7 +773,7 @@ func (d *DB) ExecRaw(query string) (sql.Result, error) {
 // SearchSimple performs an FTS5 search on the title column only.
 // Returns future airings ordered by relevance then start time.
 // If includeRepeats is false, repeats are excluded.
-func (d *DB) SearchSimple(query string, includeRepeats bool) ([]Airing, error) {
+func (d *DB) SearchSimple(query string, includeRepeats bool) ([]SearchResult, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	q := `
 		SELECT
@@ -777,9 +784,11 @@ func (d *DB) SearchSimple(query string, includeRepeats bool) ([]Airing, error) {
 			COALESCE(a.prog_id, ''), COALESCE(a.star_rating, ''),
 			COALESCE(a.content_rating, ''), COALESCE(a.year, ''),
 			COALESCE(a.icon, ''), COALESCE(a.country, ''),
-			a.is_repeat, a.is_premiere
+			a.is_repeat, a.is_premiere,
+			c.display_name, f.rank
 		FROM airings_fts f
 		JOIN airings a ON a.channel_id = f.channel_id AND a.start_time = f.start_time
+		JOIN channels c ON c.id = a.channel_id
 		WHERE f.title MATCH ?
 		  AND a.start_time > ?`
 	args := []any{query, now}
@@ -789,14 +798,14 @@ func (d *DB) SearchSimple(query string, includeRepeats bool) ([]Airing, error) {
 	}
 	q += ` ORDER BY f.rank, a.start_time`
 
-	return d.scanAirings(q, args...)
+	return d.scanSearchResults(q, args...)
 }
 
 // SearchAdvanced performs an FTS5 search on title, sub_title, and description.
 // If categories is non-empty, only airings with at least one matching category are returned.
 // If includePast is false, only future airings are returned.
 // If includeRepeats is false, repeats are excluded.
-func (d *DB) SearchAdvanced(query string, categories []string, includePast bool, includeRepeats bool) ([]Airing, error) {
+func (d *DB) SearchAdvanced(query string, categories []string, includePast bool, includeRepeats bool) ([]SearchResult, error) {
 	q := `
 		SELECT
 			a.channel_id, a.start_time, a.stop_time,
@@ -806,9 +815,11 @@ func (d *DB) SearchAdvanced(query string, categories []string, includePast bool,
 			COALESCE(a.prog_id, ''), COALESCE(a.star_rating, ''),
 			COALESCE(a.content_rating, ''), COALESCE(a.year, ''),
 			COALESCE(a.icon, ''), COALESCE(a.country, ''),
-			a.is_repeat, a.is_premiere
+			a.is_repeat, a.is_premiere,
+			c.display_name, f.rank
 		FROM airings_fts f
 		JOIN airings a ON a.channel_id = f.channel_id AND a.start_time = f.start_time
+		JOIN channels c ON c.id = a.channel_id
 		WHERE airings_fts MATCH ?`
 	args := []any{query}
 
@@ -830,7 +841,7 @@ func (d *DB) SearchAdvanced(query string, categories []string, includePast bool,
 	}
 	q += ` ORDER BY f.rank, a.start_time`
 
-	return d.scanAirings(q, args...)
+	return d.scanSearchResults(q, args...)
 }
 
 // GetCategories returns all distinct categories sorted alphabetically.
@@ -850,6 +861,43 @@ func (d *DB) GetCategories() ([]string, error) {
 		cats = append(cats, name)
 	}
 	return cats, rows.Err()
+}
+
+// scanSearchResults executes a query and scans results into SearchResult slices.
+// The query must select the standard airing columns plus display_name and rank.
+func (d *DB) scanSearchResults(query string, args ...any) ([]SearchResult, error) {
+	rows, err := d.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying search results: %w", err)
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var sr SearchResult
+		var startStr, stopStr, catsJSON string
+		var isRepeat, isPremiere int
+
+		if err := rows.Scan(
+			&sr.ChannelID, &startStr, &stopStr,
+			&sr.Title, &sr.SubTitle, &sr.Description, &catsJSON,
+			&sr.EpisodeNum, &sr.EpisodeNumDisplay, &sr.ProgID,
+			&sr.StarRating, &sr.ContentRating, &sr.Year, &sr.Icon, &sr.Country,
+			&isRepeat, &isPremiere,
+			&sr.ChannelName, &sr.Rank,
+		); err != nil {
+			return nil, fmt.Errorf("scanning search result: %w", err)
+		}
+
+		sr.Start, _ = time.Parse(time.RFC3339, startStr)
+		sr.Stop, _ = time.Parse(time.RFC3339, stopStr)
+		json.Unmarshal([]byte(catsJSON), &sr.Categories)
+		sr.IsRepeat = isRepeat == 1
+		sr.IsPremiere = isPremiere == 1
+
+		results = append(results, sr)
+	}
+	return results, rows.Err()
 }
 
 // scanAirings executes a query and scans results into Airing slices.

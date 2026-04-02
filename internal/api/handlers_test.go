@@ -391,6 +391,412 @@ func TestGetChannelIcon_RedownloadsIfMissing(t *testing.T) {
 
 // TestGetChannels_IconIsProxyURL verifies that /api/channels returns the proxy
 // URL for channels that have an icon.
+// newSearchSeededServer creates a test API server with search-relevant data:
+// future and past airings across two channels, with varied categories, repeats,
+// and text in titles/subtitles/descriptions.
+func newSearchSeededServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	dir := t.TempDir()
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", filepath.Join(dir, "images"), &http.Client{})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	now := time.Now()
+	tv := &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{ID: "ch1", DisplayNames: []xmltv.Name{{Value: "ABC"}}},
+			{ID: "ch2", DisplayNames: []xmltv.Name{{Value: "SBS"}}},
+		},
+		Programmes: []xmltv.Programme{
+			{
+				// Future, non-repeat, title "Morning News", category News
+				Start:      xmltv.XmltvTime{Time: now.Add(1 * time.Hour)},
+				Stop:       xmltv.XmltvTime{Time: now.Add(2 * time.Hour)},
+				Channel:    "ch1",
+				Titles:     []xmltv.Name{{Value: "Morning News"}},
+				Descs:      []xmltv.Name{{Value: "Start your day with headlines."}},
+				Categories: []xmltv.Name{{Value: "News"}},
+			},
+			{
+				// Future, repeat, title "Morning News" (same title, different channel)
+				Start:           xmltv.XmltvTime{Time: now.Add(3 * time.Hour)},
+				Stop:            xmltv.XmltvTime{Time: now.Add(4 * time.Hour)},
+				Channel:         "ch2",
+				Titles:          []xmltv.Name{{Value: "Morning News"}},
+				Descs:           []xmltv.Name{{Value: "Replay of this morning's news."}},
+				Categories:      []xmltv.Name{{Value: "News"}},
+				PreviouslyShown: &xmltv.PreviouslyShown{},
+			},
+			{
+				// Future, non-repeat, description mentions "news" but title doesn't
+				Start:      xmltv.XmltvTime{Time: now.Add(5 * time.Hour)},
+				Stop:       xmltv.XmltvTime{Time: now.Add(6 * time.Hour)},
+				Channel:    "ch2",
+				Titles:     []xmltv.Name{{Value: "Documentary Special"}},
+				SubTitles:  []xmltv.Name{{Value: "Behind the news desk"}},
+				Descs:      []xmltv.Name{{Value: "A look at how news is made."}},
+				Categories: []xmltv.Name{{Value: "Documentary"}},
+			},
+			{
+				// Past, non-repeat, title "Late Night News"
+				Start:      xmltv.XmltvTime{Time: now.Add(-3 * time.Hour)},
+				Stop:       xmltv.XmltvTime{Time: now.Add(-2 * time.Hour)},
+				Channel:    "ch1",
+				Titles:     []xmltv.Name{{Value: "Late Night News"}},
+				Descs:      []xmltv.Name{{Value: "Yesterday's late night news."}},
+				Categories: []xmltv.Name{{Value: "News"}},
+			},
+			{
+				// Future, non-repeat, category Sport+Entertainment
+				Start:      xmltv.XmltvTime{Time: now.Add(7 * time.Hour)},
+				Stop:       xmltv.XmltvTime{Time: now.Add(8 * time.Hour)},
+				Channel:    "ch2",
+				Titles:     []xmltv.Name{{Value: "Sports Tonight"}},
+				Descs:      []xmltv.Name{{Value: "All the sport highlights."}},
+				Categories: []xmltv.Name{{Value: "Sport"}, {Value: "Entertainment"}},
+			},
+		},
+	}
+
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	handler := api.New(db)
+	handler.RegisterRoutes(mux)
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(func() {
+		srv.Close()
+		db.Close()
+	})
+	return srv
+}
+
+// --- Search endpoint tests ---
+
+func TestSearch_MissingQuery_Returns400(t *testing.T) {
+	srv := newSearchSeededServer(t)
+
+	// No q parameter
+	resp, err := http.Get(srv.URL + "/api/search")
+	if err != nil {
+		t.Fatalf("GET /api/search: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing q, got %d", resp.StatusCode)
+	}
+
+	// Empty q parameter
+	resp2, err := http.Get(srv.URL + "/api/search?q=")
+	if err != nil {
+		t.Fatalf("GET /api/search?q=: %v", err)
+	}
+	resp2.Body.Close()
+	if resp2.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for empty q, got %d", resp2.StatusCode)
+	}
+}
+
+func TestSearch_SimpleMode_ReturnsTitleMatches(t *testing.T) {
+	srv := newSearchSeededServer(t)
+	resp, err := http.Get(srv.URL + "/api/search?q=News")
+	if err != nil {
+		t.Fatalf("GET /api/search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var result []struct {
+		Title   string `json:"title"`
+		Airings []struct {
+			ChannelID   string `json:"channelId"`
+			ChannelName string `json:"channelName"`
+		} `json:"airings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	// Simple mode: should match title only, future only
+	titles := map[string]bool{}
+	for _, g := range result {
+		titles[g.Title] = true
+	}
+	if titles["Documentary Special"] {
+		t.Error("simple search should not match description-only results")
+	}
+	if titles["Late Night News"] {
+		t.Error("simple search should not return past airings")
+	}
+	if !titles["Morning News"] {
+		t.Error("expected 'Morning News' in results")
+	}
+}
+
+func TestSearch_SimpleMode_GroupsByTitle(t *testing.T) {
+	srv := newSearchSeededServer(t)
+	resp, err := http.Get(srv.URL + "/api/search?q=News")
+	if err != nil {
+		t.Fatalf("GET /api/search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var result []struct {
+		Title   string `json:"title"`
+		Airings []struct {
+			ChannelID string    `json:"channelId"`
+			StartTime time.Time `json:"startTime"`
+		} `json:"airings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	// "Morning News" appears on ch1 and ch2 — should be grouped
+	for _, g := range result {
+		if g.Title == "Morning News" {
+			if len(g.Airings) < 2 {
+				t.Errorf("expected at least 2 airings for 'Morning News' group, got %d", len(g.Airings))
+			}
+			// Verify sorted by start time ascending
+			for i := 1; i < len(g.Airings); i++ {
+				if g.Airings[i].StartTime.Before(g.Airings[i-1].StartTime) {
+					t.Error("airings within group should be sorted by start time ascending")
+				}
+			}
+			return
+		}
+	}
+	t.Error("expected 'Morning News' group in results")
+}
+
+func TestSearch_SimpleMode_ChannelNamePopulated(t *testing.T) {
+	srv := newSearchSeededServer(t)
+	resp, err := http.Get(srv.URL + "/api/search?q=News")
+	if err != nil {
+		t.Fatalf("GET /api/search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var result []struct {
+		Title   string `json:"title"`
+		Airings []struct {
+			ChannelName string `json:"channelName"`
+		} `json:"airings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	for _, g := range result {
+		for _, a := range g.Airings {
+			if a.ChannelName == "" {
+				t.Errorf("channelName should be populated for airing in group %q", g.Title)
+			}
+		}
+	}
+}
+
+func TestSearch_SimpleMode_ExcludesRepeats(t *testing.T) {
+	srv := newSearchSeededServer(t)
+	resp, err := http.Get(srv.URL + "/api/search?q=News&include_repeats=false")
+	if err != nil {
+		t.Fatalf("GET /api/search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var result []struct {
+		Title   string `json:"title"`
+		Airings []struct {
+			IsRepeat bool `json:"isRepeat"`
+		} `json:"airings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	for _, g := range result {
+		for _, a := range g.Airings {
+			if a.IsRepeat {
+				t.Errorf("include_repeats=false should exclude repeats in group %q", g.Title)
+			}
+		}
+	}
+}
+
+func TestSearch_AdvancedMode_MatchesDescription(t *testing.T) {
+	srv := newSearchSeededServer(t)
+	resp, err := http.Get(srv.URL + "/api/search?q=news&mode=advanced")
+	if err != nil {
+		t.Fatalf("GET /api/search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var result []struct {
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	titles := map[string]bool{}
+	for _, g := range result {
+		titles[g.Title] = true
+	}
+	if !titles["Documentary Special"] {
+		t.Error("advanced search should match 'Documentary Special' via subtitle/description")
+	}
+}
+
+func TestSearch_AdvancedMode_CategoryFilter(t *testing.T) {
+	srv := newSearchSeededServer(t)
+	resp, err := http.Get(srv.URL + "/api/search?q=news&mode=advanced&categories=Documentary")
+	if err != nil {
+		t.Fatalf("GET /api/search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var result []struct {
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	for _, g := range result {
+		if g.Title == "Morning News" {
+			t.Error("category filter should exclude 'Morning News' (not in Documentary category)")
+		}
+	}
+	titles := map[string]bool{}
+	for _, g := range result {
+		titles[g.Title] = true
+	}
+	if !titles["Documentary Special"] {
+		t.Error("expected 'Documentary Special' in filtered results")
+	}
+}
+
+func TestSearch_AdvancedMode_IncludePast(t *testing.T) {
+	srv := newSearchSeededServer(t)
+	resp, err := http.Get(srv.URL + "/api/search?q=News&mode=advanced&include_past=true")
+	if err != nil {
+		t.Fatalf("GET /api/search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var result []struct {
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	titles := map[string]bool{}
+	for _, g := range result {
+		titles[g.Title] = true
+	}
+	if !titles["Late Night News"] {
+		t.Error("include_past=true should include past airings like 'Late Night News'")
+	}
+}
+
+func TestSearch_ContentType(t *testing.T) {
+	srv := newSearchSeededServer(t)
+	resp, err := http.Get(srv.URL + "/api/search?q=News")
+	if err != nil {
+		t.Fatalf("GET /api/search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "application/json") {
+		t.Errorf("Content-Type: expected application/json, got %q", ct)
+	}
+}
+
+// --- Categories endpoint tests ---
+
+func TestCategories_ReturnsSortedList(t *testing.T) {
+	srv := newSearchSeededServer(t)
+	resp, err := http.Get(srv.URL + "/api/categories")
+	if err != nil {
+		t.Fatalf("GET /api/categories: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var result []string
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	expected := []string{"Documentary", "Entertainment", "News", "Sport"}
+	if len(result) != len(expected) {
+		t.Fatalf("expected %d categories, got %d: %v", len(expected), len(result), result)
+	}
+	for i, c := range result {
+		if c != expected[i] {
+			t.Errorf("category[%d]: expected %q, got %q", i, expected[i], c)
+		}
+	}
+}
+
+func TestCategories_EmptyWhenNoData(t *testing.T) {
+	dir := t.TempDir()
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", filepath.Join(dir, "images"), &http.Client{})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	handler := api.New(db)
+	handler.RegisterRoutes(mux)
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(func() {
+		srv.Close()
+		db.Close()
+	})
+
+	resp, err := http.Get(srv.URL + "/api/categories")
+	if err != nil {
+		t.Fatalf("GET /api/categories: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var result []string
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(result) != 0 {
+		t.Fatalf("expected 0 categories, got %d", len(result))
+	}
+}
+
+func TestCategories_ContentType(t *testing.T) {
+	srv := newSearchSeededServer(t)
+	resp, err := http.Get(srv.URL + "/api/categories")
+	if err != nil {
+		t.Fatalf("GET /api/categories: %v", err)
+	}
+	defer resp.Body.Close()
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "application/json") {
+		t.Errorf("Content-Type: expected application/json, got %q", ct)
+	}
+}
+
 func TestGetChannels_IconIsProxyURL(t *testing.T) {
 	iconSrv := startFakeIconServer(t)
 	srv, _ := newSeededServerWithIcons(t, iconSrv)

@@ -40,6 +40,8 @@ tvguide/
 | `GET /api/channels` | All channels in source order |
 | `GET /api/guide?date=YYYY-MM-DD` | Airings overlapping the given date (local TZ). Defaults to today. |
 | `GET /api/status` | Last refresh time, next refresh time, source URL |
+| `GET /api/search?q=...&mode=...` | Search airings. `q` (required): search text. `mode`: `simple` (title only, default) or `advanced` (title+subtitle+description). Advanced-only params: `categories` (comma-separated), `include_past` (bool, default false). Shared: `include_repeats` (bool, default true). Returns results grouped by title. |
+| `GET /api/categories` | Sorted JSON array of all distinct category strings |
 | `GET /images/channel/{channel-id}` | Cached channel logo. Re-downloads from upstream if the local file is missing. Returns 404 if the channel has no icon. |
 | `GET /` | Serves the embedded frontend (SPA shell) |
 | `GET /{any}` | SPA fallback — serves `index.html` for any path not matching API, images, or static files. Enables client-side routing via History API. |

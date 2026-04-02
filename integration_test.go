@@ -495,6 +495,115 @@ func TestIntegration_ChannelIconProxy(t *testing.T) {
 	}
 }
 
+// TestIntegration_Search verifies the full search flow: load XMLTV data,
+// then call /api/search and verify the response shape.
+func TestIntegration_Search(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	// Search for "News" — sample.xml has "Morning News" and "World News"
+	resp, err := http.Get(srv.URL + "/api/search?q=News&mode=advanced&include_past=true")
+	if err != nil {
+		t.Fatalf("GET /api/search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "application/json") {
+		t.Errorf("Content-Type: expected application/json, got %q", ct)
+	}
+
+	var result []struct {
+		Title   string `json:"title"`
+		Airings []struct {
+			ChannelID   string `json:"channelId"`
+			ChannelName string `json:"channelName"`
+		} `json:"airings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if len(result) == 0 {
+		t.Fatal("expected at least one search result group")
+	}
+
+	// Verify channelName is populated
+	for _, g := range result {
+		for _, a := range g.Airings {
+			if a.ChannelName == "" {
+				t.Errorf("channelName should be populated for airing in group %q", g.Title)
+			}
+		}
+	}
+}
+
+// TestIntegration_Categories verifies the /api/categories endpoint returns
+// categories from the loaded XMLTV data.
+func TestIntegration_Categories(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	resp, err := http.Get(srv.URL + "/api/categories")
+	if err != nil {
+		t.Fatalf("GET /api/categories: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var result []string
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	// sample.xml has categories: Movie, News, Entertainment, International
+	if len(result) == 0 {
+		t.Fatal("expected at least one category")
+	}
+
+	// Verify sorted
+	for i := 1; i < len(result); i++ {
+		if result[i] < result[i-1] {
+			t.Errorf("categories not sorted: %q before %q", result[i-1], result[i])
+		}
+	}
+}
+
+// TestIntegration_Search_MissingQuery verifies 400 for missing q parameter.
+func TestIntegration_Search_MissingQuery(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	resp, err := http.Get(srv.URL + "/api/search")
+	if err != nil {
+		t.Fatalf("GET /api/search: %v", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
 // TestIntegration_SPAFallback_SearchReturnsHTML verifies that GET /search
 // returns index.html content (SPA fallback) instead of 404.
 func TestIntegration_SPAFallback_SearchReturnsHTML(t *testing.T) {
