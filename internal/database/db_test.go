@@ -646,6 +646,354 @@ func TestGetAirings_PremiereFlagAndCategories(t *testing.T) {
 	}
 }
 
+// --- FTS5 and Search tests ---
+
+// TestFTS5_Available verifies that modernc.org/sqlite supports FTS5.
+func TestFTS5_Available(t *testing.T) {
+	db := openTestDB(t)
+	// Attempt to create a simple FTS5 table. If this fails, FTS5 is not compiled in.
+	_, err := db.ExecRaw(`CREATE VIRTUAL TABLE IF NOT EXISTS fts5_test USING fts5(content)`)
+	if err != nil {
+		t.Fatalf("FTS5 not available in modernc.org/sqlite: %v", err)
+	}
+	_, err = db.ExecRaw(`DROP TABLE fts5_test`)
+	if err != nil {
+		t.Fatalf("dropping FTS5 test table: %v", err)
+	}
+}
+
+// searchTV returns test data with airings in the future and past, with varied
+// titles, subtitles, descriptions, categories, and repeat flags for search tests.
+func searchTV() *xmltv.TV {
+	return &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{ID: "ch1", DisplayNames: []xmltv.Name{{Value: "ABC"}}},
+			{ID: "ch2", DisplayNames: []xmltv.Name{{Value: "SBS"}}},
+		},
+		Programmes: []xmltv.Programme{
+			{
+				// Future, non-repeat, title match for "News"
+				Start:      xmltv.XmltvTime{Time: time.Now().Add(1 * time.Hour)},
+				Stop:       xmltv.XmltvTime{Time: time.Now().Add(2 * time.Hour)},
+				Channel:    "ch1",
+				Titles:     []xmltv.Name{{Value: "Morning News"}},
+				Descs:      []xmltv.Name{{Value: "Start your day with the latest headlines."}},
+				Categories: []xmltv.Name{{Value: "News"}},
+			},
+			{
+				// Future, repeat, title match for "News"
+				Start:           xmltv.XmltvTime{Time: time.Now().Add(3 * time.Hour)},
+				Stop:            xmltv.XmltvTime{Time: time.Now().Add(4 * time.Hour)},
+				Channel:         "ch1",
+				Titles:          []xmltv.Name{{Value: "Evening News"}},
+				Descs:           []xmltv.Name{{Value: "Recap of today's events."}},
+				Categories:      []xmltv.Name{{Value: "News"}},
+				PreviouslyShown: &xmltv.PreviouslyShown{},
+			},
+			{
+				// Future, non-repeat, title does NOT match "News" but description does
+				Start:      xmltv.XmltvTime{Time: time.Now().Add(5 * time.Hour)},
+				Stop:       xmltv.XmltvTime{Time: time.Now().Add(6 * time.Hour)},
+				Channel:    "ch2",
+				Titles:     []xmltv.Name{{Value: "Documentary Special"}},
+				SubTitles:  []xmltv.Name{{Value: "Behind the news desk"}},
+				Descs:      []xmltv.Name{{Value: "A look at how news is made."}},
+				Categories: []xmltv.Name{{Value: "Documentary"}},
+			},
+			{
+				// Past, non-repeat, title match for "News"
+				Start:      xmltv.XmltvTime{Time: time.Now().Add(-3 * time.Hour)},
+				Stop:       xmltv.XmltvTime{Time: time.Now().Add(-2 * time.Hour)},
+				Channel:    "ch1",
+				Titles:     []xmltv.Name{{Value: "Late Night News"}},
+				Descs:      []xmltv.Name{{Value: "Yesterday's late night news."}},
+				Categories: []xmltv.Name{{Value: "News"}},
+			},
+			{
+				// Future, non-repeat, category "Sport"
+				Start:      xmltv.XmltvTime{Time: time.Now().Add(7 * time.Hour)},
+				Stop:       xmltv.XmltvTime{Time: time.Now().Add(8 * time.Hour)},
+				Channel:    "ch2",
+				Titles:     []xmltv.Name{{Value: "Sports Tonight"}},
+				Descs:      []xmltv.Name{{Value: "All the sport highlights."}},
+				Categories: []xmltv.Name{{Value: "Sport"}, {Value: "Entertainment"}},
+			},
+		},
+	}
+}
+
+func TestSearchSimple_MatchesTitle(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	results, err := db.SearchSimple("News", true)
+	if err != nil {
+		t.Fatalf("SearchSimple: %v", err)
+	}
+	// Should match "Morning News", "Evening News" (future, title match only)
+	// Should NOT match "Documentary Special" (title doesn't contain "News")
+	// Should NOT match "Late Night News" (past)
+	for _, r := range results {
+		if r.Title == "Documentary Special" {
+			t.Error("SearchSimple should not match on subtitle/description, only title")
+		}
+		if r.Title == "Late Night News" {
+			t.Error("SearchSimple should exclude past airings")
+		}
+	}
+	if len(results) < 2 {
+		t.Errorf("expected at least 2 results matching 'News' in title, got %d", len(results))
+	}
+}
+
+func TestSearchSimple_ExcludesDescriptionOnlyMatches(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	results, err := db.SearchSimple("News", true)
+	if err != nil {
+		t.Fatalf("SearchSimple: %v", err)
+	}
+	for _, r := range results {
+		if r.Title == "Documentary Special" {
+			t.Error("SearchSimple should not return results that only match in description/subtitle")
+		}
+	}
+}
+
+func TestSearchSimple_ExcludesPastAirings(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	results, err := db.SearchSimple("News", true)
+	if err != nil {
+		t.Fatalf("SearchSimple: %v", err)
+	}
+	for _, r := range results {
+		if r.Start.Before(time.Now()) {
+			t.Errorf("SearchSimple returned past airing: %q at %v", r.Title, r.Start)
+		}
+	}
+}
+
+func TestSearchSimple_ExcludesRepeats(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	results, err := db.SearchSimple("News", false)
+	if err != nil {
+		t.Fatalf("SearchSimple: %v", err)
+	}
+	for _, r := range results {
+		if r.IsRepeat {
+			t.Errorf("SearchSimple with includeRepeats=false returned repeat: %q", r.Title)
+		}
+	}
+}
+
+func TestSearchSimple_IncludesRepeats(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	results, err := db.SearchSimple("News", true)
+	if err != nil {
+		t.Fatalf("SearchSimple: %v", err)
+	}
+	hasRepeat := false
+	for _, r := range results {
+		if r.IsRepeat {
+			hasRepeat = true
+		}
+	}
+	if !hasRepeat {
+		t.Error("SearchSimple with includeRepeats=true should include repeats")
+	}
+}
+
+func TestSearchAdvanced_MatchesTitleSubtitleDescription(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	// "news" should match in title (Morning News, Evening News) AND subtitle/description (Documentary Special)
+	results, err := db.SearchAdvanced("news", nil, false, true)
+	if err != nil {
+		t.Fatalf("SearchAdvanced: %v", err)
+	}
+	titles := map[string]bool{}
+	for _, r := range results {
+		titles[r.Title] = true
+	}
+	if !titles["Morning News"] {
+		t.Error("expected Morning News in results")
+	}
+	if !titles["Documentary Special"] {
+		t.Error("expected Documentary Special in results (matches in subtitle/description)")
+	}
+}
+
+func TestSearchAdvanced_FiltersByCategory(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	// Search for "news" but filter to "Documentary" category only
+	results, err := db.SearchAdvanced("news", []string{"Documentary"}, false, true)
+	if err != nil {
+		t.Fatalf("SearchAdvanced: %v", err)
+	}
+	for _, r := range results {
+		if r.Title == "Morning News" {
+			t.Error("Morning News should be filtered out — it's not in Documentary category")
+		}
+	}
+	hasDocumentary := false
+	for _, r := range results {
+		if r.Title == "Documentary Special" {
+			hasDocumentary = true
+		}
+	}
+	if !hasDocumentary {
+		t.Error("expected Documentary Special in results")
+	}
+}
+
+func TestSearchAdvanced_IncludesPastAirings(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	results, err := db.SearchAdvanced("News", nil, true, true)
+	if err != nil {
+		t.Fatalf("SearchAdvanced: %v", err)
+	}
+	hasPast := false
+	for _, r := range results {
+		if r.Start.Before(time.Now()) {
+			hasPast = true
+		}
+	}
+	if !hasPast {
+		t.Error("SearchAdvanced with includePast=true should include past airings")
+	}
+}
+
+func TestSearchAdvanced_ExcludesPastAirings(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	results, err := db.SearchAdvanced("News", nil, false, true)
+	if err != nil {
+		t.Fatalf("SearchAdvanced: %v", err)
+	}
+	for _, r := range results {
+		if r.Start.Before(time.Now()) {
+			t.Errorf("SearchAdvanced with includePast=false returned past airing: %q at %v", r.Title, r.Start)
+		}
+	}
+}
+
+func TestSearchAdvanced_ExcludesRepeats(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	results, err := db.SearchAdvanced("News", nil, false, false)
+	if err != nil {
+		t.Fatalf("SearchAdvanced: %v", err)
+	}
+	for _, r := range results {
+		if r.IsRepeat {
+			t.Errorf("SearchAdvanced with includeRepeats=false returned repeat: %q", r.Title)
+		}
+	}
+}
+
+func TestSearchAdvanced_CombinesCategoryAndText(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	// Search for "sport" filtered to "Entertainment" category
+	results, err := db.SearchAdvanced("sport", []string{"Entertainment"}, false, true)
+	if err != nil {
+		t.Fatalf("SearchAdvanced: %v", err)
+	}
+	if len(results) == 0 {
+		t.Error("expected at least 1 result for 'sport' in Entertainment category")
+	}
+	for _, r := range results {
+		if r.Title != "Sports Tonight" {
+			t.Errorf("unexpected result: %q", r.Title)
+		}
+	}
+}
+
+func TestGetCategories_ReturnsSorted(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	cats, err := db.GetCategories()
+	if err != nil {
+		t.Fatalf("GetCategories: %v", err)
+	}
+	expected := []string{"Documentary", "Entertainment", "News", "Sport"}
+	if len(cats) != len(expected) {
+		t.Fatalf("expected %d categories, got %d: %v", len(expected), len(cats), cats)
+	}
+	for i, c := range cats {
+		if c != expected[i] {
+			t.Errorf("category[%d]: expected %q, got %q", i, expected[i], c)
+		}
+	}
+}
+
+func TestGetCategories_EmptyWhenNoData(t *testing.T) {
+	db := openTestDB(t)
+	cats, err := db.GetCategories()
+	if err != nil {
+		t.Fatalf("GetCategories: %v", err)
+	}
+	if cats == nil {
+		t.Fatal("expected non-nil slice, got nil")
+	}
+	if len(cats) != 0 {
+		t.Fatalf("expected 0 categories, got %d", len(cats))
+	}
+}
+
+func TestRefresh_PopulatesFTSAndCategories(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	// FTS should be populated — simple search should work
+	results, err := db.SearchSimple("Morning", true)
+	if err != nil {
+		t.Fatalf("SearchSimple after Refresh: %v", err)
+	}
+	if len(results) == 0 {
+		t.Error("expected FTS results after Refresh")
+	}
+
+	// Categories should be populated
+	cats, err := db.GetCategories()
+	if err != nil {
+		t.Fatalf("GetCategories after Refresh: %v", err)
+	}
+	if len(cats) == 0 {
+		t.Error("expected categories after Refresh")
+	}
+}
+
 func TestRefresh_Upsert_NoDuplicates(t *testing.T) {
 	db := openTestDB(t)
 	tv := sampleTV()
