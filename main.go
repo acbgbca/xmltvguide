@@ -102,7 +102,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("embedding web files: %v", err)
 	}
-	mux.Handle("/", http.FileServer(http.FS(webContent)))
+	mux.Handle("/", spaHandler(http.FS(webContent)))
 
 	srv := &http.Server{
 		Addr:    ":" + port,
@@ -145,6 +145,30 @@ func runInitialRefresh(db *database.DB, client *http.Client, xmltvURL string, po
 		db.SetNextRefresh(time.Now().Add(pollInterval))
 		log.Printf("skipping initial fetch, data already present (next refresh in %s)", pollInterval)
 	}
+}
+
+// spaHandler returns an http.Handler that serves static files from fsys,
+// falling back to index.html for any path that doesn't match a real file.
+// This enables client-side (History API) routing in the SPA.
+func spaHandler(fsys http.FileSystem) http.Handler {
+	fileServer := http.FileServer(fsys)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Try to open the requested file. If it exists, serve it normally.
+		path := r.URL.Path
+		if path == "/" {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		f, err := fsys.Open(path)
+		if err == nil {
+			f.Close()
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		// File not found — serve index.html for SPA client-side routing.
+		r.URL.Path = "/"
+		fileServer.ServeHTTP(w, r)
+	})
 }
 
 func refresh(db *database.DB, client *http.Client, url string, interval time.Duration) error {

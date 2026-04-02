@@ -41,7 +41,8 @@ tvguide/
 | `GET /api/guide?date=YYYY-MM-DD` | Airings overlapping the given date (local TZ). Defaults to today. |
 | `GET /api/status` | Last refresh time, next refresh time, source URL |
 | `GET /images/channel/{channel-id}` | Cached channel logo. Re-downloads from upstream if the local file is missing. Returns 404 if the channel has no icon. |
-| `GET /` | Serves the embedded frontend |
+| `GET /` | Serves the embedded frontend (SPA shell) |
+| `GET /{any}` | SPA fallback — serves `index.html` for any path not matching API, images, or static files. Enables client-side routing via History API. |
 
 ## Configuration (environment variables)
 
@@ -117,7 +118,24 @@ Stored client-side in `localStorage` under the key `tvguide-prefs`:
 { "hidden": { "channel-id": true }, "favourites": { "channel-id": true } }
 ```
 
-Favourites appear at the top of the guide. The remaining visible channels are sorted by `lcn` (logical channel number) when present; channels without an `lcn` fall back to source order. Hidden channels are excluded from the guide view entirely. Both are managed via the "Channels" slide-out panel.
+Favourites appear at the top of the guide. The remaining visible channels are sorted by `lcn` (logical channel number) when present; channels without an `lcn` fall back to source order. Hidden channels are excluded from the guide view entirely. Both are managed via the Settings tab (bottom navigation).
+
+## Frontend navigation
+
+The app uses a bottom navigation bar (iOS-style) with four tabs:
+
+| Tab | Route | Description |
+|---|---|---|
+| Guide | `/` or `/guide` | The main TV guide grid (default) |
+| Search | `/search` | Placeholder — search coming soon |
+| Favourites | `/favourites` | Placeholder — favourites coming soon |
+| Settings | `/settings` | Channel visibility and favourite toggles |
+
+Navigation uses the **History API** (`pushState`/`popstate`) for client-side routing without full page reloads. The top bar (date display + prev/next day buttons) is only visible on the Guide tab. The Guide tab preserves its `?date=YYYY-MM-DD` query parameter behaviour.
+
+The backend serves `index.html` for any unmatched path (SPA fallback via `spaHandler` in `main.go`), so direct navigation to `/search` or browser refresh on `/favourites` works correctly.
+
+The now-line timer only runs when the Guide tab is active.
 
 ## Data flow
 
@@ -163,8 +181,8 @@ After completing any change, verify that CLAUDE.md (and any other relevant docs)
 
 These were discussed and intentionally excluded from the MVP:
 
-- **Multi-day navigation** — API already supports `?date=YYYY-MM-DD`; only the frontend nav buttons need enabling.
+- **Search** — The `/search` tab is a placeholder. Future: search for programmes by title.
+- **Favourite shows** — The `/favourites` tab is a placeholder. Future: track specific show titles and surface when they are scheduled.
 - **Programmes table** — Split airings into a `programmes` table (one row per show) and an `airings` table (one row per broadcast). Deferred because XMLTV lacks a stable universal programme ID; the `prog_id` column (dd_progid) is the future deduplication key when available.
 - **HDHomeRun integration** — Use the device's `http://[ip]/lineup.json` for channel data instead of XMLTV.
-- **Favourite shows** — Track specific show titles and surface when they are scheduled.
 - **Notifications** — Alert when a tracked show is about to start.
