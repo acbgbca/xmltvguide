@@ -822,6 +822,147 @@ body {
     width: 100%;
 }
 
+/* ── Favourites page ─────────────────────────────────────────── */
+
+.favourites-page {
+    display: flex;
+    flex-direction: column;
+}
+
+.favourites-loading {
+    display: flex;
+    justify-content: center;
+    padding: 30px 0;
+}
+
+.favourites-empty {
+    font-size: 14px;
+    color: var(--text-secondary);
+    padding: 20px 0;
+    text-align: center;
+    line-height: 1.5;
+}
+
+.fav-group {
+    margin-bottom: 20px;
+}
+
+.fav-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0 6px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+}
+
+.fav-group-star {
+    color: var(--accent-fav);
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.fav-group-name {
+    font-size: 15px;
+    font-weight: 600;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fav-group-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.fav-action-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 5px;
+    transition: color 0.15s, background 0.15s;
+}
+
+.fav-action-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-card);
+}
+
+.fav-delete-btn {
+    font-size: 13px;
+    padding: 3px 8px;
+}
+
+.fav-delete-btn:hover {
+    color: var(--accent-now);
+    border-color: var(--accent-now);
+}
+
+.fav-no-results {
+    font-size: 13px;
+    color: var(--text-muted);
+    padding: 10px 6px;
+    font-style: italic;
+}
+
+.fav-loading {
+    display: flex;
+    justify-content: center;
+    padding: 12px 0;
+}
+
+.fav-spinner {
+    width: 20px;
+    height: 20px;
+    border-width: 2px;
+}
+
+.fav-title-group {
+    margin-left: 4px;
+    margin-bottom: 8px;
+}
+
+.fav-title-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    padding: 6px 6px 2px;
+}
+
+.fav-airing {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 6px 6px 6px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.12s;
+}
+
+.fav-airing:hover {
+    background: var(--bg-card);
+}
+
+.fav-airing-channel {
+    font-size: 13px;
+    color: var(--text-secondary);
+    min-width: 80px;
+}
+
+.fav-airing-time {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.search-fav-btn.active {
+    color: var(--accent-fav);
+}
+
 /* ── Loading screen ───────────────────────────────────────────── */
 
 .loading-screen {
