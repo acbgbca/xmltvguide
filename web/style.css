@@ -583,6 +583,245 @@ body {
     color: var(--text-secondary);
 }
 
+/* ── Search page ─────────────────────────────────────────────── */
+
+.search-page {
+    display: flex;
+    flex-direction: column;
+}
+
+.search-input-wrap {
+    position: relative;
+    margin-bottom: 8px;
+}
+
+.search-input-wrap input {
+    width: 100%;
+    padding: 10px 36px 10px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.search-input-wrap input:focus {
+    border-color: var(--text-secondary);
+}
+
+.search-input-wrap input::placeholder {
+    color: var(--text-muted);
+}
+
+.search-clear-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px;
+    line-height: 1;
+    border-radius: 4px;
+}
+
+.search-clear-btn:hover {
+    color: var(--text-primary);
+}
+
+.search-spinner {
+    display: none;
+    position: absolute;
+    right: 32px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--text-secondary);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+
+.search-spinner.visible {
+    display: block;
+}
+
+.advanced-toggle {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 6px 0;
+    text-align: left;
+    transition: color 0.15s;
+}
+
+.advanced-toggle::before {
+    content: '\25B6';
+    display: inline-block;
+    margin-right: 6px;
+    font-size: 10px;
+    transition: transform 0.15s;
+}
+
+.advanced-toggle.open::before {
+    transform: rotate(90deg);
+}
+
+.advanced-toggle:hover {
+    color: var(--text-primary);
+}
+
+.advanced-options {
+    padding: 10px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.search-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.search-checkbox input[type="checkbox"] {
+    accent-color: var(--bg-prog-hover);
+}
+
+.category-chips-wrap {
+    margin-top: 4px;
+}
+
+.category-chips-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+
+.category-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.category-chip {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.category-chip:hover {
+    border-color: var(--text-secondary);
+}
+
+.category-chip.selected {
+    background: var(--bg-programme);
+    border-color: var(--bg-prog-hover);
+    color: var(--text-primary);
+}
+
+.search-hint {
+    font-size: 13px;
+    color: var(--text-muted);
+    padding: 20px 0;
+    text-align: center;
+}
+
+.search-empty {
+    font-size: 14px;
+    color: var(--text-secondary);
+    padding: 20px 0;
+    text-align: center;
+}
+
+.search-results {
+    flex: 1;
+}
+
+.search-group {
+    margin-bottom: 16px;
+}
+
+.search-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+}
+
+.search-group-title {
+    font-size: 15px;
+    font-weight: 600;
+    flex: 1;
+}
+
+.search-fav-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 2px 4px;
+    line-height: 1;
+    transition: color 0.15s;
+}
+
+.search-fav-btn:hover {
+    color: var(--accent-fav);
+}
+
+.search-airing {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    padding: 8px 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.12s;
+}
+
+.search-airing:hover {
+    background: var(--bg-card);
+}
+
+.search-airing-channel {
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 500;
+    min-width: 100px;
+}
+
+.search-airing-time {
+    font-size: 13px;
+    color: var(--text-secondary);
+    min-width: 120px;
+}
+
+.search-airing-episode {
+    font-size: 12px;
+    color: var(--text-muted);
+    width: 100%;
+}
+
 /* ── Loading screen ───────────────────────────────────────────── */
 
 .loading-screen {

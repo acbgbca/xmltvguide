@@ -138,7 +138,7 @@ The app uses a bottom navigation bar (iOS-style) with four tabs:
 | Tab | Route | Description |
 |---|---|---|
 | Guide | `/` or `/guide` | The main TV guide grid (default) |
-| Search | `/search` | Placeholder — search coming soon |
+| Search | `/search` | Search for programmes by title or with advanced filters |
 | Favourites | `/favourites` | Placeholder — favourites coming soon |
 | Settings | `/settings` | Channel visibility and favourite toggles |
 
@@ -192,7 +192,6 @@ After completing any change, verify that CLAUDE.md (and any other relevant docs)
 
 These were discussed and intentionally excluded from the MVP:
 
-- **Search** — The `/search` tab is a placeholder. Future: search for programmes by title.
 - **Favourite shows** — The `/favourites` tab is a placeholder. Future: track specific show titles and surface when they are scheduled.
 - **Programmes table** — Split airings into a `programmes` table (one row per show) and an `airings` table (one row per broadcast). Deferred because XMLTV lacks a stable universal programme ID; the `prog_id` column (dd_progid) is the future deduplication key when available.
 - **HDHomeRun integration** — Use the device's `http://[ip]/lineup.json` for channel data instead of XMLTV.

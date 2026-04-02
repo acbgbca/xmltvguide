@@ -689,6 +689,116 @@ func TestIntegration_SPAFallback_SettingsReturnsHTML(t *testing.T) {
 	}
 }
 
+// TestIntegration_SearchPage_HTMLElements verifies that the search page
+// contains the required UI elements (input, advanced options, results container).
+func TestIntegration_SearchPage_HTMLElements(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	resp, err := http.Get(srv.URL + "/search")
+	if err != nil {
+		t.Fatalf("GET /search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var buf strings.Builder
+	io.Copy(&buf, resp.Body) //nolint:errcheck
+	body := buf.String()
+
+	// Search input
+	if !strings.Contains(body, `id="searchInput"`) {
+		t.Error("expected search input with id='searchInput'")
+	}
+	if !strings.Contains(body, `Search programmes`) {
+		t.Error("expected placeholder text 'Search programmes...'")
+	}
+
+	// Clear button
+	if !strings.Contains(body, `id="searchClear"`) {
+		t.Error("expected clear button with id='searchClear'")
+	}
+
+	// Advanced options toggle
+	if !strings.Contains(body, `id="advancedToggle"`) {
+		t.Error("expected advanced toggle with id='advancedToggle'")
+	}
+
+	// Advanced options panel
+	if !strings.Contains(body, `id="advancedOptions"`) {
+		t.Error("expected advanced options panel with id='advancedOptions'")
+	}
+
+	// Checkboxes
+	if !strings.Contains(body, `id="searchDescriptions"`) {
+		t.Error("expected 'Search descriptions' checkbox")
+	}
+	if !strings.Contains(body, `id="includePast"`) {
+		t.Error("expected 'Include past airings' checkbox")
+	}
+	if !strings.Contains(body, `id="hideRepeats"`) {
+		t.Error("expected 'Hide repeats' checkbox")
+	}
+
+	// Category chips container
+	if !strings.Contains(body, `id="categoryChips"`) {
+		t.Error("expected category chips container")
+	}
+
+	// Results container
+	if !strings.Contains(body, `id="searchResults"`) {
+		t.Error("expected search results container")
+	}
+
+	// Search hint
+	if !strings.Contains(body, `id="searchHint"`) {
+		t.Error("expected search hint element")
+	}
+}
+
+// TestIntegration_SearchPage_JSFunctions verifies that app.js contains
+// the functions required for the search UI.
+func TestIntegration_SearchPage_JSFunctions(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	resp, err := http.Get(srv.URL + "/app.js")
+	if err != nil {
+		t.Fatalf("GET /app.js: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var buf strings.Builder
+	io.Copy(&buf, resp.Body) //nolint:errcheck
+	body := buf.String()
+
+	for _, fn := range []string{
+		"performSearch",
+		"fetchCategories",
+		"renderSearchResults",
+		"formatSearchDate",
+	} {
+		if !strings.Contains(body, fn) {
+			t.Errorf("expected app.js to define %s", fn)
+		}
+	}
+
+	// Verify state additions
+	if !strings.Contains(body, "state.categories") {
+		t.Error("expected state.categories in app.js")
+	}
+	if !strings.Contains(body, "state.searchResults") {
+		t.Error("expected state.searchResults in app.js")
+	}
+}
+
 // TestIntegration_SPAFallback_APINotCaught verifies that /api/channels
 // still returns JSON and is not caught by the SPA fallback.
 func TestIntegration_SPAFallback_APINotCaught(t *testing.T) {

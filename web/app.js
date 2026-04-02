@@ -23,6 +23,10 @@ const state = {
     prefs:       loadPrefs(),
     activePage:  'guide',           // current page: guide | search | favourites | settings
     nowLineTimer: null,             // interval ID for the now-line updater
+    categories:    [],              // cached from /api/categories
+    searchResults: [],              // current search results
+    searchDebounce: null,           // debounce timer ID
+    selectedCategories: new Set(),  // currently selected category filters
 };
 
 // ── Preferences (localStorage) ───────────────────────────────────────────────
@@ -101,6 +105,13 @@ function navigateToPage(page, { pushState = true } = {}) {
     // Render settings when switching to that page
     if (page === 'settings') {
         renderSettingsPanel();
+    }
+
+    // Load categories when entering search page
+    if (page === 'search') {
+        fetchCategories().then(renderCategoryChips).catch(err => {
+            console.error('Failed to load categories:', err);
+        });
     }
 }
 
@@ -555,6 +566,238 @@ function closeModal() {
     document.getElementById('modalBackdrop').classList.remove('open');
 }
 
+// ── Search ───────────────────────────────────────────────────────────────────
+
+async function fetchCategories() {
+    if (state.categories.length > 0) return state.categories;
+    const res = await fetch('/api/categories');
+    if (!res.ok) throw new Error(`/api/categories returned ${res.status}`);
+    state.categories = await res.json();
+    return state.categories;
+}
+
+async function performSearch() {
+    const input = document.getElementById('searchInput');
+    const q = input.value.trim();
+
+    if (q.length < 2) {
+        state.searchResults = [];
+        document.getElementById('searchResults').innerHTML = '';
+        document.getElementById('searchHint').style.display = q.length > 0 ? '' : '';
+        document.getElementById('searchHint').textContent = 'Enter at least 2 characters to search';
+        return;
+    }
+
+    document.getElementById('searchHint').style.display = 'none';
+    document.getElementById('searchSpinner').classList.add('visible');
+
+    const params = new URLSearchParams({ q });
+    const useAdvanced = document.getElementById('searchDescriptions').checked;
+    const includePast = document.getElementById('includePast').checked;
+    const hideRepeats = document.getElementById('hideRepeats').checked;
+
+    if (useAdvanced) {
+        params.set('mode', 'advanced');
+    }
+    if (includePast) {
+        params.set('include_past', 'true');
+    }
+    if (hideRepeats) {
+        params.set('include_repeats', 'false');
+    }
+    if (state.selectedCategories.size > 0) {
+        // Category filtering requires advanced mode
+        params.set('mode', 'advanced');
+        params.set('categories', [...state.selectedCategories].join(','));
+        if (!includePast) params.delete('include_past');
+    }
+
+    try {
+        const res = await fetch('/api/search?' + params);
+        if (!res.ok) throw new Error(`/api/search returned ${res.status}`);
+        state.searchResults = await res.json();
+        renderSearchResults();
+    } catch (err) {
+        console.error('Search failed:', err);
+        document.getElementById('searchResults').innerHTML =
+            '<div class="search-empty">Search failed. Please try again.</div>';
+    } finally {
+        document.getElementById('searchSpinner').classList.remove('visible');
+    }
+}
+
+function triggerSearch() {
+    clearTimeout(state.searchDebounce);
+    state.searchDebounce = setTimeout(performSearch, 300);
+}
+
+function renderSearchResults() {
+    const container = document.getElementById('searchResults');
+    container.innerHTML = '';
+
+    // Build a channel name lookup from state.channels
+    const channelMap = {};
+    for (const ch of state.channels) {
+        channelMap[ch.id] = ch;
+    }
+
+    // Filter out hidden channels
+    const filtered = [];
+    for (const group of state.searchResults) {
+        const visibleAirings = group.airings.filter(a => !isHidden(a.channelId));
+        if (visibleAirings.length > 0) {
+            filtered.push({ title: group.title, airings: visibleAirings });
+        }
+    }
+
+    if (filtered.length === 0) {
+        container.innerHTML = '<div class="search-empty">No programmes found</div>';
+        return;
+    }
+
+    for (const group of filtered) {
+        const groupEl = document.createElement('div');
+        groupEl.className = 'search-group';
+
+        // Title heading with favourite star
+        const header = document.createElement('div');
+        header.className = 'search-group-header';
+
+        const titleEl = document.createElement('h3');
+        titleEl.className = 'search-group-title';
+        titleEl.textContent = group.title;
+        header.appendChild(titleEl);
+
+        const starBtn = document.createElement('button');
+        starBtn.className = 'search-fav-btn';
+        starBtn.textContent = '\u2606'; // ☆
+        starBtn.title = 'Save as favourite';
+        header.appendChild(starBtn);
+
+        groupEl.appendChild(header);
+
+        // Airings list
+        for (const airing of group.airings) {
+            const airingEl = document.createElement('div');
+            airingEl.className = 'search-airing';
+            airingEl.addEventListener('click', () => openSearchAiringModal(airing, group.title));
+
+            const channelEl = document.createElement('span');
+            channelEl.className = 'search-airing-channel';
+            channelEl.textContent = airing.channelName || airing.channelId;
+            airingEl.appendChild(channelEl);
+
+            const timeEl = document.createElement('span');
+            timeEl.className = 'search-airing-time';
+            timeEl.textContent = formatSearchDate(new Date(airing.startTime));
+            airingEl.appendChild(timeEl);
+
+            if (airing.episodeNumDisplay || airing.subTitle) {
+                const epEl = document.createElement('span');
+                epEl.className = 'search-airing-episode';
+                const parts = [];
+                if (airing.episodeNumDisplay) parts.push(airing.episodeNumDisplay);
+                if (airing.subTitle) parts.push(airing.subTitle);
+                epEl.textContent = parts.join(' - ');
+                airingEl.appendChild(epEl);
+            }
+
+            groupEl.appendChild(airingEl);
+        }
+
+        container.appendChild(groupEl);
+    }
+}
+
+function openSearchAiringModal(airing, title) {
+    // Adapt the search airing shape to the programme shape used by openProgrammeModal
+    const prog = {
+        title:             title,
+        start:             airing.startTime,
+        stop:              airing.stopTime,
+        subTitle:          airing.subTitle,
+        description:       airing.description,
+        categories:        airing.categories,
+        episodeNumDisplay: airing.episodeNumDisplay,
+        isRepeat:          airing.isRepeat,
+        isPremiere:        airing.isPremiere,
+    };
+    openProgrammeModal(prog);
+}
+
+function formatSearchDate(date) {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const weekAhead = new Date(today);
+    weekAhead.setDate(weekAhead.getDate() + 7);
+
+    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+
+    if (dateOnly.getTime() === today.getTime()) {
+        return 'Today ' + time;
+    }
+    if (dateOnly.getTime() === tomorrow.getTime()) {
+        return 'Tomorrow ' + time;
+    }
+    if (dateOnly < weekAhead) {
+        return date.toLocaleDateString([], { weekday: 'short' }) + ' ' + time;
+    }
+    return date.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + time;
+}
+
+function renderCategoryChips() {
+    const container = document.getElementById('categoryChips');
+    container.innerHTML = '';
+    for (const cat of state.categories) {
+        const chip = document.createElement('button');
+        chip.className = 'category-chip' + (state.selectedCategories.has(cat) ? ' selected' : '');
+        chip.textContent = cat;
+        chip.addEventListener('click', () => {
+            if (state.selectedCategories.has(cat)) {
+                state.selectedCategories.delete(cat);
+            } else {
+                state.selectedCategories.add(cat);
+            }
+            chip.classList.toggle('selected');
+            triggerSearch();
+        });
+        container.appendChild(chip);
+    }
+}
+
+function setupSearchPage() {
+    const input = document.getElementById('searchInput');
+    const clearBtn = document.getElementById('searchClear');
+    const advToggle = document.getElementById('advancedToggle');
+    const advPanel = document.getElementById('advancedOptions');
+
+    input.addEventListener('input', triggerSearch);
+
+    clearBtn.addEventListener('click', () => {
+        input.value = '';
+        state.searchResults = [];
+        state.selectedCategories.clear();
+        document.getElementById('searchResults').innerHTML = '';
+        document.getElementById('searchHint').style.display = '';
+        document.getElementById('searchHint').textContent = 'Enter at least 2 characters to search';
+        renderCategoryChips();
+    });
+
+    advToggle.addEventListener('click', () => {
+        const isOpen = advPanel.style.display !== 'none';
+        advPanel.style.display = isOpen ? 'none' : '';
+        advToggle.classList.toggle('open', !isOpen);
+    });
+
+    // Checkboxes re-trigger search
+    document.getElementById('searchDescriptions').addEventListener('change', triggerSearch);
+    document.getElementById('includePast').addEventListener('change', triggerSearch);
+    document.getElementById('hideRepeats').addEventListener('change', triggerSearch);
+}
+
 // ── Initialisation ────────────────────────────────────────────────────────────
 
 async function init() {
@@ -567,6 +810,7 @@ async function init() {
     // Render static parts that don't depend on data
     renderTimeAxis();
     setupScrollSync();
+    setupSearchPage();
 
     document.getElementById('dateDisplay').textContent = formatDateLong(state.currentDate);
 
