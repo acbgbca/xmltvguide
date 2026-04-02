@@ -21,6 +21,8 @@ const state = {
     programmes:  [],
     currentDate: getTodayString(),  // 'YYYY-MM-DD' in browser local time
     prefs:       loadPrefs(),
+    activePage:  'guide',           // current page: guide | search | favourites | settings
+    nowLineTimer: null,             // interval ID for the now-line updater
 };
 
 // ── Preferences (localStorage) ───────────────────────────────────────────────
@@ -55,6 +57,53 @@ function toggleFavourite(channelId) {
     renderSettingsPanel();
 }
 
+// ── Routing ──────────────────────────────────────────────────────────────────
+
+const PAGES = ['guide', 'search', 'favourites', 'settings'];
+
+function getPageFromPath() {
+    const path = window.location.pathname.replace(/^\/+/, '').split('?')[0];
+    if (PAGES.includes(path)) return path;
+    return 'guide';
+}
+
+function navigateToPage(page, { pushState = true } = {}) {
+    if (!PAGES.includes(page)) page = 'guide';
+    state.activePage = page;
+
+    // Update URL
+    if (pushState) {
+        const url = page === 'guide' ? '/' + (window.location.search || '') : '/' + page;
+        history.pushState({}, '', url);
+    }
+
+    // Show/hide pages
+    for (const p of PAGES) {
+        const el = document.getElementById('page-' + p);
+        if (el) el.style.display = p === page ? '' : 'none';
+    }
+
+    // Update bottom nav active state
+    document.querySelectorAll('.bottom-nav-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.page === page);
+    });
+
+    // Top bar is only visible on the Guide tab
+    document.getElementById('topBar').style.display = page === 'guide' ? '' : 'none';
+
+    // Start/stop the now-line timer based on whether Guide is active
+    if (page === 'guide') {
+        startNowLineTimer();
+    } else {
+        stopNowLineTimer();
+    }
+
+    // Render settings when switching to that page
+    if (page === 'settings') {
+        renderSettingsPanel();
+    }
+}
+
 // ── URL state management ──────────────────────────────────────────────────────
 
 function getDateFromURL() {
@@ -66,6 +115,10 @@ function getDateFromURL() {
 
 function setDateInURL(dateStr) {
     const url = new URL(window.location.href);
+    // Ensure we stay on the guide path
+    if (url.pathname !== '/' && url.pathname !== '/guide') {
+        url.pathname = '/';
+    }
     if (dateStr === getTodayString()) {
         url.searchParams.delete('date');
     } else {
@@ -354,6 +407,18 @@ function updateNowLine(midnight) {
     nowLine.style.height  = document.getElementById('programmesInner').style.height;
 }
 
+function startNowLineTimer() {
+    if (state.nowLineTimer) return;
+    state.nowLineTimer = setInterval(() => updateNowLine(dateMidnight(state.currentDate)), 60_000);
+}
+
+function stopNowLineTimer() {
+    if (state.nowLineTimer) {
+        clearInterval(state.nowLineTimer);
+        state.nowLineTimer = null;
+    }
+}
+
 // ── Time axis ─────────────────────────────────────────────────────────────────
 
 function renderTimeAxis() {
@@ -397,17 +462,7 @@ function scrollToNow() {
     progOuter.style.scrollBehavior = '';
 }
 
-// ── Settings panel ────────────────────────────────────────────────────────────
-
-function openSettings() {
-    document.getElementById('settingsPanel').classList.add('open');
-    document.getElementById('settingsOverlay').classList.add('open');
-}
-
-function closeSettings() {
-    document.getElementById('settingsPanel').classList.remove('open');
-    document.getElementById('settingsOverlay').classList.remove('open');
-}
+// ── Settings page ────────────────────────────────────────────────────────────
 
 function renderSettingsPanel() {
     const list = document.getElementById('settingsList');
@@ -503,6 +558,9 @@ function closeModal() {
 // ── Initialisation ────────────────────────────────────────────────────────────
 
 async function init() {
+    // Resolve the active page from the URL path
+    const initialPage = getPageFromPath();
+
     // Resolve the active date from the URL (falls back to today)
     state.currentDate = getDateFromURL();
 
@@ -526,16 +584,27 @@ async function init() {
     });
     document.getElementById('prevDay').addEventListener('click', () => navigateToDate(addDays(state.currentDate, -1)));
     document.getElementById('nextDay').addEventListener('click', () => navigateToDate(addDays(state.currentDate, 1)));
-    document.getElementById('settingsBtn').addEventListener('click', openSettings);
-    document.getElementById('settingsClose').addEventListener('click', closeSettings);
-    document.getElementById('settingsOverlay').addEventListener('click', closeSettings);
     document.getElementById('modalClose').addEventListener('click', closeModal);
     document.getElementById('modalBackdrop').addEventListener('click', (e) => {
         if (e.target === e.currentTarget) closeModal();
     });
 
-    // Sync navigation when the user presses the browser back/forward buttons
-    window.addEventListener('popstate', () => navigateToDate(getDateFromURL(), { pushState: false }));
+    // Bottom nav tab switching
+    document.querySelectorAll('.bottom-nav-btn').forEach(btn => {
+        btn.addEventListener('click', () => navigateToPage(btn.dataset.page));
+    });
+
+    // Handle browser back/forward
+    window.addEventListener('popstate', () => {
+        const page = getPageFromPath();
+        navigateToPage(page, { pushState: false });
+        if (page === 'guide') {
+            navigateToDate(getDateFromURL(), { pushState: false });
+        }
+    });
+
+    // Show the initial page (without pushing state — we're already on this URL)
+    navigateToPage(initialPage, { pushState: false });
 
     // Load data
     try {
@@ -555,11 +624,8 @@ async function init() {
 
         // Small delay lets the browser complete layout before scrolling
         setTimeout(() => {
-            if (state.currentDate === getTodayString()) scrollToNow();
+            if (state.currentDate === getTodayString() && state.activePage === 'guide') scrollToNow();
         }, 50);
-
-        // Keep the now-line position current
-        setInterval(() => updateNowLine(dateMidnight(state.currentDate)), 60_000);
 
     } catch (err) {
         console.error('Failed to load guide data:', err);

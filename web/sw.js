@@ -1,6 +1,9 @@
 const CACHE = 'tvguide-__CACHE_VERSION__';
 const STATIC = ['/', '/index.html', '/style.css', '/app.js', '/manifest.json'];
 
+// SPA routes that should be served from the cached index.html
+const SPA_ROUTES = ['/guide', '/search', '/favourites', '/settings'];
+
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE).then(cache => cache.addAll(STATIC))
@@ -24,6 +27,11 @@ self.addEventListener('fetch', event => {
         // Network-first for API: always try to get fresh data.
         event.respondWith(
             fetch(event.request).catch(() => caches.match(event.request))
+        );
+    } else if (SPA_ROUTES.includes(url.pathname)) {
+        // SPA routes: serve cached index.html (the SPA shell)
+        event.respondWith(
+            caches.match('/index.html').then(cached => cached || fetch('/'))
         );
     } else {
         // Cache-first for static assets.

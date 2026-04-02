@@ -85,7 +85,7 @@ func newIntegrationServer(t *testing.T, xmltvURL string) *httptest.Server {
 	if err != nil {
 		t.Fatalf("fs.Sub: %v", err)
 	}
-	mux.Handle("/", http.FileServer(http.FS(webSub)))
+	mux.Handle("/", spaHandler(http.FS(webSub)))
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(func() {
@@ -492,5 +492,162 @@ func TestIntegration_ChannelIconProxy(t *testing.T) {
 	noIconResp.Body.Close()
 	if noIconResp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404 for ch2 (no icon), got %d", noIconResp.StatusCode)
+	}
+}
+
+// TestIntegration_SPAFallback_SearchReturnsHTML verifies that GET /search
+// returns index.html content (SPA fallback) instead of 404.
+func TestIntegration_SPAFallback_SearchReturnsHTML(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	resp, err := http.Get(srv.URL + "/search")
+	if err != nil {
+		t.Fatalf("GET /search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "text/html") {
+		t.Errorf("Content-Type: expected text/html, got %q", ct)
+	}
+	var buf strings.Builder
+	io.Copy(&buf, resp.Body) //nolint:errcheck
+	if !strings.Contains(buf.String(), "TV Guide") {
+		t.Error("expected body to contain 'TV Guide'")
+	}
+}
+
+// TestIntegration_SPAFallback_FavouritesReturnsHTML verifies that GET /favourites
+// returns index.html content (SPA fallback) instead of 404.
+func TestIntegration_SPAFallback_FavouritesReturnsHTML(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	resp, err := http.Get(srv.URL + "/favourites")
+	if err != nil {
+		t.Fatalf("GET /favourites: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "text/html") {
+		t.Errorf("Content-Type: expected text/html, got %q", ct)
+	}
+	var buf strings.Builder
+	io.Copy(&buf, resp.Body) //nolint:errcheck
+	if !strings.Contains(buf.String(), "TV Guide") {
+		t.Error("expected body to contain 'TV Guide'")
+	}
+}
+
+// TestIntegration_SPAFallback_SettingsReturnsHTML verifies that GET /settings
+// returns index.html content (SPA fallback).
+func TestIntegration_SPAFallback_SettingsReturnsHTML(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	resp, err := http.Get(srv.URL + "/settings")
+	if err != nil {
+		t.Fatalf("GET /settings: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "text/html") {
+		t.Errorf("Content-Type: expected text/html, got %q", ct)
+	}
+}
+
+// TestIntegration_SPAFallback_APINotCaught verifies that /api/channels
+// still returns JSON and is not caught by the SPA fallback.
+func TestIntegration_SPAFallback_APINotCaught(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	resp, err := http.Get(srv.URL + "/api/channels")
+	if err != nil {
+		t.Fatalf("GET /api/channels: %v", err)
+	}
+	defer resp.Body.Close()
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "application/json") {
+		t.Errorf("Content-Type: expected application/json, got %q", ct)
+	}
+}
+
+// TestIntegration_SPAFallback_StaticFileNotCaught verifies that /style.css
+// still returns the CSS file and is not caught by the SPA fallback.
+func TestIntegration_SPAFallback_StaticFileNotCaught(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	resp, err := http.Get(srv.URL + "/style.css")
+	if err != nil {
+		t.Fatalf("GET /style.css: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "css") {
+		t.Errorf("Content-Type: expected css, got %q", ct)
+	}
+}
+
+// TestIntegration_SPAFallback_GuidePathReturnsHTML verifies that GET /guide
+// returns index.html content (SPA fallback).
+func TestIntegration_SPAFallback_GuidePathReturnsHTML(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	resp, err := http.Get(srv.URL + "/guide?date=2026-04-01")
+	if err != nil {
+		t.Fatalf("GET /guide: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "text/html") {
+		t.Errorf("Content-Type: expected text/html, got %q", ct)
 	}
 }
