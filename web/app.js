@@ -27,6 +27,9 @@ const state = {
     searchResults: [],              // current search results
     searchDebounce: null,           // debounce timer ID
     selectedCategories: new Set(),  // currently selected category filters
+    favouriteSearches: loadFavouriteSearches(),  // saved search favourites from localStorage
+    favouriteResults: {},           // map of favourite ID → search results
+    favouriteResultsTime: 0,       // timestamp when favourites were last fetched
 };
 
 // ── Preferences (localStorage) ───────────────────────────────────────────────
@@ -59,6 +62,111 @@ function toggleFavourite(channelId) {
     savePrefs();
     renderGuide();
     renderSettingsPanel();
+}
+
+// ── Favourite searches (localStorage) ────────────────────────────────────────
+
+function loadFavouriteSearches() {
+    try {
+        const raw = localStorage.getItem('tvguide-favourites');
+        return raw ? JSON.parse(raw) : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveFavouriteSearches() {
+    localStorage.setItem('tvguide-favourites', JSON.stringify(state.favouriteSearches));
+}
+
+function addFavouriteSearch(searchConfig) {
+    const fav = {
+        id: crypto.randomUUID(),
+        name: searchConfig.query,
+        query: searchConfig.query,
+        mode: searchConfig.mode || 'simple',
+    };
+    if (fav.mode === 'advanced') {
+        if (searchConfig.categories && searchConfig.categories.length > 0) {
+            fav.categories = searchConfig.categories;
+        }
+        if (searchConfig.includePast) fav.includePast = true;
+        if (searchConfig.includeRepeats === false) fav.includeRepeats = false;
+    }
+    state.favouriteSearches.push(fav);
+    saveFavouriteSearches();
+    return fav;
+}
+
+function removeFavouriteSearch(id) {
+    state.favouriteSearches = state.favouriteSearches.filter(f => f.id !== id);
+    delete state.favouriteResults[id];
+    saveFavouriteSearches();
+}
+
+function findMatchingFavourite(query, mode, categories) {
+    return state.favouriteSearches.find(f => {
+        if (f.query !== query) return false;
+        if (f.mode !== mode) return false;
+        if (mode === 'advanced') {
+            const favCats = (f.categories || []).slice().sort().join(',');
+            const curCats = (categories || []).slice().sort().join(',');
+            if (favCats !== curCats) return false;
+        }
+        return true;
+    });
+}
+
+function getCurrentSearchConfig() {
+    const q = document.getElementById('searchInput').value.trim();
+    const useAdvanced = document.getElementById('searchDescriptions').checked;
+    const includePast = document.getElementById('includePast').checked;
+    const hideRepeats = document.getElementById('hideRepeats').checked;
+    const categories = [...state.selectedCategories];
+
+    const hasAdvanced = useAdvanced || categories.length > 0;
+    return {
+        query: q,
+        mode: hasAdvanced ? 'advanced' : 'simple',
+        categories: categories,
+        includePast: includePast,
+        includeRepeats: !hideRepeats,
+    };
+}
+
+function editFavouriteSearch(id) {
+    const fav = state.favouriteSearches.find(f => f.id === id);
+    if (!fav) return;
+
+    // Navigate to search page
+    navigateToPage('search');
+
+    // Pre-fill search input
+    document.getElementById('searchInput').value = fav.query;
+
+    // Pre-fill advanced options
+    const isAdvanced = fav.mode === 'advanced';
+    document.getElementById('searchDescriptions').checked = isAdvanced;
+    document.getElementById('includePast').checked = fav.includePast || false;
+    document.getElementById('hideRepeats').checked = fav.includeRepeats === false;
+
+    // Pre-fill categories
+    state.selectedCategories.clear();
+    if (fav.categories) {
+        for (const cat of fav.categories) {
+            state.selectedCategories.add(cat);
+        }
+    }
+
+    // Show advanced panel if needed
+    if (isAdvanced || (fav.categories && fav.categories.length > 0)) {
+        document.getElementById('advancedOptions').style.display = '';
+        document.getElementById('advancedToggle').classList.add('open');
+    }
+
+    // Render category chips and trigger search
+    fetchCategories().then(renderCategoryChips).catch(() => {});
+    triggerSearch();
 }
 
 // ── Routing ──────────────────────────────────────────────────────────────────
@@ -112,6 +220,11 @@ function navigateToPage(page, { pushState = true } = {}) {
         fetchCategories().then(renderCategoryChips).catch(err => {
             console.error('Failed to load categories:', err);
         });
+    }
+
+    // Load favourites when entering favourites page
+    if (page === 'favourites') {
+        renderFavouritesPage();
     }
 }
 
@@ -670,8 +783,27 @@ function renderSearchResults() {
 
         const starBtn = document.createElement('button');
         starBtn.className = 'search-fav-btn';
-        starBtn.textContent = '\u2606'; // ☆
-        starBtn.title = 'Save as favourite';
+        const config = getCurrentSearchConfig();
+        const existingFav = findMatchingFavourite(config.query, config.mode, config.categories);
+        starBtn.textContent = existingFav ? '\u2605' : '\u2606'; // ★ or ☆
+        starBtn.classList.toggle('active', !!existingFav);
+        starBtn.title = existingFav ? 'Remove from favourites' : 'Save as favourite';
+        starBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const cfg = getCurrentSearchConfig();
+            const match = findMatchingFavourite(cfg.query, cfg.mode, cfg.categories);
+            if (match) {
+                removeFavouriteSearch(match.id);
+                starBtn.textContent = '\u2606';
+                starBtn.classList.remove('active');
+                starBtn.title = 'Save as favourite';
+            } else {
+                addFavouriteSearch(cfg);
+                starBtn.textContent = '\u2605';
+                starBtn.classList.add('active');
+                starBtn.title = 'Remove from favourites';
+            }
+        });
         header.appendChild(starBtn);
 
         groupEl.appendChild(header);
@@ -796,6 +928,189 @@ function setupSearchPage() {
     document.getElementById('searchDescriptions').addEventListener('change', triggerSearch);
     document.getElementById('includePast').addEventListener('change', triggerSearch);
     document.getElementById('hideRepeats').addEventListener('change', triggerSearch);
+}
+
+// ── Favourites page ─────────────────────────────────────────────────────────
+
+function renderFavouritesPage() {
+    const list = document.getElementById('favouritesList');
+    const loading = document.getElementById('favouritesLoading');
+    const empty = document.getElementById('favouritesEmpty');
+
+    list.innerHTML = '';
+
+    if (state.favouriteSearches.length === 0) {
+        loading.style.display = 'none';
+        empty.style.display = '';
+        return;
+    }
+
+    empty.style.display = 'none';
+
+    // If results are fresh (< 5 min), reuse them
+    const cacheAge = Date.now() - state.favouriteResultsTime;
+    if (cacheAge < 5 * 60 * 1000 && Object.keys(state.favouriteResults).length > 0) {
+        loading.style.display = 'none';
+        renderFavouriteResults();
+        return;
+    }
+
+    loading.style.display = '';
+    executeFavouriteSearches();
+}
+
+async function executeFavouriteSearches() {
+    const loading = document.getElementById('favouritesLoading');
+    state.favouriteResults = {};
+
+    const promises = state.favouriteSearches.map(async (fav) => {
+        const params = new URLSearchParams({ q: fav.query });
+        // Always exclude past on favourites page
+        if (fav.mode === 'advanced') {
+            params.set('mode', 'advanced');
+            if (fav.categories && fav.categories.length > 0) {
+                params.set('categories', fav.categories.join(','));
+            }
+        }
+        if (fav.includeRepeats === false) {
+            params.set('include_repeats', 'false');
+        }
+
+        try {
+            const res = await fetch('/api/search?' + params);
+            if (!res.ok) throw new Error(`/api/search returned ${res.status}`);
+            const results = await res.json();
+            state.favouriteResults[fav.id] = results;
+            // Progressive rendering: update after each result
+            renderFavouriteResults();
+        } catch (err) {
+            console.error(`Favourite search "${fav.name}" failed:`, err);
+            state.favouriteResults[fav.id] = null; // mark as failed
+        }
+    });
+
+    await Promise.all(promises);
+    state.favouriteResultsTime = Date.now();
+    loading.style.display = 'none';
+    renderFavouriteResults();
+}
+
+function renderFavouriteResults() {
+    const list = document.getElementById('favouritesList');
+    list.innerHTML = '';
+
+    const channelMap = {};
+    for (const ch of state.channels) {
+        channelMap[ch.id] = ch;
+    }
+
+    for (const fav of state.favouriteSearches) {
+        const groupEl = document.createElement('div');
+        groupEl.className = 'fav-group';
+
+        // Header: star + name + edit + delete
+        const header = document.createElement('div');
+        header.className = 'fav-group-header';
+
+        const star = document.createElement('span');
+        star.className = 'fav-group-star';
+        star.textContent = '\u2605'; // ★
+        header.appendChild(star);
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'fav-group-name';
+        nameEl.textContent = '"' + fav.name + '"';
+        header.appendChild(nameEl);
+
+        const actions = document.createElement('div');
+        actions.className = 'fav-group-actions';
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'fav-action-btn';
+        editBtn.textContent = 'Edit';
+        editBtn.title = 'Edit this search';
+        editBtn.addEventListener('click', () => editFavouriteSearch(fav.id));
+        actions.appendChild(editBtn);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'fav-action-btn fav-delete-btn';
+        deleteBtn.textContent = '\u2715'; // ✕
+        deleteBtn.title = 'Remove favourite';
+        deleteBtn.addEventListener('click', () => {
+            if (confirm('Remove "' + fav.name + '" from favourites?')) {
+                removeFavouriteSearch(fav.id);
+                renderFavouritesPage();
+            }
+        });
+        actions.appendChild(deleteBtn);
+
+        header.appendChild(actions);
+        groupEl.appendChild(header);
+
+        // Results
+        const results = state.favouriteResults[fav.id];
+        if (results === undefined) {
+            // Still loading
+            const loadingEl = document.createElement('div');
+            loadingEl.className = 'fav-loading';
+            loadingEl.innerHTML = '<div class="loading-spinner fav-spinner"></div>';
+            groupEl.appendChild(loadingEl);
+        } else if (results === null) {
+            // Failed
+            const errorEl = document.createElement('div');
+            errorEl.className = 'fav-no-results';
+            errorEl.textContent = 'Search failed. Try again later.';
+            groupEl.appendChild(errorEl);
+        } else {
+            // Filter hidden channels
+            const filtered = [];
+            for (const group of results) {
+                const visibleAirings = group.airings.filter(a => !isHidden(a.channelId));
+                if (visibleAirings.length > 0) {
+                    filtered.push({ title: group.title, airings: visibleAirings });
+                }
+            }
+
+            if (filtered.length === 0) {
+                const noResults = document.createElement('div');
+                noResults.className = 'fav-no-results';
+                noResults.textContent = 'No upcoming airings';
+                groupEl.appendChild(noResults);
+            } else {
+                for (const titleGroup of filtered) {
+                    const titleEl = document.createElement('div');
+                    titleEl.className = 'fav-title-group';
+
+                    const titleHeader = document.createElement('div');
+                    titleHeader.className = 'fav-title-name';
+                    titleHeader.textContent = titleGroup.title;
+                    titleEl.appendChild(titleHeader);
+
+                    for (const airing of titleGroup.airings) {
+                        const airingEl = document.createElement('div');
+                        airingEl.className = 'fav-airing';
+                        airingEl.addEventListener('click', () => openSearchAiringModal(airing, titleGroup.title));
+
+                        const channelEl = document.createElement('span');
+                        channelEl.className = 'fav-airing-channel';
+                        channelEl.textContent = airing.channelName || airing.channelId;
+                        airingEl.appendChild(channelEl);
+
+                        const timeEl = document.createElement('span');
+                        timeEl.className = 'fav-airing-time';
+                        timeEl.textContent = formatSearchDate(new Date(airing.startTime));
+                        airingEl.appendChild(timeEl);
+
+                        titleEl.appendChild(airingEl);
+                    }
+
+                    groupEl.appendChild(titleEl);
+                }
+            }
+        }
+
+        list.appendChild(groupEl);
+    }
 }
 
 // ── Initialisation ────────────────────────────────────────────────────────────

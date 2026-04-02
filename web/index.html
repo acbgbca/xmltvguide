@@ -87,11 +87,17 @@
         </div>
     </div>
 
-    <!-- Page: Favourites (placeholder) -->
+    <!-- Page: Favourites -->
     <div class="page" id="page-favourites" style="display:none">
-        <div class="page-content">
+        <div class="page-content favourites-page">
             <h1>Favourites</h1>
-            <p class="page-placeholder">Favourites coming soon.</p>
+            <div class="favourites-loading" id="favouritesLoading">
+                <div class="loading-spinner"></div>
+            </div>
+            <div class="favourites-empty" id="favouritesEmpty" style="display:none">
+                No favourite searches saved. Use the Search tab to find shows and save them.
+            </div>
+            <div class="favourites-list" id="favouritesList"></div>
         </div>
     </div>
 

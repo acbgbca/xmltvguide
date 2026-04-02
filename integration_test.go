@@ -846,6 +846,100 @@ func TestIntegration_SPAFallback_StaticFileNotCaught(t *testing.T) {
 	}
 }
 
+// TestIntegration_FavouritesPage_HTMLElements verifies that the favourites page
+// contains the required UI elements for the saved-search favourites feature.
+func TestIntegration_FavouritesPage_HTMLElements(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	resp, err := http.Get(srv.URL + "/favourites")
+	if err != nil {
+		t.Fatalf("GET /favourites: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var buf strings.Builder
+	io.Copy(&buf, resp.Body) //nolint:errcheck
+	body := buf.String()
+
+	// Favourites page container
+	if !strings.Contains(body, `id="page-favourites"`) {
+		t.Error("expected favourites page with id='page-favourites'")
+	}
+
+	// Favourites list container (where results are rendered)
+	if !strings.Contains(body, `id="favouritesList"`) {
+		t.Error("expected favourites list container with id='favouritesList'")
+	}
+
+	// Loading spinner for favourites
+	if !strings.Contains(body, `id="favouritesLoading"`) {
+		t.Error("expected favourites loading indicator with id='favouritesLoading'")
+	}
+
+	// Empty state message
+	if !strings.Contains(body, `id="favouritesEmpty"`) {
+		t.Error("expected favourites empty state with id='favouritesEmpty'")
+	}
+
+	// Should NOT contain the old placeholder text
+	if strings.Contains(body, "Favourites coming soon") {
+		t.Error("expected old placeholder 'Favourites coming soon' to be removed")
+	}
+}
+
+// TestIntegration_FavouritesPage_JSFunctions verifies that app.js contains
+// the functions required for the favourites feature.
+func TestIntegration_FavouritesPage_JSFunctions(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	resp, err := http.Get(srv.URL + "/app.js")
+	if err != nil {
+		t.Fatalf("GET /app.js: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var buf strings.Builder
+	io.Copy(&buf, resp.Body) //nolint:errcheck
+	body := buf.String()
+
+	for _, fn := range []string{
+		"loadFavouriteSearches",
+		"saveFavouriteSearches",
+		"addFavouriteSearch",
+		"removeFavouriteSearch",
+		"renderFavouritesPage",
+		"executeFavouriteSearches",
+		"editFavouriteSearch",
+	} {
+		if !strings.Contains(body, fn) {
+			t.Errorf("expected app.js to define %s", fn)
+		}
+	}
+
+	// Verify state additions
+	if !strings.Contains(body, "state.favouriteSearches") {
+		t.Error("expected state.favouriteSearches in app.js")
+	}
+	if !strings.Contains(body, "state.favouriteResults") {
+		t.Error("expected state.favouriteResults in app.js")
+	}
+
+	// Verify localStorage key
+	if !strings.Contains(body, "tvguide-favourites") {
+		t.Error("expected 'tvguide-favourites' localStorage key in app.js")
+	}
+}
+
 // TestIntegration_SPAFallback_GuidePathReturnsHTML verifies that GET /guide
 // returns index.html content (SPA fallback).
 func TestIntegration_SPAFallback_GuidePathReturnsHTML(t *testing.T) {

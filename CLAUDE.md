@@ -131,6 +131,34 @@ Stored client-side in `localStorage` under the key `tvguide-prefs`:
 
 Favourites appear at the top of the guide. The remaining visible channels are sorted by `lcn` (logical channel number) when present; channels without an `lcn` fall back to source order. Hidden channels are excluded from the guide view entirely. Both are managed via the Settings tab (bottom navigation).
 
+## Favourite searches
+
+Saved search queries stored client-side in `localStorage` under the key `tvguide-favourites`:
+
+```json
+[
+  {
+    "id": "uuid",
+    "name": "The Block",
+    "query": "The Block",
+    "mode": "simple"
+  },
+  {
+    "id": "uuid",
+    "name": "Cricket",
+    "query": "Cricket",
+    "mode": "advanced",
+    "categories": ["Sport"],
+    "includePast": true,
+    "includeRepeats": false
+  }
+]
+```
+
+Favourites are **saved searches**, not individual show titles. Each favourite stores the full search configuration (query, mode, categories, etc.). On the Favourites page, all saved searches are executed in parallel via `/api/search` (always with `include_past=false`). Results are grouped by favourite → title → airings. Results are cached in memory for 5 minutes.
+
+The star button on Search result groups saves/removes the current search query as a favourite. A filled star (★) indicates the current query matches an existing favourite.
+
 ## Frontend navigation
 
 The app uses a bottom navigation bar (iOS-style) with four tabs:
@@ -139,7 +167,7 @@ The app uses a bottom navigation bar (iOS-style) with four tabs:
 |---|---|---|
 | Guide | `/` or `/guide` | The main TV guide grid (default) |
 | Search | `/search` | Search for programmes by title or with advanced filters |
-| Favourites | `/favourites` | Placeholder — favourites coming soon |
+| Favourites | `/favourites` | Saved search favourites — shows upcoming airings for all saved searches |
 | Settings | `/settings` | Channel visibility and favourite toggles |
 
 Navigation uses the **History API** (`pushState`/`popstate`) for client-side routing without full page reloads. The top bar (date display + prev/next day buttons) is only visible on the Guide tab. The Guide tab preserves its `?date=YYYY-MM-DD` query parameter behaviour.
@@ -192,7 +220,6 @@ After completing any change, verify that CLAUDE.md (and any other relevant docs)
 
 These were discussed and intentionally excluded from the MVP:
 
-- **Favourite shows** — The `/favourites` tab is a placeholder. Future: track specific show titles and surface when they are scheduled.
 - **Programmes table** — Split airings into a `programmes` table (one row per show) and an `airings` table (one row per broadcast). Deferred because XMLTV lacks a stable universal programme ID; the `prog_id` column (dd_progid) is the future deduplication key when available.
 - **HDHomeRun integration** — Use the device's `http://[ip]/lineup.json` for channel data instead of XMLTV.
 - **Notifications** — Alert when a tracked show is about to start.
