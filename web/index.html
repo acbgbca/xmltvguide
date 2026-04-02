@@ -62,11 +62,28 @@
         </div>
     </div>
 
-    <!-- Page: Search (placeholder) -->
+    <!-- Page: Search -->
     <div class="page" id="page-search" style="display:none">
-        <div class="page-content">
-            <h1>Search</h1>
-            <p class="page-placeholder">Search coming soon.</p>
+        <div class="page-content search-page">
+            <div class="search-input-wrap">
+                <input type="text" id="searchInput" placeholder="Search programmes..." autocomplete="off" autocorrect="off" spellcheck="false">
+                <button class="search-clear-btn" id="searchClear" title="Clear search">&#10005;</button>
+                <div class="search-spinner" id="searchSpinner"></div>
+            </div>
+
+            <button class="advanced-toggle" id="advancedToggle">Advanced options</button>
+            <div class="advanced-options" id="advancedOptions" style="display:none">
+                <label class="search-checkbox"><input type="checkbox" id="searchDescriptions"> Search descriptions</label>
+                <label class="search-checkbox"><input type="checkbox" id="includePast"> Include past airings</label>
+                <label class="search-checkbox"><input type="checkbox" id="hideRepeats"> Hide repeats</label>
+                <div class="category-chips-wrap">
+                    <div class="category-chips-label">Categories</div>
+                    <div class="category-chips" id="categoryChips"></div>
+                </div>
+            </div>
+
+            <div class="search-hint" id="searchHint">Enter at least 2 characters to search</div>
+            <div class="search-results" id="searchResults"></div>
         </div>
     </div>
 
