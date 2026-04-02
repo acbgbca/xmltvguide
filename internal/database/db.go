@@ -120,6 +120,10 @@ var migrations = []struct {
 }{
 	{1, `ALTER TABLE channels ADD COLUMN lcn INTEGER`},
 	{2, `ALTER TABLE channels ADD COLUMN icon_url TEXT`},
+	{3, `CREATE VIRTUAL TABLE IF NOT EXISTS airings_fts USING fts5(
+		channel_id, start_time, title, sub_title, description
+	)`},
+	{4, `CREATE TABLE IF NOT EXISTS categories (name TEXT PRIMARY KEY)`},
 }
 
 func applyMigrations(db *sql.DB) error {
@@ -166,8 +170,22 @@ func migrationAlreadyApplied(db *sql.DB, version int) (bool, error) {
 		return columnExists(db, "channels", "lcn")
 	case 2:
 		return columnExists(db, "channels", "icon_url")
+	case 3:
+		return tableExists(db, "airings_fts")
+	case 4:
+		return tableExists(db, "categories")
 	}
 	return false, nil
+}
+
+// tableExists reports whether a table (or virtual table) exists in the database.
+func tableExists(db *sql.DB, table string) (bool, error) {
+	var count int
+	err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name = ?`, table).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // columnExists reports whether the named column is present in the given table.
@@ -376,6 +394,30 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 	cutoff := time.Now().AddDate(0, 0, -d.retentionDays).UTC().Format(time.RFC3339)
 	if _, err := tx.Exec(`DELETE FROM airings WHERE stop_time < ?`, cutoff); err != nil {
 		return fmt.Errorf("pruning airings: %w", err)
+	}
+
+	// Rebuild FTS index: clear and repopulate from airings table.
+	if _, err := tx.Exec(`DELETE FROM airings_fts`); err != nil {
+		return fmt.Errorf("clearing FTS index: %w", err)
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO airings_fts (channel_id, start_time, title, sub_title, description)
+		SELECT channel_id, start_time, title, COALESCE(sub_title, ''), COALESCE(description, '')
+		FROM airings
+	`); err != nil {
+		return fmt.Errorf("populating FTS index: %w", err)
+	}
+
+	// Rebuild categories table from distinct values in airings.categories JSON arrays.
+	if _, err := tx.Exec(`DELETE FROM categories`); err != nil {
+		return fmt.Errorf("clearing categories: %w", err)
+	}
+	if _, err := tx.Exec(`
+		INSERT OR IGNORE INTO categories (name)
+		SELECT DISTINCT value FROM airings, json_each(airings.categories)
+		WHERE value IS NOT NULL AND value != ''
+	`); err != nil {
+		return fmt.Errorf("populating categories: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -713,4 +755,134 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// ExecRaw executes a raw SQL statement against the database.
+// Exposed for testing (e.g. verifying FTS5 availability).
+func (d *DB) ExecRaw(query string) (sql.Result, error) {
+	return d.db.Exec(query)
+}
+
+// SearchSimple performs an FTS5 search on the title column only.
+// Returns future airings ordered by relevance then start time.
+// If includeRepeats is false, repeats are excluded.
+func (d *DB) SearchSimple(query string, includeRepeats bool) ([]Airing, error) {
+	now := time.Now().UTC().Format(time.RFC3339)
+	q := `
+		SELECT
+			a.channel_id, a.start_time, a.stop_time,
+			a.title, COALESCE(a.sub_title, ''), COALESCE(a.description, ''),
+			COALESCE(a.categories, '[]'),
+			COALESCE(a.episode_num, ''), COALESCE(a.episode_num_display, ''),
+			COALESCE(a.prog_id, ''), COALESCE(a.star_rating, ''),
+			COALESCE(a.content_rating, ''), COALESCE(a.year, ''),
+			COALESCE(a.icon, ''), COALESCE(a.country, ''),
+			a.is_repeat, a.is_premiere
+		FROM airings_fts f
+		JOIN airings a ON a.channel_id = f.channel_id AND a.start_time = f.start_time
+		WHERE f.title MATCH ?
+		  AND a.start_time > ?`
+	args := []any{query, now}
+
+	if !includeRepeats {
+		q += ` AND a.is_repeat = 0`
+	}
+	q += ` ORDER BY f.rank, a.start_time`
+
+	return d.scanAirings(q, args...)
+}
+
+// SearchAdvanced performs an FTS5 search on title, sub_title, and description.
+// If categories is non-empty, only airings with at least one matching category are returned.
+// If includePast is false, only future airings are returned.
+// If includeRepeats is false, repeats are excluded.
+func (d *DB) SearchAdvanced(query string, categories []string, includePast bool, includeRepeats bool) ([]Airing, error) {
+	q := `
+		SELECT
+			a.channel_id, a.start_time, a.stop_time,
+			a.title, COALESCE(a.sub_title, ''), COALESCE(a.description, ''),
+			COALESCE(a.categories, '[]'),
+			COALESCE(a.episode_num, ''), COALESCE(a.episode_num_display, ''),
+			COALESCE(a.prog_id, ''), COALESCE(a.star_rating, ''),
+			COALESCE(a.content_rating, ''), COALESCE(a.year, ''),
+			COALESCE(a.icon, ''), COALESCE(a.country, ''),
+			a.is_repeat, a.is_premiere
+		FROM airings_fts f
+		JOIN airings a ON a.channel_id = f.channel_id AND a.start_time = f.start_time
+		WHERE airings_fts MATCH ?`
+	args := []any{query}
+
+	if !includePast {
+		now := time.Now().UTC().Format(time.RFC3339)
+		q += ` AND a.start_time > ?`
+		args = append(args, now)
+	}
+	if !includeRepeats {
+		q += ` AND a.is_repeat = 0`
+	}
+	if len(categories) > 0 {
+		placeholders := make([]string, len(categories))
+		for i, c := range categories {
+			placeholders[i] = "?"
+			args = append(args, c)
+		}
+		q += ` AND EXISTS (SELECT 1 FROM json_each(a.categories) WHERE value IN (` + strings.Join(placeholders, ",") + `))`
+	}
+	q += ` ORDER BY f.rank, a.start_time`
+
+	return d.scanAirings(q, args...)
+}
+
+// GetCategories returns all distinct categories sorted alphabetically.
+func (d *DB) GetCategories() ([]string, error) {
+	rows, err := d.db.Query(`SELECT name FROM categories ORDER BY name`)
+	if err != nil {
+		return nil, fmt.Errorf("querying categories: %w", err)
+	}
+	defer rows.Close()
+
+	cats := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("scanning category: %w", err)
+		}
+		cats = append(cats, name)
+	}
+	return cats, rows.Err()
+}
+
+// scanAirings executes a query and scans results into Airing slices.
+func (d *DB) scanAirings(query string, args ...any) ([]Airing, error) {
+	rows, err := d.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying airings: %w", err)
+	}
+	defer rows.Close()
+
+	var airings []Airing
+	for rows.Next() {
+		var a Airing
+		var startStr, stopStr, catsJSON string
+		var isRepeat, isPremiere int
+
+		if err := rows.Scan(
+			&a.ChannelID, &startStr, &stopStr,
+			&a.Title, &a.SubTitle, &a.Description, &catsJSON,
+			&a.EpisodeNum, &a.EpisodeNumDisplay, &a.ProgID,
+			&a.StarRating, &a.ContentRating, &a.Year, &a.Icon, &a.Country,
+			&isRepeat, &isPremiere,
+		); err != nil {
+			return nil, fmt.Errorf("scanning airing: %w", err)
+		}
+
+		a.Start, _ = time.Parse(time.RFC3339, startStr)
+		a.Stop, _ = time.Parse(time.RFC3339, stopStr)
+		json.Unmarshal([]byte(catsJSON), &a.Categories)
+		a.IsRepeat = isRepeat == 1
+		a.IsPremiere = isPremiere == 1
+
+		airings = append(airings, a)
+	}
+	return airings, rows.Err()
 }

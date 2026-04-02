@@ -90,11 +90,20 @@ airings (
   star_rating, content_rating, year, icon, country,
   is_repeat, is_premiere
 )
+
+airings_fts  -- FTS5 virtual table for full-text search
+  (channel_id, start_time, title, sub_title, description)
+  -- Rebuilt on each Refresh(): cleared and repopulated from airings table
+  -- Used by SearchSimple (title only) and SearchAdvanced (all text columns)
+
+categories (name TEXT PRIMARY KEY)
+  -- Distinct category values extracted from airings.categories JSON arrays
+  -- Rebuilt on each Refresh()
 ```
 
 ### Refresh strategy
 
-On each poll: upsert channels → `INSERT OR REPLACE` airings (composite PK handles duplicates) → prune airings older than `RETENTION_DAYS`. All in one transaction.
+On each poll: upsert channels → `INSERT OR REPLACE` airings (composite PK handles duplicates) → prune airings older than `RETENTION_DAYS` → rebuild FTS index → rebuild categories table. All in one transaction.
 
 Historical airings not present in the latest XMLTV file are preserved until they age out.
 
