@@ -155,6 +155,14 @@ func spaHandler(fsys http.FileSystem) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Try to open the requested file. If it exists, serve it normally.
 		path := r.URL.Path
+
+		// Prevent the browser from caching the service worker script itself.
+		// The browser checks for byte-level changes on each SW update check;
+		// stale HTTP caching of sw.js defeats the entire versioning scheme.
+		if path == "/sw.js" {
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		}
+
 		if path == "/" {
 			fileServer.ServeHTTP(w, r)
 			return
