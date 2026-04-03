@@ -907,6 +907,161 @@ func TestSearch_AiringsOrderedByStartTime(t *testing.T) {
 	t.Error("expected 'Cricket Live' group in results")
 }
 
+func TestSearch_TodayFilter_ExcludesTomorrow(t *testing.T) {
+	dir := t.TempDir()
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", filepath.Join(dir, "images"), &http.Client{})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	now := time.Now()
+	tomorrow := time.Date(now.Year(), now.Month(), now.Day()+1, 10, 0, 0, 0, time.Local)
+	tv := &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{ID: "ch1", DisplayNames: []xmltv.Name{{Value: "ABC"}}},
+		},
+		Programmes: []xmltv.Programme{
+			{
+				Start:   xmltv.XmltvTime{Time: now.Add(1 * time.Hour)},
+				Stop:    xmltv.XmltvTime{Time: now.Add(2 * time.Hour)},
+				Channel: "ch1",
+				Titles:  []xmltv.Name{{Value: "Today Show"}},
+			},
+			{
+				Start:   xmltv.XmltvTime{Time: tomorrow},
+				Stop:    xmltv.XmltvTime{Time: tomorrow.Add(1 * time.Hour)},
+				Channel: "ch1",
+				Titles:  []xmltv.Name{{Value: "Tomorrow Show"}},
+			},
+		},
+	}
+
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	handler := api.New(db)
+	handler.RegisterRoutes(mux)
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(func() {
+		srv.Close()
+		db.Close()
+	})
+
+	// With today=true, only today's airing should be returned
+	resp, err := http.Get(srv.URL + "/api/search?q=Show&today=true")
+	if err != nil {
+		t.Fatalf("GET /api/search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var result []struct {
+		Title   string `json:"title"`
+		Airings []struct {
+			StartTime time.Time `json:"startTime"`
+		} `json:"airings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	titles := map[string]bool{}
+	for _, g := range result {
+		titles[g.Title] = true
+	}
+	if !titles["Today Show"] {
+		t.Error("expected 'Today Show' in results with today=true")
+	}
+	if titles["Tomorrow Show"] {
+		t.Error("'Tomorrow Show' should be excluded with today=true")
+	}
+
+	// Without today filter, both should be returned
+	resp2, err := http.Get(srv.URL + "/api/search?q=Show")
+	if err != nil {
+		t.Fatalf("GET /api/search: %v", err)
+	}
+	defer resp2.Body.Close()
+
+	var result2 []struct {
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(resp2.Body).Decode(&result2); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	titles2 := map[string]bool{}
+	for _, g := range result2 {
+		titles2[g.Title] = true
+	}
+	if !titles2["Tomorrow Show"] {
+		t.Error("expected 'Tomorrow Show' in results without today filter")
+	}
+}
+
+func TestSearch_TodayFilter_AdvancedMode(t *testing.T) {
+	dir := t.TempDir()
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", filepath.Join(dir, "images"), &http.Client{})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	now := time.Now()
+	tomorrow := time.Date(now.Year(), now.Month(), now.Day()+1, 10, 0, 0, 0, time.Local)
+	tv := &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{ID: "ch1", DisplayNames: []xmltv.Name{{Value: "ABC"}}},
+		},
+		Programmes: []xmltv.Programme{
+			{
+				Start:      xmltv.XmltvTime{Time: now.Add(1 * time.Hour)},
+				Stop:       xmltv.XmltvTime{Time: now.Add(2 * time.Hour)},
+				Channel:    "ch1",
+				Titles:     []xmltv.Name{{Value: "Today Match"}},
+				Categories: []xmltv.Name{{Value: "Sport"}},
+			},
+			{
+				Start:      xmltv.XmltvTime{Time: tomorrow},
+				Stop:       xmltv.XmltvTime{Time: tomorrow.Add(1 * time.Hour)},
+				Channel:    "ch1",
+				Titles:     []xmltv.Name{{Value: "Tomorrow Match"}},
+				Categories: []xmltv.Name{{Value: "Sport"}},
+			},
+		},
+	}
+
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	handler := api.New(db)
+	handler.RegisterRoutes(mux)
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(func() {
+		srv.Close()
+		db.Close()
+	})
+
+	resp, err := http.Get(srv.URL + "/api/search?q=Match&mode=advanced&today=true")
+	if err != nil {
+		t.Fatalf("GET /api/search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "Today Match") {
+		t.Error("expected 'Today Match' in advanced search with today=true")
+	}
+	if strings.Contains(bodyStr, "Tomorrow Match") {
+		t.Error("'Tomorrow Match' should be excluded in advanced search with today=true")
+	}
+}
+
 func TestCategories_ContentType(t *testing.T) {
 	srv := newSearchSeededServer(t)
 	resp, err := http.Get(srv.URL + "/api/categories")
