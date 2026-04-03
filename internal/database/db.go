@@ -773,7 +773,7 @@ func (d *DB) ExecRaw(query string) (sql.Result, error) {
 // SearchSimple performs an FTS5 search on the title column only.
 // Returns future airings ordered by relevance then start time.
 // If includeRepeats is false, repeats are excluded.
-func (d *DB) SearchSimple(query string, includeRepeats bool) ([]SearchResult, error) {
+func (d *DB) SearchSimple(query string, includeRepeats bool, today bool) ([]SearchResult, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	q := `
 		SELECT
@@ -796,6 +796,11 @@ func (d *DB) SearchSimple(query string, includeRepeats bool) ([]SearchResult, er
 	if !includeRepeats {
 		q += ` AND a.is_repeat = 0`
 	}
+	if today {
+		endOfDay := endOfToday()
+		q += ` AND a.start_time < ?`
+		args = append(args, endOfDay)
+	}
 	q += ` ORDER BY f.rank, a.start_time`
 
 	return d.scanSearchResults(q, args...)
@@ -805,7 +810,7 @@ func (d *DB) SearchSimple(query string, includeRepeats bool) ([]SearchResult, er
 // If categories is non-empty, only airings with at least one matching category are returned.
 // If includePast is false, only future airings are returned.
 // If includeRepeats is false, repeats are excluded.
-func (d *DB) SearchAdvanced(query string, categories []string, includePast bool, includeRepeats bool) ([]SearchResult, error) {
+func (d *DB) SearchAdvanced(query string, categories []string, includePast bool, includeRepeats bool, today bool) ([]SearchResult, error) {
 	q := `
 		SELECT
 			a.channel_id, a.start_time, a.stop_time,
@@ -839,9 +844,20 @@ func (d *DB) SearchAdvanced(query string, categories []string, includePast bool,
 		}
 		q += ` AND EXISTS (SELECT 1 FROM json_each(a.categories) WHERE value IN (` + strings.Join(placeholders, ",") + `))`
 	}
+	if today {
+		endOfDay := endOfToday()
+		q += ` AND a.start_time < ?`
+		args = append(args, endOfDay)
+	}
 	q += ` ORDER BY f.rank, a.start_time`
 
 	return d.scanSearchResults(q, args...)
+}
+
+// endOfToday returns midnight tonight in the server's local timezone, formatted as RFC3339 in UTC.
+func endOfToday() string {
+	now := time.Now()
+	return time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, time.Local).UTC().Format(time.RFC3339)
 }
 
 // GetCategories returns all distinct categories sorted alphabetically.

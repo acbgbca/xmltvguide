@@ -21,8 +21,8 @@ type store interface {
 	GetAirings(date time.Time) ([]database.Airing, error)
 	GetStatus() database.Status
 	EnsureChannelIcon(ctx context.Context, channelID string) (string, error)
-	SearchSimple(query string, includeRepeats bool) ([]database.SearchResult, error)
-	SearchAdvanced(query string, categories []string, includePast bool, includeRepeats bool) ([]database.SearchResult, error)
+	SearchSimple(query string, includeRepeats bool, today bool) ([]database.SearchResult, error)
+	SearchAdvanced(query string, categories []string, includePast bool, includeRepeats bool, today bool) ([]database.SearchResult, error)
 	GetCategories() ([]string, error)
 }
 
@@ -136,6 +136,7 @@ func (h *Handler) getSearch(w http.ResponseWriter, r *http.Request) {
 
 	mode := r.URL.Query().Get("mode")
 	includeRepeats := r.URL.Query().Get("include_repeats") != "false"
+	today := r.URL.Query().Get("today") == "true"
 
 	var results []database.SearchResult
 	var err error
@@ -146,9 +147,9 @@ func (h *Handler) getSearch(w http.ResponseWriter, r *http.Request) {
 			categories = strings.Split(cats, ",")
 		}
 		includePast := r.URL.Query().Get("include_past") == "true"
-		results, err = h.db.SearchAdvanced(q, categories, includePast, includeRepeats)
+		results, err = h.db.SearchAdvanced(q, categories, includePast, includeRepeats, today)
 	} else {
-		results, err = h.db.SearchSimple(q, includeRepeats)
+		results, err = h.db.SearchSimple(q, includeRepeats, today)
 	}
 
 	if err != nil {

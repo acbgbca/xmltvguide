@@ -736,7 +736,7 @@ func TestSearchSimple_MatchesTitle(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchSimple("News", true)
+	results, err := db.SearchSimple("News", true, false)
 	if err != nil {
 		t.Fatalf("SearchSimple: %v", err)
 	}
@@ -762,7 +762,7 @@ func TestSearchSimple_ExcludesDescriptionOnlyMatches(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchSimple("News", true)
+	results, err := db.SearchSimple("News", true, false)
 	if err != nil {
 		t.Fatalf("SearchSimple: %v", err)
 	}
@@ -778,7 +778,7 @@ func TestSearchSimple_ExcludesFinishedAirings(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchSimple("News", true)
+	results, err := db.SearchSimple("News", true, false)
 	if err != nil {
 		t.Fatalf("SearchSimple: %v", err)
 	}
@@ -794,7 +794,7 @@ func TestSearchSimple_ExcludesRepeats(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchSimple("News", false)
+	results, err := db.SearchSimple("News", false, false)
 	if err != nil {
 		t.Fatalf("SearchSimple: %v", err)
 	}
@@ -810,7 +810,7 @@ func TestSearchSimple_IncludesRepeats(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchSimple("News", true)
+	results, err := db.SearchSimple("News", true, false)
 	if err != nil {
 		t.Fatalf("SearchSimple: %v", err)
 	}
@@ -831,7 +831,7 @@ func TestSearchAdvanced_MatchesTitleSubtitleDescription(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 	// "news" should match in title (Morning News, Evening News) AND subtitle/description (Documentary Special)
-	results, err := db.SearchAdvanced("news", nil, false, true)
+	results, err := db.SearchAdvanced("news", nil, false, true, false)
 	if err != nil {
 		t.Fatalf("SearchAdvanced: %v", err)
 	}
@@ -853,7 +853,7 @@ func TestSearchAdvanced_FiltersByCategory(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 	// Search for "news" but filter to "Documentary" category only
-	results, err := db.SearchAdvanced("news", []string{"Documentary"}, false, true)
+	results, err := db.SearchAdvanced("news", []string{"Documentary"}, false, true, false)
 	if err != nil {
 		t.Fatalf("SearchAdvanced: %v", err)
 	}
@@ -878,7 +878,7 @@ func TestSearchAdvanced_IncludesPastAirings(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchAdvanced("News", nil, true, true)
+	results, err := db.SearchAdvanced("News", nil, true, true, false)
 	if err != nil {
 		t.Fatalf("SearchAdvanced: %v", err)
 	}
@@ -898,7 +898,7 @@ func TestSearchAdvanced_ExcludesFinishedAirings(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchAdvanced("News", nil, false, true)
+	results, err := db.SearchAdvanced("News", nil, false, true, false)
 	if err != nil {
 		t.Fatalf("SearchAdvanced: %v", err)
 	}
@@ -914,7 +914,7 @@ func TestSearchAdvanced_ExcludesRepeats(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchAdvanced("News", nil, false, false)
+	results, err := db.SearchAdvanced("News", nil, false, false, false)
 	if err != nil {
 		t.Fatalf("SearchAdvanced: %v", err)
 	}
@@ -931,7 +931,7 @@ func TestSearchAdvanced_CombinesCategoryAndText(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 	// Search for "sport" filtered to "Entertainment" category
-	results, err := db.SearchAdvanced("sport", []string{"Entertainment"}, false, true)
+	results, err := db.SearchAdvanced("sport", []string{"Entertainment"}, false, true, false)
 	if err != nil {
 		t.Fatalf("SearchAdvanced: %v", err)
 	}
@@ -950,7 +950,7 @@ func TestSearchSimple_IncludesCurrentlyAiring(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchSimple("News", true)
+	results, err := db.SearchSimple("News", true, false)
 	if err != nil {
 		t.Fatalf("SearchSimple: %v", err)
 	}
@@ -970,7 +970,7 @@ func TestSearchAdvanced_IncludesCurrentlyAiring(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchAdvanced("News", nil, false, true)
+	results, err := db.SearchAdvanced("News", nil, false, true, false)
 	if err != nil {
 		t.Fatalf("SearchAdvanced: %v", err)
 	}
@@ -982,6 +982,101 @@ func TestSearchAdvanced_IncludesCurrentlyAiring(t *testing.T) {
 	}
 	if !hasCurrentlyAiring {
 		t.Error("SearchAdvanced with includePast=false should include currently-airing shows")
+	}
+}
+
+// searchTVWithTomorrow returns test data like searchTV but adds an airing
+// starting tomorrow, used to test the "today" filter.
+func searchTVWithTomorrow() *xmltv.TV {
+	tv := searchTV()
+	tomorrow := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day()+1, 10, 0, 0, 0, time.Local)
+	tv.Programmes = append(tv.Programmes, xmltv.Programme{
+		Start:      xmltv.XmltvTime{Time: tomorrow},
+		Stop:       xmltv.XmltvTime{Time: tomorrow.Add(1 * time.Hour)},
+		Channel:    "ch1",
+		Titles:     []xmltv.Name{{Value: "Tomorrow News"}},
+		Descs:      []xmltv.Name{{Value: "News from the future."}},
+		Categories: []xmltv.Name{{Value: "News"}},
+	})
+	return tv
+}
+
+func TestSearchSimple_TodayFilter_ExcludesTomorrow(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTVWithTomorrow(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	results, err := db.SearchSimple("News", true, true)
+	if err != nil {
+		t.Fatalf("SearchSimple: %v", err)
+	}
+	for _, r := range results {
+		if r.Title == "Tomorrow News" {
+			t.Error("SearchSimple with today=true should exclude airings starting tomorrow")
+		}
+	}
+	if len(results) == 0 {
+		t.Error("expected at least one result for today")
+	}
+}
+
+func TestSearchSimple_TodayFilter_IncludesToday(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTVWithTomorrow(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	// Without today filter, tomorrow's airing should be included
+	results, err := db.SearchSimple("News", true, false)
+	if err != nil {
+		t.Fatalf("SearchSimple: %v", err)
+	}
+	hasTomorrow := false
+	for _, r := range results {
+		if r.Title == "Tomorrow News" {
+			hasTomorrow = true
+		}
+	}
+	if !hasTomorrow {
+		t.Error("SearchSimple with today=false should include airings starting tomorrow")
+	}
+}
+
+func TestSearchAdvanced_TodayFilter_ExcludesTomorrow(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTVWithTomorrow(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	results, err := db.SearchAdvanced("News", nil, false, true, true)
+	if err != nil {
+		t.Fatalf("SearchAdvanced: %v", err)
+	}
+	for _, r := range results {
+		if r.Title == "Tomorrow News" {
+			t.Error("SearchAdvanced with today=true should exclude airings starting tomorrow")
+		}
+	}
+	if len(results) == 0 {
+		t.Error("expected at least one result for today")
+	}
+}
+
+func TestSearchAdvanced_TodayFilter_IncludesToday(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTVWithTomorrow(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	results, err := db.SearchAdvanced("News", nil, false, true, false)
+	if err != nil {
+		t.Fatalf("SearchAdvanced: %v", err)
+	}
+	hasTomorrow := false
+	for _, r := range results {
+		if r.Title == "Tomorrow News" {
+			hasTomorrow = true
+		}
+	}
+	if !hasTomorrow {
+		t.Error("SearchAdvanced with today=false should include airings starting tomorrow")
 	}
 }
 
@@ -1026,7 +1121,7 @@ func TestRefresh_PopulatesFTSAndCategories(t *testing.T) {
 	}
 
 	// FTS should be populated — simple search should work
-	results, err := db.SearchSimple("Morning", true)
+	results, err := db.SearchSimple("Morning", true, false)
 	if err != nil {
 		t.Fatalf("SearchSimple after Refresh: %v", err)
 	}
