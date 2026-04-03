@@ -1203,7 +1203,21 @@ async function init() {
 // ── Service worker registration ───────────────────────────────────────────────
 
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(err => {
+    // Reload the page when a new service worker takes control, so users
+    // always see the latest assets without needing to force-quit the PWA.
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) {
+            refreshing = true;
+            window.location.reload();
+        }
+    });
+
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+        // Periodically check for SW updates (every 60s) so long-lived
+        // PWA sessions pick up new deployments promptly.
+        setInterval(() => reg.update(), 60 * 1000);
+    }).catch(err => {
         console.warn('Service worker registration failed:', err);
     });
 }
