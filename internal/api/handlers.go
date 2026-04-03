@@ -190,6 +190,13 @@ func (h *Handler) getSearch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Sort airings within each group by start time ascending.
+	for _, g := range groups {
+		sort.Slice(g.airings, func(i, j int) bool {
+			return g.airings[i].StartTime.Before(g.airings[j].StartTime)
+		})
+	}
+
 	// Sort groups by best rank, then alphabetically by title.
 	sort.SliceStable(order, func(i, j int) bool {
 		ri, rj := groups[order[i]].bestRank, groups[order[j]].bestRank
