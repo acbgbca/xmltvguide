@@ -150,6 +150,81 @@ func TestIntegration_StaticFiles(t *testing.T) {
 			t.Fatalf("expected 200, got %d", resp.StatusCode)
 		}
 	})
+
+	t.Run("manifest_includes_png_icons", func(t *testing.T) {
+		resp, err := http.Get(srv.URL + "/manifest.json")
+		if err != nil {
+			t.Fatalf("GET /manifest.json: %v", err)
+		}
+		defer resp.Body.Close()
+		var manifest struct {
+			Icons []struct {
+				Src   string `json:"src"`
+				Sizes string `json:"sizes"`
+				Type  string `json:"type"`
+			} `json:"icons"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&manifest); err != nil {
+			t.Fatalf("decode manifest: %v", err)
+		}
+		// Must include at least a 192x192 and 512x512 PNG icon
+		foundSizes := map[string]bool{}
+		for _, icon := range manifest.Icons {
+			if icon.Type == "image/png" {
+				foundSizes[icon.Sizes] = true
+			}
+		}
+		for _, size := range []string{"192x192", "512x512"} {
+			if !foundSizes[size] {
+				t.Errorf("manifest missing PNG icon with size %s", size)
+			}
+		}
+	})
+
+	t.Run("apple_touch_icon", func(t *testing.T) {
+		resp, err := http.Get(srv.URL + "/apple-touch-icon.png")
+		if err != nil {
+			t.Fatalf("GET /apple-touch-icon.png: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200, got %d", resp.StatusCode)
+		}
+		ct := resp.Header.Get("Content-Type")
+		if !strings.Contains(ct, "image/png") {
+			t.Errorf("Content-Type: expected image/png, got %q", ct)
+		}
+	})
+
+	t.Run("index_has_apple_touch_icon_link", func(t *testing.T) {
+		resp, err := http.Get(srv.URL + "/")
+		if err != nil {
+			t.Fatalf("GET /: %v", err)
+		}
+		defer resp.Body.Close()
+		var buf strings.Builder
+		io.Copy(&buf, resp.Body) //nolint:errcheck
+		body := buf.String()
+		if !strings.Contains(body, `rel="apple-touch-icon"`) {
+			t.Error("index.html missing apple-touch-icon link")
+		}
+	})
+
+	t.Run("sw_caches_icon_files", func(t *testing.T) {
+		resp, err := http.Get(srv.URL + "/sw.js")
+		if err != nil {
+			t.Fatalf("GET /sw.js: %v", err)
+		}
+		defer resp.Body.Close()
+		var buf strings.Builder
+		io.Copy(&buf, resp.Body) //nolint:errcheck
+		body := buf.String()
+		for _, icon := range []string{"/icon.svg", "/apple-touch-icon.png"} {
+			if !strings.Contains(body, icon) {
+				t.Errorf("sw.js STATIC list missing %s", icon)
+			}
+		}
+	})
 }
 
 func TestIntegration_Channels(t *testing.T) {
