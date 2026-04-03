@@ -783,6 +783,105 @@ func TestCategories_EmptyWhenNoData(t *testing.T) {
 	}
 }
 
+// TestSearch_AiringsOrderedByStartTime verifies that airings within a search
+// result group are always ordered by start time ascending, even when FTS ranks
+// would produce a different order.
+func TestSearch_AiringsOrderedByStartTime(t *testing.T) {
+	dir := t.TempDir()
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", filepath.Join(dir, "images"), &http.Client{})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	now := time.Now()
+	tv := &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{ID: "ch1", DisplayNames: []xmltv.Name{{Value: "ABC"}}},
+			{ID: "ch2", DisplayNames: []xmltv.Name{{Value: "SBS"}}},
+			{ID: "ch3", DisplayNames: []xmltv.Name{{Value: "TEN"}}},
+		},
+		Programmes: []xmltv.Programme{
+			{
+				// Earliest airing — title match only
+				Start:   xmltv.XmltvTime{Time: now.Add(1 * time.Hour)},
+				Stop:    xmltv.XmltvTime{Time: now.Add(2 * time.Hour)},
+				Channel: "ch1",
+				Titles:  []xmltv.Name{{Value: "Cricket Live"}},
+				Descs:   []xmltv.Name{{Value: "Coverage of the match."}},
+			},
+			{
+				// Latest airing — "cricket" in title + subtitle + description (better rank)
+				Start:     xmltv.XmltvTime{Time: now.Add(5 * time.Hour)},
+				Stop:      xmltv.XmltvTime{Time: now.Add(6 * time.Hour)},
+				Channel:   "ch3",
+				Titles:    []xmltv.Name{{Value: "Cricket Live"}},
+				SubTitles: []xmltv.Name{{Value: "Cricket World Cup"}},
+				Descs:     []xmltv.Name{{Value: "Live cricket from the World Cup."}},
+			},
+			{
+				// Middle airing — title match only
+				Start:   xmltv.XmltvTime{Time: now.Add(3 * time.Hour)},
+				Stop:    xmltv.XmltvTime{Time: now.Add(4 * time.Hour)},
+				Channel: "ch2",
+				Titles:  []xmltv.Name{{Value: "Cricket Live"}},
+				Descs:   []xmltv.Name{{Value: "Afternoon session."}},
+			},
+		},
+	}
+
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	handler := api.New(db)
+	handler.RegisterRoutes(mux)
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(func() {
+		srv.Close()
+		db.Close()
+	})
+
+	resp, err := http.Get(srv.URL + "/api/search?q=cricket&mode=advanced")
+	if err != nil {
+		t.Fatalf("GET /api/search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var result []struct {
+		Title   string `json:"title"`
+		Airings []struct {
+			ChannelID string    `json:"channelId"`
+			StartTime time.Time `json:"startTime"`
+		} `json:"airings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if len(result) == 0 {
+		t.Fatal("expected at least one result group")
+	}
+
+	for _, g := range result {
+		if g.Title == "Cricket Live" {
+			if len(g.Airings) != 3 {
+				t.Fatalf("expected 3 airings for 'Cricket Live', got %d", len(g.Airings))
+			}
+			for i := 1; i < len(g.Airings); i++ {
+				if g.Airings[i].StartTime.Before(g.Airings[i-1].StartTime) {
+					t.Errorf("airings not in chronological order: airing[%d] (%s) is before airing[%d] (%s)",
+						i, g.Airings[i].StartTime.Format(time.RFC3339),
+						i-1, g.Airings[i-1].StartTime.Format(time.RFC3339))
+				}
+			}
+			return
+		}
+	}
+	t.Error("expected 'Cricket Live' group in results")
+}
+
 func TestCategories_ContentType(t *testing.T) {
 	srv := newSearchSeededServer(t)
 	resp, err := http.Get(srv.URL + "/api/categories")
