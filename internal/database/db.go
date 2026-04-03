@@ -790,7 +790,7 @@ func (d *DB) SearchSimple(query string, includeRepeats bool) ([]SearchResult, er
 		JOIN airings a ON a.channel_id = f.channel_id AND a.start_time = f.start_time
 		JOIN channels c ON c.id = a.channel_id
 		WHERE f.title MATCH ?
-		  AND a.start_time > ?`
+		  AND a.stop_time > ?`
 	args := []any{query, now}
 
 	if !includeRepeats {
@@ -825,7 +825,7 @@ func (d *DB) SearchAdvanced(query string, categories []string, includePast bool,
 
 	if !includePast {
 		now := time.Now().UTC().Format(time.RFC3339)
-		q += ` AND a.start_time > ?`
+		q += ` AND a.stop_time > ?`
 		args = append(args, now)
 	}
 	if !includeRepeats {
