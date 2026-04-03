@@ -178,6 +178,18 @@ body {
     display: flex;
 }
 
+.guide-container.no-data .guide-corner,
+.guide-container.no-data .time-axis-outer,
+.guide-container.no-data .channel-col-outer,
+.guide-container.no-data .programmes-outer {
+    display: none;
+}
+
+.guide-container.no-data {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+}
+
 .guide-corner {
     background: var(--bg-secondary);
     border-right: 1px solid var(--border);

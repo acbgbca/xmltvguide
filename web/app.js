@@ -301,6 +301,7 @@ function addDays(dateStr, days) {
 async function navigateToDate(dateStr, { pushState = true } = {}) {
     document.getElementById('guideLoadingOverlay').classList.add('visible');
     document.getElementById('guideEmpty').classList.remove('visible');
+    document.querySelector('.guide-container').classList.remove('no-data');
 
     state.currentDate = dateStr;
     if (pushState) setDateInURL(dateStr);
@@ -308,11 +309,11 @@ async function navigateToDate(dateStr, { pushState = true } = {}) {
 
     try {
         state.programmes = await fetchGuide(dateStr);
-        if (!hasAiringsStartingOn(state.programmes, dateStr)) {
-            document.getElementById('guideEmpty').classList.add('visible');
-        }
+        const hasData = hasAiringsStartingOn(state.programmes, dateStr);
+        document.getElementById('guideEmpty').classList.toggle('visible', !hasData);
+        document.querySelector('.guide-container').classList.toggle('no-data', !hasData);
         renderGuide();
-        if (dateStr === getTodayString()) {
+        if (hasData && dateStr === getTodayString()) {
             scrollToNow();
         }
         // For other dates, preserve the current horizontal scroll position.
