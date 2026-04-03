@@ -95,7 +95,14 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	apiHandler := api.New(db)
+	rssTTL := 0
+	if v := os.Getenv("RSS_TTL"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			rssTTL = n
+		}
+	}
+
+	apiHandler := api.New(db, rssTTL)
 	apiHandler.RegisterRoutes(mux)
 
 	webContent, err := fs.Sub(webFS, "web")
