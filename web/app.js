@@ -301,8 +301,6 @@ function addDays(dateStr, days) {
 async function navigateToDate(dateStr, { pushState = true } = {}) {
     document.getElementById('guideLoadingOverlay').classList.add('visible');
     document.getElementById('guideEmpty').classList.remove('visible');
-    document.getElementById('prevDay').disabled = true;
-    document.getElementById('nextDay').disabled = true;
 
     state.currentDate = dateStr;
     if (pushState) setDateInURL(dateStr);
@@ -318,11 +316,8 @@ async function navigateToDate(dateStr, { pushState = true } = {}) {
             scrollToNow();
         }
         // For other dates, preserve the current horizontal scroll position.
-        await updateNavButtons();
     } catch (err) {
         console.error('Failed to navigate to', dateStr, err);
-        document.getElementById('prevDay').disabled = true;
-        document.getElementById('nextDay').disabled = true;
     } finally {
         document.getElementById('guideLoadingOverlay').classList.remove('visible');
     }
@@ -341,24 +336,6 @@ function hasAiringsStartingOn(airings, dateStr) {
     });
 }
 
-// Probes the guide API for the previous and next days and enables/disables
-// the navigation buttons based on whether data exists for those dates.
-// Uses Promise.allSettled so a failure on one side never affects the other
-// button, and the function itself never throws.
-async function updateNavButtons() {
-    const prevDate = addDays(state.currentDate, -1);
-    const nextDate = addDays(state.currentDate,  1);
-    const [prevResult, nextResult] = await Promise.allSettled([
-        fetchGuide(prevDate),
-        fetchGuide(nextDate),
-    ]);
-    if (prevResult.status === 'fulfilled') {
-        document.getElementById('prevDay').disabled = !hasAiringsStartingOn(prevResult.value, prevDate);
-    }
-    if (nextResult.status === 'fulfilled') {
-        document.getElementById('nextDay').disabled = !hasAiringsStartingOn(nextResult.value, nextDate);
-    }
-}
 
 // ── API ───────────────────────────────────────────────────────────────────────
 
@@ -1128,10 +1105,6 @@ async function init() {
     setupSearchPage();
 
     document.getElementById('dateDisplay').textContent = formatDateLong(state.currentDate);
-
-    // Disable nav buttons until we know which adjacent days have data
-    document.getElementById('prevDay').disabled = true;
-    document.getElementById('nextDay').disabled = true;
 
     // Wire up controls
     document.getElementById('nowBtn').addEventListener('click', () => {
