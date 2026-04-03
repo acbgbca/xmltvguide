@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -77,7 +78,7 @@ func newSeededServer(t *testing.T) *httptest.Server {
 	}
 
 	mux := http.NewServeMux()
-	handler := api.New(db)
+	handler := api.New(db, 0)
 	handler.RegisterRoutes(mux)
 
 	srv := httptest.NewServer(mux)
@@ -117,7 +118,7 @@ func newSeededServerWithIcons(t *testing.T, iconSrv *httptest.Server) (*httptest
 	}
 
 	mux := http.NewServeMux()
-	handler := api.New(db)
+	handler := api.New(db, 0)
 	handler.RegisterRoutes(mux)
 
 	srv := httptest.NewServer(mux)
@@ -489,7 +490,7 @@ func newSearchSeededServer(t *testing.T) *httptest.Server {
 	}
 
 	mux := http.NewServeMux()
-	handler := api.New(db)
+	handler := api.New(db, 0)
 	handler.RegisterRoutes(mux)
 
 	srv := httptest.NewServer(mux)
@@ -784,7 +785,7 @@ func TestCategories_EmptyWhenNoData(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	handler := api.New(db)
+	handler := api.New(db, 0)
 	handler.RegisterRoutes(mux)
 
 	srv := httptest.NewServer(mux)
@@ -859,7 +860,7 @@ func TestSearch_AiringsOrderedByStartTime(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	handler := api.New(db)
+	handler := api.New(db, 0)
 	handler.RegisterRoutes(mux)
 
 	srv := httptest.NewServer(mux)
@@ -941,7 +942,7 @@ func TestSearch_TodayFilter_ExcludesTomorrow(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	handler := api.New(db)
+	handler := api.New(db, 0)
 	handler.RegisterRoutes(mux)
 
 	srv := httptest.NewServer(mux)
@@ -1037,7 +1038,7 @@ func TestSearch_TodayFilter_AdvancedMode(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	handler := api.New(db)
+	handler := api.New(db, 0)
 	handler.RegisterRoutes(mux)
 
 	srv := httptest.NewServer(mux)
@@ -1117,5 +1118,598 @@ func TestGetChannels_IconIsProxyURL(t *testing.T) {
 	}
 	if ch2.Icon != "" {
 		t.Errorf("ch2 icon: expected empty (no icon), got %q", ch2.Icon)
+	}
+}
+
+// --- RSS format tests ---
+
+// rssRoot mirrors the RSS 2.0 XML structure for test parsing.
+type rssRoot struct {
+	XMLName xml.Name   `xml:"rss"`
+	Version string     `xml:"version,attr"`
+	Channel rssChannel `xml:"channel"`
+}
+
+type rssChannel struct {
+	Title         string    `xml:"title"`
+	Description   string    `xml:"description"`
+	LastBuildDate string    `xml:"lastBuildDate"`
+	TTL           int       `xml:"ttl"`
+	Items         []rssItem `xml:"item"`
+}
+
+type rssItem struct {
+	Title       string       `xml:"title"`
+	Description string       `xml:"description"`
+	PubDate     string       `xml:"pubDate"`
+	GUID        rssGUID      `xml:"guid"`
+	Categories  []string     `xml:"category"`
+	Enclosure   rssEnclosure `xml:"enclosure"`
+	Source      string       `xml:"source"`
+}
+
+type rssGUID struct {
+	IsPermaLink string `xml:"isPermaLink,attr"`
+	Value       string `xml:",chardata"`
+}
+
+type rssEnclosure struct {
+	URL  string `xml:"url,attr"`
+	Type string `xml:"type,attr"`
+}
+
+// newRSSSeededServer creates a test API server with rich data for RSS tests.
+// rssTTL is the server-wide default TTL (pass 0 for hard-coded default).
+func newRSSSeededServer(t *testing.T, rssTTL int) *httptest.Server {
+	t.Helper()
+	dir := t.TempDir()
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", filepath.Join(dir, "images"), &http.Client{})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	now := time.Now()
+	tv := &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{ID: "ch1", DisplayNames: []xmltv.Name{{Value: "ABC"}}},
+			{ID: "ch2", DisplayNames: []xmltv.Name{{Value: "SBS"}}},
+		},
+		Programmes: []xmltv.Programme{
+			{
+				Start:           xmltv.XmltvTime{Time: now.Add(1 * time.Hour)},
+				Stop:            xmltv.XmltvTime{Time: now.Add(2 * time.Hour)},
+				Channel:         "ch1",
+				Titles:      []xmltv.Name{{Value: "Morning News"}},
+				SubTitles:   []xmltv.Name{{Value: "Early Edition"}},
+				Descs:       []xmltv.Name{{Value: "Start your day with the latest headlines."}},
+				Categories:  []xmltv.Name{{Value: "News"}, {Value: "Current Affairs"}},
+				EpisodeNums: []xmltv.EpisodeNum{{System: "onscreen", Value: "S02E04"}},
+				Icons:       []xmltv.Icon{{Src: "http://example.com/morning.jpg"}},
+				StarRatings: []xmltv.StarRating{{Value: "8/10"}},
+				Ratings:     []xmltv.Rating{{Value: "PG"}},
+				Date:        "2026",
+				Country:     []xmltv.Name{{Value: "Australia"}},
+				Premiere:    &xmltv.Name{},
+			},
+			{
+				Start:           xmltv.XmltvTime{Time: now.Add(3 * time.Hour)},
+				Stop:            xmltv.XmltvTime{Time: now.Add(4 * time.Hour)},
+				Channel:         "ch2",
+				Titles:          []xmltv.Name{{Value: "Morning News"}},
+				Descs:           []xmltv.Name{{Value: "Replay of this morning's news."}},
+				Categories:      []xmltv.Name{{Value: "News"}},
+				PreviouslyShown: &xmltv.PreviouslyShown{},
+			},
+			{
+				Start:      xmltv.XmltvTime{Time: now.Add(5 * time.Hour)},
+				Stop:       xmltv.XmltvTime{Time: now.Add(6 * time.Hour)},
+				Channel:    "ch1",
+				Titles:     []xmltv.Name{{Value: "Sports Tonight"}},
+				Categories: []xmltv.Name{{Value: "Sport"}},
+			},
+		},
+	}
+
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	handler := api.New(db, rssTTL)
+	handler.RegisterRoutes(mux)
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(func() {
+		srv.Close()
+		db.Close()
+	})
+	return srv
+}
+
+func parseRSS(t *testing.T, body []byte) rssRoot {
+	t.Helper()
+	var rss rssRoot
+	if err := xml.Unmarshal(body, &rss); err != nil {
+		t.Fatalf("failed to parse RSS XML: %v\nbody: %s", err, string(body))
+	}
+	return rss
+}
+
+func TestSearchRSS_ContentType(t *testing.T) {
+	srv := newRSSSeededServer(t, 0)
+	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	ct := resp.Header.Get("Content-Type")
+	if ct != "application/rss+xml; charset=utf-8" {
+		t.Errorf("Content-Type: expected %q, got %q", "application/rss+xml; charset=utf-8", ct)
+	}
+}
+
+func TestSearchRSS_ValidXML(t *testing.T) {
+	srv := newRSSSeededServer(t, 0)
+	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	rss := parseRSS(t, body)
+
+	if rss.Version != "2.0" {
+		t.Errorf("RSS version: expected 2.0, got %q", rss.Version)
+	}
+	if rss.Channel.Title != "TV Guide Search: News" {
+		t.Errorf("channel title: expected %q, got %q", "TV Guide Search: News", rss.Channel.Title)
+	}
+}
+
+func TestSearchRSS_ItemsNotGrouped(t *testing.T) {
+	srv := newRSSSeededServer(t, 0)
+	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	rss := parseRSS(t, body)
+
+	// "Morning News" has 2 airings — RSS should have them as separate items, not grouped
+	if len(rss.Channel.Items) < 2 {
+		t.Fatalf("expected at least 2 RSS items, got %d", len(rss.Channel.Items))
+	}
+}
+
+func TestSearchRSS_SortedByStartTime(t *testing.T) {
+	srv := newRSSSeededServer(t, 0)
+	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	rss := parseRSS(t, body)
+
+	for i := 1; i < len(rss.Channel.Items); i++ {
+		prev, _ := time.Parse(time.RFC1123Z, rss.Channel.Items[i-1].PubDate)
+		curr, _ := time.Parse(time.RFC1123Z, rss.Channel.Items[i].PubDate)
+		if curr.Before(prev) {
+			t.Errorf("items not sorted by start time: item[%d] (%s) before item[%d] (%s)",
+				i, rss.Channel.Items[i].PubDate, i-1, rss.Channel.Items[i-1].PubDate)
+		}
+	}
+}
+
+func TestSearchRSS_ItemFields(t *testing.T) {
+	srv := newRSSSeededServer(t, 0)
+	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	rss := parseRSS(t, body)
+
+	// Find the first "Morning News" item (ch1, has all fields)
+	var item *rssItem
+	for i := range rss.Channel.Items {
+		if strings.Contains(rss.Channel.Items[i].Title, "Morning News") &&
+			strings.Contains(rss.Channel.Items[i].Title, "Early Edition") {
+			item = &rss.Channel.Items[i]
+			break
+		}
+	}
+	if item == nil {
+		t.Fatal("could not find 'Morning News - Early Edition' item in RSS")
+	}
+
+	// Title should combine title + subtitle + episode
+	if !strings.Contains(item.Title, "Morning News") {
+		t.Error("item title missing 'Morning News'")
+	}
+	if !strings.Contains(item.Title, "Early Edition") {
+		t.Error("item title missing subtitle 'Early Edition'")
+	}
+	if !strings.Contains(item.Title, "S02E04") {
+		t.Error("item title missing episode number 'S02E04'")
+	}
+
+	// GUID format: channelId/startTimeRFC3339
+	if item.GUID.IsPermaLink != "false" {
+		t.Errorf("GUID isPermaLink: expected 'false', got %q", item.GUID.IsPermaLink)
+	}
+	if !strings.HasPrefix(item.GUID.Value, "ch1/") {
+		t.Errorf("GUID should start with 'ch1/', got %q", item.GUID.Value)
+	}
+
+	// Categories
+	if len(item.Categories) < 1 {
+		t.Error("expected at least one category")
+	}
+
+	// Enclosure (icon)
+	if item.Enclosure.URL != "http://example.com/morning.jpg" {
+		t.Errorf("enclosure URL: expected %q, got %q", "http://example.com/morning.jpg", item.Enclosure.URL)
+	}
+	if item.Enclosure.Type != "image/jpeg" {
+		t.Errorf("enclosure type: expected %q, got %q", "image/jpeg", item.Enclosure.Type)
+	}
+
+	// Source (channel name)
+	if item.Source != "ABC" {
+		t.Errorf("source: expected %q, got %q", "ABC", item.Source)
+	}
+
+	// PubDate should be RFC 2822
+	if _, err := time.Parse(time.RFC1123Z, item.PubDate); err != nil {
+		t.Errorf("pubDate not valid RFC 2822: %q, err: %v", item.PubDate, err)
+	}
+}
+
+func TestSearchRSS_DescriptionHTML(t *testing.T) {
+	srv := newRSSSeededServer(t, 0)
+	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	rss := parseRSS(t, body)
+
+	// Find the rich item (ch1 Morning News)
+	var item *rssItem
+	for i := range rss.Channel.Items {
+		if strings.Contains(rss.Channel.Items[i].Title, "Early Edition") {
+			item = &rss.Channel.Items[i]
+			break
+		}
+	}
+	if item == nil {
+		t.Fatal("could not find Morning News item")
+	}
+
+	desc := item.Description
+	// Check various fields are present in the description HTML
+	checks := []string{
+		"<strong>Channel:</strong> ABC",
+		"<strong>Time:</strong>",
+		"Start your day with the latest headlines.",
+		"<strong>Episode:</strong> S02E04",
+		"<strong>Rating:</strong> 8/10",
+		"<strong>Classification:</strong> PG",
+		"<strong>Year:</strong> 2026",
+		"<strong>Country:</strong> Australia",
+		"<strong>Categories:</strong>",
+		"<em>Premiere</em>",
+	}
+	for _, check := range checks {
+		if !strings.Contains(desc, check) {
+			t.Errorf("description missing %q\ndescription: %s", check, desc)
+		}
+	}
+}
+
+func TestSearchRSS_DescriptionOmitsEmptyFields(t *testing.T) {
+	srv := newRSSSeededServer(t, 0)
+	resp, err := http.Get(srv.URL + "/api/search?q=Sports&format=rss")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	rss := parseRSS(t, body)
+
+	if len(rss.Channel.Items) == 0 {
+		t.Fatal("expected at least one RSS item for Sports")
+	}
+
+	desc := rss.Channel.Items[0].Description
+	// Sports Tonight has no episode, rating, classification, year, country
+	shouldNotContain := []string{
+		"<strong>Episode:</strong>",
+		"<strong>Rating:</strong>",
+		"<strong>Classification:</strong>",
+		"<strong>Year:</strong>",
+		"<strong>Country:</strong>",
+		"<em>Premiere</em>",
+	}
+	for _, check := range shouldNotContain {
+		if strings.Contains(desc, check) {
+			t.Errorf("description should not contain %q for sparse airing\ndescription: %s", check, desc)
+		}
+	}
+}
+
+func TestSearchRSS_RepeatFlag(t *testing.T) {
+	srv := newRSSSeededServer(t, 0)
+	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	rss := parseRSS(t, body)
+
+	// The ch2 Morning News is a repeat
+	for _, item := range rss.Channel.Items {
+		if item.Source == "SBS" && strings.Contains(item.Title, "Morning News") {
+			if !strings.Contains(item.Description, "<em>Repeat</em>") {
+				t.Error("ch2 Morning News should have Repeat flag in description")
+			}
+			return
+		}
+	}
+	t.Error("could not find SBS Morning News item")
+}
+
+func TestSearchRSS_NoEnclosureWithoutIcon(t *testing.T) {
+	srv := newRSSSeededServer(t, 0)
+	resp, err := http.Get(srv.URL + "/api/search?q=Sports&format=rss")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	rss := parseRSS(t, body)
+
+	if len(rss.Channel.Items) == 0 {
+		t.Fatal("expected at least one RSS item")
+	}
+	// Sports Tonight has no icon — enclosure should be empty
+	if rss.Channel.Items[0].Enclosure.URL != "" {
+		t.Errorf("expected no enclosure for airing without icon, got URL=%q", rss.Channel.Items[0].Enclosure.URL)
+	}
+}
+
+// --- TTL tests ---
+
+func TestSearchRSS_DefaultTTL(t *testing.T) {
+	srv := newRSSSeededServer(t, 0)
+	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	rss := parseRSS(t, body)
+
+	if rss.Channel.TTL != 360 {
+		t.Errorf("default TTL: expected 360, got %d", rss.Channel.TTL)
+	}
+}
+
+func TestSearchRSS_EnvVarTTL(t *testing.T) {
+	srv := newRSSSeededServer(t, 120)
+	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	rss := parseRSS(t, body)
+
+	if rss.Channel.TTL != 120 {
+		t.Errorf("env var TTL: expected 120, got %d", rss.Channel.TTL)
+	}
+}
+
+func TestSearchRSS_QueryParamTTL(t *testing.T) {
+	srv := newRSSSeededServer(t, 120)
+	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss&ttl=30")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	rss := parseRSS(t, body)
+
+	if rss.Channel.TTL != 30 {
+		t.Errorf("query param TTL: expected 30, got %d", rss.Channel.TTL)
+	}
+}
+
+func TestSearchRSS_InvalidQueryParamTTL_FallsBackToEnvVar(t *testing.T) {
+	srv := newRSSSeededServer(t, 120)
+	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss&ttl=notanumber")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	rss := parseRSS(t, body)
+
+	if rss.Channel.TTL != 120 {
+		t.Errorf("invalid query TTL should fall back to env var TTL (120), got %d", rss.Channel.TTL)
+	}
+}
+
+func TestSearchRSS_ZeroQueryParamTTL_FallsBack(t *testing.T) {
+	srv := newRSSSeededServer(t, 120)
+	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss&ttl=0")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	rss := parseRSS(t, body)
+
+	if rss.Channel.TTL != 120 {
+		t.Errorf("zero query TTL should fall back to env var TTL (120), got %d", rss.Channel.TTL)
+	}
+}
+
+func TestSearchRSS_NegativeQueryParamTTL_FallsBack(t *testing.T) {
+	srv := newRSSSeededServer(t, 120)
+	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss&ttl=-5")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	rss := parseRSS(t, body)
+
+	if rss.Channel.TTL != 120 {
+		t.Errorf("negative query TTL should fall back to env var TTL (120), got %d", rss.Channel.TTL)
+	}
+}
+
+// --- Verify existing JSON behaviour unchanged ---
+
+func TestSearchRSS_JSONUnchangedWithoutFormat(t *testing.T) {
+	srv := newRSSSeededServer(t, 0)
+	resp, err := http.Get(srv.URL + "/api/search?q=News")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "application/json") {
+		t.Errorf("expected JSON Content-Type without format param, got %q", ct)
+	}
+
+	var result []struct {
+		Title   string `json:"title"`
+		Airings []struct {
+			ChannelID string `json:"channelId"`
+		} `json:"airings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("should still return valid JSON: %v", err)
+	}
+	// Should be grouped by title
+	for _, g := range result {
+		if g.Title == "Morning News" && len(g.Airings) < 2 {
+			t.Error("JSON response should still group airings by title")
+		}
+	}
+}
+
+func TestSearchRSS_WorksWithAllSearchParams(t *testing.T) {
+	srv := newRSSSeededServer(t, 0)
+	// Test format=rss with advanced mode and categories
+	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss&mode=advanced&categories=News")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	rss := parseRSS(t, body)
+
+	// Should have items (Morning News matches)
+	if len(rss.Channel.Items) == 0 {
+		t.Error("expected RSS items for advanced search with categories")
+	}
+
+	// All items should have News category
+	for _, item := range rss.Channel.Items {
+		hasNews := false
+		for _, cat := range item.Categories {
+			if cat == "News" {
+				hasNews = true
+				break
+			}
+		}
+		if !hasNews {
+			t.Errorf("expected all items to have News category, item %q has %v", item.Title, item.Categories)
+		}
+	}
+}
+
+func TestSearchRSS_ChannelDescription(t *testing.T) {
+	srv := newRSSSeededServer(t, 0)
+
+	// Simple mode
+	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	rss := parseRSS(t, body)
+
+	if rss.Channel.Description == "" {
+		t.Error("channel description should not be empty")
+	}
+
+	// Advanced mode with categories
+	resp2, err := http.Get(srv.URL + "/api/search?q=News&format=rss&mode=advanced&categories=News,Sport")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp2.Body.Close()
+
+	body2, _ := io.ReadAll(resp2.Body)
+	rss2 := parseRSS(t, body2)
+
+	if !strings.Contains(rss2.Channel.Description, "advanced") {
+		t.Error("advanced mode description should mention 'advanced'")
+	}
+}
+
+func TestSearchRSS_LastBuildDate(t *testing.T) {
+	srv := newRSSSeededServer(t, 0)
+	before := time.Now()
+	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	rss := parseRSS(t, body)
+
+	buildDate, err := time.Parse(time.RFC1123Z, rss.Channel.LastBuildDate)
+	if err != nil {
+		t.Fatalf("lastBuildDate not valid RFC 2822: %q, err: %v", rss.Channel.LastBuildDate, err)
+	}
+	if buildDate.Before(before.Add(-1*time.Second)) || buildDate.After(time.Now().Add(1*time.Second)) {
+		t.Errorf("lastBuildDate should be approximately now, got %v", buildDate)
 	}
 }

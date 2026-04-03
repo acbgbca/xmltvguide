@@ -40,7 +40,7 @@ tvguide/
 | `GET /api/channels` | All channels in source order |
 | `GET /api/guide?date=YYYY-MM-DD` | Airings overlapping the given date (local TZ). Defaults to today. |
 | `GET /api/status` | Last refresh time, next refresh time, source URL |
-| `GET /api/search?q=...&mode=...` | Search airings. `q` (required): search text. `mode`: `simple` (title only, default) or `advanced` (title+subtitle+description). Advanced-only params: `categories` (comma-separated), `include_past` (bool, default false). Shared: `include_repeats` (bool, default true), `today` (bool, default false — when true, only returns airings starting before midnight tonight in the server's local timezone). Returns results grouped by title. |
+| `GET /api/search?q=...&mode=...` | Search airings. `q` (required): search text. `mode`: `simple` (title only, default) or `advanced` (title+subtitle+description). Advanced-only params: `categories` (comma-separated), `include_past` (bool, default false). Shared: `include_repeats` (bool, default true), `today` (bool, default false — when true, only returns airings starting before midnight tonight in the server's local timezone). `format`: `rss` returns RSS 2.0 XML (`application/rss+xml`) instead of JSON; omit or use any other value for JSON (default). `ttl`: RSS feed TTL in minutes (only used when `format=rss`); overrides `RSS_TTL` env var and hard-coded default of 360. Returns results grouped by title (JSON) or as flat items sorted by start time (RSS). |
 | `GET /api/categories` | Sorted JSON array of all distinct category strings |
 | `GET /images/channel/{channel-id}` | Cached channel logo. Re-downloads from upstream if the local file is missing. Returns 404 if the channel has no icon. |
 | `GET /` | Serves the embedded frontend (SPA shell) |
@@ -57,6 +57,7 @@ tvguide/
 | `DB_PATH` | `/data/tvguide.db` | Path to the SQLite database file. Mount `/data` as a Docker volume. |
 | `IMAGE_CACHE_DIR` | `/data/images` | Directory for cached channel icon files. Files are stored at `{IMAGE_CACHE_DIR}/channels/{channel-id}.{ext}`. The directory is created on startup if absent. The `/data` volume already covers this path. |
 | `PORT` | `8080` | HTTP listen port |
+| `RSS_TTL` | `360` | Default TTL (time-to-live) in minutes for RSS feed responses. Tells feed readers how often to re-poll. Can be overridden per-request via the `ttl` query parameter on `/api/search`. Must be a positive integer; invalid values are ignored. |
 
 ## How to build and run
 

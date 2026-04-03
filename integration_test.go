@@ -78,7 +78,7 @@ func newIntegrationServer(t *testing.T, xmltvURL string) *httptest.Server {
 	}
 
 	mux := http.NewServeMux()
-	handler := api.New(db)
+	handler := api.New(db, 0)
 	handler.RegisterRoutes(mux)
 
 	webSub, err := fs.Sub(webFS, "web")
@@ -509,7 +509,7 @@ func TestIntegration_ChannelIconProxy(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	api.New(db).RegisterRoutes(mux)
+	api.New(db, 0).RegisterRoutes(mux)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
