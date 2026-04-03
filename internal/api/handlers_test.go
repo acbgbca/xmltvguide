@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -254,6 +255,30 @@ func TestGetGuide_NoDate(t *testing.T) {
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetGuide_EmptyDate_ReturnsEmptyArray(t *testing.T) {
+	srv := newSeededServer(t)
+	// Use a date far in the future with no airings
+	resp, err := http.Get(srv.URL + "/api/guide?date=2099-01-01")
+	if err != nil {
+		t.Fatalf("GET /api/guide: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Read the raw JSON body — must be "[]", not "null"
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed != "[]" {
+		t.Fatalf("expected empty JSON array '[]', got %q", trimmed)
 	}
 }
 

@@ -301,8 +301,7 @@ function addDays(dateStr, days) {
 async function navigateToDate(dateStr, { pushState = true } = {}) {
     document.getElementById('guideLoadingOverlay').classList.add('visible');
     document.getElementById('guideEmpty').classList.remove('visible');
-    document.getElementById('prevDay').disabled = true;
-    document.getElementById('nextDay').disabled = true;
+    document.querySelector('.guide-container').classList.remove('no-data');
 
     state.currentDate = dateStr;
     if (pushState) setDateInURL(dateStr);
@@ -310,19 +309,16 @@ async function navigateToDate(dateStr, { pushState = true } = {}) {
 
     try {
         state.programmes = await fetchGuide(dateStr);
-        if (!hasAiringsStartingOn(state.programmes, dateStr)) {
-            document.getElementById('guideEmpty').classList.add('visible');
-        }
+        const hasData = hasAiringsStartingOn(state.programmes, dateStr);
+        document.getElementById('guideEmpty').classList.toggle('visible', !hasData);
+        document.querySelector('.guide-container').classList.toggle('no-data', !hasData);
         renderGuide();
-        if (dateStr === getTodayString()) {
+        if (hasData && dateStr === getTodayString()) {
             scrollToNow();
         }
         // For other dates, preserve the current horizontal scroll position.
-        await updateNavButtons();
     } catch (err) {
         console.error('Failed to navigate to', dateStr, err);
-        document.getElementById('prevDay').disabled = true;
-        document.getElementById('nextDay').disabled = true;
     } finally {
         document.getElementById('guideLoadingOverlay').classList.remove('visible');
     }
@@ -341,24 +337,6 @@ function hasAiringsStartingOn(airings, dateStr) {
     });
 }
 
-// Probes the guide API for the previous and next days and enables/disables
-// the navigation buttons based on whether data exists for those dates.
-// Uses Promise.allSettled so a failure on one side never affects the other
-// button, and the function itself never throws.
-async function updateNavButtons() {
-    const prevDate = addDays(state.currentDate, -1);
-    const nextDate = addDays(state.currentDate,  1);
-    const [prevResult, nextResult] = await Promise.allSettled([
-        fetchGuide(prevDate),
-        fetchGuide(nextDate),
-    ]);
-    if (prevResult.status === 'fulfilled') {
-        document.getElementById('prevDay').disabled = !hasAiringsStartingOn(prevResult.value, prevDate);
-    }
-    if (nextResult.status === 'fulfilled') {
-        document.getElementById('nextDay').disabled = !hasAiringsStartingOn(nextResult.value, nextDate);
-    }
-}
 
 // ── API ───────────────────────────────────────────────────────────────────────
 
@@ -1129,10 +1107,6 @@ async function init() {
 
     document.getElementById('dateDisplay').textContent = formatDateLong(state.currentDate);
 
-    // Disable nav buttons until we know which adjacent days have data
-    document.getElementById('prevDay').disabled = true;
-    document.getElementById('nextDay').disabled = true;
-
     // Wire up controls
     document.getElementById('nowBtn').addEventListener('click', () => {
         if (state.currentDate === getTodayString()) {
@@ -1175,9 +1149,9 @@ async function init() {
         state.channels   = channels;
         state.programmes = programmes;
 
-        if (!hasAiringsStartingOn(state.programmes, state.currentDate)) {
-            document.getElementById('guideEmpty').classList.add('visible');
-        }
+        const hasData = hasAiringsStartingOn(state.programmes, state.currentDate);
+        document.getElementById('guideEmpty').classList.toggle('visible', !hasData);
+        document.querySelector('.guide-container').classList.toggle('no-data', !hasData);
         renderGuide();
         renderSettingsPanel();
 
@@ -1192,10 +1166,6 @@ async function init() {
             'Failed to load guide data. Is the server running?';
         return; // leave loading screen visible as an error state
     }
-
-    // Run outside the server-error catch so a probe failure here never
-    // produces the misleading "Is the server running?" message.
-    await updateNavButtons();
 
     document.getElementById('loadingScreen').classList.add('hidden');
 }

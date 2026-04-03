@@ -635,7 +635,7 @@ func (d *DB) GetAirings(date time.Time) ([]Airing, error) {
 	}
 	defer rows.Close()
 
-	var airings []Airing
+	airings := []Airing{}
 	for rows.Next() {
 		var a Airing
 		var startStr, stopStr, catsJSON string
@@ -908,7 +908,7 @@ func (d *DB) scanAirings(query string, args ...any) ([]Airing, error) {
 	}
 	defer rows.Close()
 
-	var airings []Airing
+	airings := []Airing{}
 	for rows.Next() {
 		var a Airing
 		var startStr, stopStr, catsJSON string
