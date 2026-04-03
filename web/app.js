@@ -1149,9 +1149,9 @@ async function init() {
         state.channels   = channels;
         state.programmes = programmes;
 
-        if (!hasAiringsStartingOn(state.programmes, state.currentDate)) {
-            document.getElementById('guideEmpty').classList.add('visible');
-        }
+        const hasData = hasAiringsStartingOn(state.programmes, state.currentDate);
+        document.getElementById('guideEmpty').classList.toggle('visible', !hasData);
+        document.querySelector('.guide-container').classList.toggle('no-data', !hasData);
         renderGuide();
         renderSettingsPanel();
 
@@ -1166,10 +1166,6 @@ async function init() {
             'Failed to load guide data. Is the server running?';
         return; // leave loading screen visible as an error state
     }
-
-    // Run outside the server-error catch so a probe failure here never
-    // produces the misleading "Is the server running?" message.
-    await updateNavButtons();
 
     document.getElementById('loadingScreen').classList.add('hidden');
 }
