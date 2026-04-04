@@ -382,7 +382,8 @@ function renderGuide() {
         (byChannel[p.channelId] ??= []).push(p);
     }
 
-    const totalHeight = channels.length * CONFIG.ROW_HEIGHT;
+    const bottomNavHeight = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--bottom-nav-height')) || 56;
+    const totalHeight = channels.length * CONFIG.ROW_HEIGHT + bottomNavHeight;
 
     // ── Channel column ──
     const channelCol = document.getElementById('channelCol');
