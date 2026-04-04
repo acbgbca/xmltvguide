@@ -17,6 +17,7 @@ import (
 
 	"github.com/acbgbca/xmltvguide/internal/api"
 	"github.com/acbgbca/xmltvguide/internal/database"
+	"github.com/acbgbca/xmltvguide/internal/images"
 	"github.com/acbgbca/xmltvguide/internal/xmltv"
 )
 
@@ -74,7 +75,9 @@ func main() {
 
 	httpClient := &http.Client{Timeout: 5 * time.Minute}
 
-	db, err := database.Open(dbPath, retentionDays, xmltvURL, imageCacheDir, httpClient)
+	imageCache := images.NewCache(httpClient, imageCacheDir)
+
+	db, err := database.Open(dbPath, retentionDays, xmltvURL, imageCache)
 	if err != nil {
 		log.Fatalf("opening database: %v", err)
 	}
