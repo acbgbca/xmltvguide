@@ -17,6 +17,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/acbgbca/xmltvguide/internal/model"
 	"github.com/acbgbca/xmltvguide/internal/xmltv"
 )
 
@@ -53,50 +54,6 @@ CREATE TABLE IF NOT EXISTS airings (
 CREATE INDEX IF NOT EXISTS idx_airings_window ON airings(start_time, stop_time);
 CREATE INDEX IF NOT EXISTS idx_airings_stop   ON airings(stop_time);
 `
-
-// Channel holds display data for a TV channel.
-type Channel struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"displayName"`
-	Icon        string `json:"icon,omitempty"`
-	LCN         *int   `json:"lcn,omitempty"`
-}
-
-// Airing holds all data for a single broadcast slot.
-// JSON field names for start/stop are kept as "start"/"stop" for frontend compatibility.
-type Airing struct {
-	ChannelID         string    `json:"channelId"`
-	Start             time.Time `json:"start"`
-	Stop              time.Time `json:"stop"`
-	Title             string    `json:"title"`
-	SubTitle          string    `json:"subTitle,omitempty"`
-	Description       string    `json:"description,omitempty"`
-	Categories        []string  `json:"categories,omitempty"`
-	EpisodeNum        string    `json:"episodeNum,omitempty"`
-	EpisodeNumDisplay string    `json:"episodeNumDisplay,omitempty"`
-	ProgID            string    `json:"progId,omitempty"`
-	StarRating        string    `json:"starRating,omitempty"`
-	ContentRating     string    `json:"contentRating,omitempty"`
-	Year              string    `json:"year,omitempty"`
-	Icon              string    `json:"icon,omitempty"`
-	Country           string    `json:"country,omitempty"`
-	IsRepeat          bool      `json:"isRepeat"`
-	IsPremiere        bool      `json:"isPremiere"`
-}
-
-// Status holds metadata about the last data refresh.
-type Status struct {
-	LastRefresh time.Time `json:"lastRefresh"`
-	NextRefresh time.Time `json:"nextRefresh"`
-	SourceURL   string    `json:"sourceUrl"`
-}
-
-// SearchResult extends Airing with additional fields needed by the search API.
-type SearchResult struct {
-	Airing
-	ChannelName string  `json:"channelName"`
-	Rank        float64 `json:"-"`
-}
 
 // DB wraps a SQLite database connection.
 type DB struct {
@@ -570,7 +527,7 @@ func extFromURL(u string) string {
 // GetChannels returns all channels ordered by their source sort order.
 // The Icon field contains the proxy URL (/images/channel/{id}) for channels
 // that have an icon; it is empty for channels without one.
-func (d *DB) GetChannels() ([]Channel, error) {
+func (d *DB) GetChannels() ([]model.Channel, error) {
 	rows, err := d.db.Query(`
 		SELECT id, display_name, COALESCE(icon_url, ''), lcn
 		FROM channels
@@ -581,9 +538,9 @@ func (d *DB) GetChannels() ([]Channel, error) {
 	}
 	defer rows.Close()
 
-	channels := []Channel{}
+	channels := []model.Channel{}
 	for rows.Next() {
-		var ch Channel
+		var ch model.Channel
 		var lcn sql.NullInt64
 		var iconURL string
 		if err := rows.Scan(&ch.ID, &ch.DisplayName, &iconURL, &lcn); err != nil {
@@ -603,7 +560,7 @@ func (d *DB) GetChannels() ([]Channel, error) {
 
 // GetAirings returns all airings that overlap with the given calendar date,
 // interpreted in the server's local timezone.
-func (d *DB) GetAirings(date time.Time) ([]Airing, error) {
+func (d *DB) GetAirings(date time.Time) ([]model.Airing, error) {
 	dayStart := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.Local).UTC()
 	dayEnd := dayStart.Add(24 * time.Hour)
 
@@ -635,9 +592,9 @@ func (d *DB) GetAirings(date time.Time) ([]Airing, error) {
 	}
 	defer rows.Close()
 
-	airings := []Airing{}
+	airings := []model.Airing{}
 	for rows.Next() {
-		var a Airing
+		var a model.Airing
 		var startStr, stopStr, catsJSON string
 		var isRepeat, isPremiere int
 
@@ -663,10 +620,10 @@ func (d *DB) GetAirings(date time.Time) ([]Airing, error) {
 }
 
 // GetStatus returns the current refresh metadata.
-func (d *DB) GetStatus() Status {
+func (d *DB) GetStatus() model.Status {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	return Status{
+	return model.Status{
 		LastRefresh: d.lastRefresh,
 		NextRefresh: d.nextRefresh,
 		SourceURL:   d.sourceURL,
@@ -694,8 +651,8 @@ func (d *DB) Close() error {
 }
 
 // airingFromXMLTV maps an xmltv.Programme to an Airing.
-func airingFromXMLTV(p xmltv.Programme) Airing {
-	a := Airing{
+func airingFromXMLTV(p xmltv.Programme) model.Airing {
+	a := model.Airing{
 		ChannelID:  p.Channel,
 		Start:      p.Start.Time,
 		Stop:       p.Stop.Time,
@@ -773,7 +730,7 @@ func (d *DB) ExecRaw(query string) (sql.Result, error) {
 // SearchSimple performs an FTS5 search on the title column only.
 // Returns future airings ordered by relevance then start time.
 // If includeRepeats is false, repeats are excluded.
-func (d *DB) SearchSimple(query string, includeRepeats bool, today bool) ([]SearchResult, error) {
+func (d *DB) SearchSimple(query string, includeRepeats bool, today bool) ([]model.SearchResult, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	q := `
 		SELECT
@@ -810,7 +767,7 @@ func (d *DB) SearchSimple(query string, includeRepeats bool, today bool) ([]Sear
 // If categories is non-empty, only airings with at least one matching category are returned.
 // If includePast is false, only future airings are returned.
 // If includeRepeats is false, repeats are excluded.
-func (d *DB) SearchAdvanced(query string, categories []string, includePast bool, includeRepeats bool, today bool) ([]SearchResult, error) {
+func (d *DB) SearchAdvanced(query string, categories []string, includePast bool, includeRepeats bool, today bool) ([]model.SearchResult, error) {
 	q := `
 		SELECT
 			a.channel_id, a.start_time, a.stop_time,
@@ -881,16 +838,16 @@ func (d *DB) GetCategories() ([]string, error) {
 
 // scanSearchResults executes a query and scans results into SearchResult slices.
 // The query must select the standard airing columns plus display_name and rank.
-func (d *DB) scanSearchResults(query string, args ...any) ([]SearchResult, error) {
+func (d *DB) scanSearchResults(query string, args ...any) ([]model.SearchResult, error) {
 	rows, err := d.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("querying search results: %w", err)
 	}
 	defer rows.Close()
 
-	var results []SearchResult
+	var results []model.SearchResult
 	for rows.Next() {
-		var sr SearchResult
+		var sr model.SearchResult
 		var startStr, stopStr, catsJSON string
 		var isRepeat, isPremiere int
 
@@ -917,16 +874,16 @@ func (d *DB) scanSearchResults(query string, args ...any) ([]SearchResult, error
 }
 
 // scanAirings executes a query and scans results into Airing slices.
-func (d *DB) scanAirings(query string, args ...any) ([]Airing, error) {
+func (d *DB) scanAirings(query string, args ...any) ([]model.Airing, error) {
 	rows, err := d.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("querying airings: %w", err)
 	}
 	defer rows.Close()
 
-	airings := []Airing{}
+	airings := []model.Airing{}
 	for rows.Next() {
-		var a Airing
+		var a model.Airing
 		var startStr, stopStr, catsJSON string
 		var isRepeat, isPremiere int
 

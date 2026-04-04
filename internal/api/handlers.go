@@ -15,17 +15,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/acbgbca/xmltvguide/internal/database"
+	"github.com/acbgbca/xmltvguide/internal/model"
 )
 
 // store is the narrow interface the Handler needs from the database layer.
 type store interface {
-	GetChannels() ([]database.Channel, error)
-	GetAirings(date time.Time) ([]database.Airing, error)
-	GetStatus() database.Status
+	GetChannels() ([]model.Channel, error)
+	GetAirings(date time.Time) ([]model.Airing, error)
+	GetStatus() model.Status
 	EnsureChannelIcon(ctx context.Context, channelID string) (string, error)
-	SearchSimple(query string, includeRepeats bool, today bool) ([]database.SearchResult, error)
-	SearchAdvanced(query string, categories []string, includePast bool, includeRepeats bool, today bool) ([]database.SearchResult, error)
+	SearchSimple(query string, includeRepeats bool, today bool) ([]model.SearchResult, error)
+	SearchAdvanced(query string, categories []string, includePast bool, includeRepeats bool, today bool) ([]model.SearchResult, error)
 	GetCategories() ([]string, error)
 }
 
@@ -144,7 +144,7 @@ func (h *Handler) getSearch(w http.ResponseWriter, r *http.Request) {
 	includeRepeats := r.URL.Query().Get("include_repeats") != "false"
 	today := r.URL.Query().Get("today") == "true"
 
-	var results []database.SearchResult
+	var results []model.SearchResult
 	var err error
 
 	var categories []string
@@ -272,7 +272,7 @@ type xmlCDATA struct {
 	Value string `xml:",cdata"`
 }
 
-func (h *Handler) writeSearchRSS(w http.ResponseWriter, r *http.Request, query, mode string, categories []string, results []database.SearchResult) {
+func (h *Handler) writeSearchRSS(w http.ResponseWriter, r *http.Request, query, mode string, categories []string, results []model.SearchResult) {
 	// Sort results by start time ascending.
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].Start.Before(results[j].Start)
@@ -321,7 +321,7 @@ func (h *Handler) writeSearchRSS(w http.ResponseWriter, r *http.Request, query, 
 	}
 }
 
-func buildRSSItem(sr database.SearchResult) xmlRSSItem {
+func buildRSSItem(sr model.SearchResult) xmlRSSItem {
 	// Build title: "Title - SubTitle (EpisodeNumDisplay)"
 	title := sr.Title
 	if sr.SubTitle != "" {

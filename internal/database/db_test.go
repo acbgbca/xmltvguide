@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/acbgbca/xmltvguide/internal/database"
+	"github.com/acbgbca/xmltvguide/internal/model"
 	"github.com/acbgbca/xmltvguide/internal/xmltv"
 )
 
@@ -517,7 +518,7 @@ func TestGetAirings_SxxExxEpisodeMapping(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
 	}
-	var drama *database.Airing
+	var drama *model.Airing
 	for i := range airings {
 		if airings[i].Title == "Drama Show" {
 			drama = &airings[i]
@@ -575,7 +576,7 @@ func TestGetAirings_FieldMapping(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
 	}
-	var sunrise *database.Airing
+	var sunrise *model.Airing
 	for i := range airings {
 		if airings[i].Title == "Sunrise" {
 			sunrise = &airings[i]
@@ -612,7 +613,7 @@ func TestGetAirings_PremiereFlagAndCategories(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
 	}
-	var worldNews *database.Airing
+	var worldNews *model.Airing
 	for i := range airings {
 		if airings[i].Title == "World News" {
 			worldNews = &airings[i]
