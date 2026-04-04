@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/acbgbca/xmltvguide/internal/database"
+	"github.com/acbgbca/xmltvguide/internal/images"
 	"github.com/acbgbca/xmltvguide/internal/model"
 	"github.com/acbgbca/xmltvguide/internal/xmltv"
 )
@@ -34,7 +35,8 @@ func openTestDB(t *testing.T) *database.DB {
 	t.Helper()
 	dir := t.TempDir()
 	client := &http.Client{Transport: &failingTransport{}}
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test", filepath.Join(dir, "images"), client)
+	cache := images.NewCache(client, filepath.Join(dir, "images"))
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test", cache)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -47,7 +49,8 @@ func openTestDB(t *testing.T) *database.DB {
 func openTestDBWithIconServer(t *testing.T, iconServer *httptest.Server) *database.DB {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test", filepath.Join(dir, "images"), iconServer.Client())
+	cache := images.NewCache(iconServer.Client(), filepath.Join(dir, "images"))
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test", cache)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

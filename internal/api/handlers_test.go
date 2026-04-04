@@ -15,6 +15,7 @@ import (
 
 	"github.com/acbgbca/xmltvguide/internal/api"
 	"github.com/acbgbca/xmltvguide/internal/database"
+	"github.com/acbgbca/xmltvguide/internal/images"
 	"github.com/acbgbca/xmltvguide/internal/xmltv"
 )
 
@@ -39,7 +40,7 @@ func startFakeIconServer(t *testing.T) *httptest.Server {
 func newSeededServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", filepath.Join(dir, "images"), &http.Client{})
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", images.NewCache(&http.Client{}, filepath.Join(dir, "images")))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -94,7 +95,7 @@ func newSeededServer(t *testing.T) *httptest.Server {
 func newSeededServerWithIcons(t *testing.T, iconSrv *httptest.Server) (*httptest.Server, *database.DB) {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", filepath.Join(dir, "images"), iconSrv.Client())
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", images.NewCache(iconSrv.Client(), filepath.Join(dir, "images")))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -423,7 +424,7 @@ func TestGetChannelIcon_RedownloadsIfMissing(t *testing.T) {
 func newSearchSeededServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", filepath.Join(dir, "images"), &http.Client{})
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", images.NewCache(&http.Client{}, filepath.Join(dir, "images")))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -779,7 +780,7 @@ func TestCategories_ReturnsSortedList(t *testing.T) {
 
 func TestCategories_EmptyWhenNoData(t *testing.T) {
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", filepath.Join(dir, "images"), &http.Client{})
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", images.NewCache(&http.Client{}, filepath.Join(dir, "images")))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -814,7 +815,7 @@ func TestCategories_EmptyWhenNoData(t *testing.T) {
 // would produce a different order.
 func TestSearch_AiringsOrderedByStartTime(t *testing.T) {
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", filepath.Join(dir, "images"), &http.Client{})
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", images.NewCache(&http.Client{}, filepath.Join(dir, "images")))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -910,7 +911,7 @@ func TestSearch_AiringsOrderedByStartTime(t *testing.T) {
 
 func TestSearch_TodayFilter_ExcludesTomorrow(t *testing.T) {
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", filepath.Join(dir, "images"), &http.Client{})
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", images.NewCache(&http.Client{}, filepath.Join(dir, "images")))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -1004,7 +1005,7 @@ func TestSearch_TodayFilter_ExcludesTomorrow(t *testing.T) {
 
 func TestSearch_TodayFilter_AdvancedMode(t *testing.T) {
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", filepath.Join(dir, "images"), &http.Client{})
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", images.NewCache(&http.Client{}, filepath.Join(dir, "images")))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -1163,7 +1164,7 @@ type rssEnclosure struct {
 func newRSSSeededServer(t *testing.T, rssTTL int) *httptest.Server {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", filepath.Join(dir, "images"), &http.Client{})
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", images.NewCache(&http.Client{}, filepath.Join(dir, "images")))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

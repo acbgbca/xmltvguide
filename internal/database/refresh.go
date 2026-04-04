@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"strconv"
 	"time"
 
@@ -44,29 +43,31 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 		incomingURL := ch.Icons[0].Src
 		existing := currentIcons[ch.ID]
 
-		// Skip download if URL is unchanged and the cached file still exists.
-		if existing.iconURL == incomingURL && existing.localPath != "" {
-			if _, err := os.Stat(existing.localPath); err == nil {
-				resolved[ch.ID] = resolvedIcon{existing.localPath, incomingURL}
-				continue
-			}
-		}
-
-		// Attempt download only when the cache is configured.
-		if d.imageCacheDir != "" && d.httpClient != nil {
-			localPath, err := d.downloadAndSaveIcon(ctx, ch.ID, incomingURL)
-			if err != nil {
-				log.Printf("warning: failed to cache icon for channel %s: %v", ch.ID, err)
-				// Store icon_url even if download failed so the handler can
-				// re-download on demand.
-				resolved[ch.ID] = resolvedIcon{"", incomingURL}
-				continue
-			}
-			resolved[ch.ID] = resolvedIcon{localPath, incomingURL}
+		if d.imageCache == nil {
+			// Cache not configured: store the URL for future use, no local file.
+			resolved[ch.ID] = resolvedIcon{"", incomingURL}
 			continue
 		}
-		// Cache not configured: store the URL for future use, no local file.
-		resolved[ch.ID] = resolvedIcon{"", incomingURL}
+
+		var (
+			localPath string
+			err       error
+		)
+		if existing.iconURL == incomingURL {
+			// URL unchanged: validate existing file and re-download only if missing.
+			localPath, err = d.imageCache.EnsureIcon(ctx, ch.ID, existing.localPath, incomingURL)
+		} else {
+			// URL changed: always download a fresh copy.
+			localPath, err = d.imageCache.Download(ctx, ch.ID, incomingURL)
+		}
+		if err != nil {
+			log.Printf("warning: failed to cache icon for channel %s: %v", ch.ID, err)
+			// Store icon_url even if download failed so the handler can
+			// re-download on demand.
+			resolved[ch.ID] = resolvedIcon{"", incomingURL}
+			continue
+		}
+		resolved[ch.ID] = resolvedIcon{localPath, incomingURL}
 	}
 
 	// Phase 3: Write everything to the database in a single transaction.

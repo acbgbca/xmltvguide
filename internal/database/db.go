@@ -3,12 +3,12 @@ package database
 import (
 	"database/sql"
 	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
 
+	"github.com/acbgbca/xmltvguide/internal/images"
 	"github.com/acbgbca/xmltvguide/internal/model"
 )
 
@@ -51,8 +51,7 @@ type DB struct {
 	db            *sql.DB
 	retentionDays int
 	sourceURL     string
-	imageCacheDir string
-	httpClient    *http.Client
+	imageCache    *images.Cache
 
 	// lastRefresh and nextRefresh are kept in memory — they reflect the current
 	// process's poll cycle and reset on restart, which is intentional.
@@ -165,9 +164,8 @@ func columnExists(db *sql.DB, table, column string) (bool, error) {
 }
 
 // Open opens (or creates) a SQLite database at path and applies the schema.
-// imageCacheDir is the directory used to store downloaded channel icons.
-// httpClient is used for icon downloads; pass nil to disable icon caching.
-func Open(path string, retentionDays int, sourceURL, imageCacheDir string, httpClient *http.Client) (*DB, error) {
+// imageCache handles icon downloading and caching; pass nil to disable icon caching.
+func Open(path string, retentionDays int, sourceURL string, imageCache *images.Cache) (*DB, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
@@ -199,8 +197,7 @@ func Open(path string, retentionDays int, sourceURL, imageCacheDir string, httpC
 		db:            db,
 		retentionDays: retentionDays,
 		sourceURL:     sourceURL,
-		imageCacheDir: imageCacheDir,
-		httpClient:    httpClient,
+		imageCache:    imageCache,
 	}, nil
 }
 
