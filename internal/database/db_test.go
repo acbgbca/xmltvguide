@@ -123,7 +123,16 @@ func TestRefresh_IconDownload_SetsRequiredHeaders(t *testing.T) {
 	}
 }
 
+// testBaseDate returns today at midnight UTC. Using a date derived from
+// time.Now() ensures that test data stays within the retention window and is
+// never pruned during the Refresh call inside each test.
+func testBaseDate() time.Time {
+	now := time.Now().UTC()
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+}
+
 func sampleTV() *xmltv.TV {
+	base := testBaseDate()
 	return &xmltv.TV{
 		Channels: []xmltv.Channel{
 			{
@@ -139,16 +148,16 @@ func sampleTV() *xmltv.TV {
 		},
 		Programmes: []xmltv.Programme{
 			{
-				Start:       xmltv.XmltvTime{Time: time.Date(2026, 3, 28, 23, 0, 0, 0, time.UTC)},
-				Stop:        xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 1, 0, 0, 0, time.UTC)},
+				Start:       xmltv.XmltvTime{Time: base.Add(-time.Hour)},          // 23:00 the previous day
+				Stop:        xmltv.XmltvTime{Time: base.Add(time.Hour)},           // 01:00 today — overlaps midnight
 				Channel:     "ch2",
 				Titles:      []xmltv.Name{{Value: "Late Night Movie"}},
 				Descs:       []xmltv.Name{{Value: "A classic late night movie spanning midnight."}},
 				Categories:  []xmltv.Name{{Value: "Movie"}},
 			},
 			{
-				Start:      xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 6, 0, 0, 0, time.UTC)},
-				Stop:       xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 7, 0, 0, 0, time.UTC)},
+				Start:      xmltv.XmltvTime{Time: base.Add(6 * time.Hour)},
+				Stop:       xmltv.XmltvTime{Time: base.Add(7 * time.Hour)},
 				Channel:    "ch1",
 				Titles:     []xmltv.Name{{Value: "Morning News"}},
 				Descs:      []xmltv.Name{{Value: "The latest news to start your day."}},
@@ -156,8 +165,8 @@ func sampleTV() *xmltv.TV {
 				Ratings:    []xmltv.Rating{{Value: "G", System: "ABA"}},
 			},
 			{
-				Start:       xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 7, 0, 0, 0, time.UTC)},
-				Stop:        xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 9, 0, 0, 0, time.UTC)},
+				Start:       xmltv.XmltvTime{Time: base.Add(7 * time.Hour)},
+				Stop:        xmltv.XmltvTime{Time: base.Add(9 * time.Hour)},
 				Channel:     "ch1",
 				Titles:      []xmltv.Name{{Value: "Sunrise"}},
 				SubTitles:   []xmltv.Name{{Value: "Monday Edition"}},
@@ -171,8 +180,8 @@ func sampleTV() *xmltv.TV {
 				PreviouslyShown: &xmltv.PreviouslyShown{},
 			},
 			{
-				Start:      xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 6, 30, 0, 0, time.UTC)},
-				Stop:       xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 7, 30, 0, 0, time.UTC)},
+				Start:      xmltv.XmltvTime{Time: base.Add(6*time.Hour + 30*time.Minute)},
+				Stop:       xmltv.XmltvTime{Time: base.Add(7*time.Hour + 30*time.Minute)},
 				Channel:    "ch2",
 				Titles:     []xmltv.Name{{Value: "World News"}},
 				SubTitles:  []xmltv.Name{{Value: "International Edition"}},
@@ -504,8 +513,8 @@ func TestGetAirings_SxxExxEpisodeMapping(t *testing.T) {
 	tv := sampleTV()
 	// Add a programme with SxxExx episode numbering (as used by this XMLTV source)
 	tv.Programmes = append(tv.Programmes, xmltv.Programme{
-		Start:   xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 9, 0, 0, 0, time.UTC)},
-		Stop:    xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 10, 0, 0, 0, time.UTC)},
+		Start:   xmltv.XmltvTime{Time: testBaseDate().Add(9 * time.Hour)},
+		Stop:    xmltv.XmltvTime{Time: testBaseDate().Add(10 * time.Hour)},
 		Channel: "ch1",
 		Titles:  []xmltv.Name{{Value: "Drama Show"}},
 		EpisodeNums: []xmltv.EpisodeNum{
@@ -516,7 +525,7 @@ func TestGetAirings_SxxExxEpisodeMapping(t *testing.T) {
 	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	date := time.Date(2026, 3, 29, 0, 0, 0, 0, time.UTC)
+	date := testBaseDate()
 	airings, err := db.GetAirings(date)
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
@@ -544,7 +553,7 @@ func TestGetAirings_OverlapDate(t *testing.T) {
 	if err := db.Refresh(context.Background(), sampleTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	date := time.Date(2026, 3, 29, 0, 0, 0, 0, time.UTC)
+	date := testBaseDate()
 	airings, err := db.GetAirings(date)
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
@@ -559,7 +568,7 @@ func TestGetAirings_ExcludesOtherDate(t *testing.T) {
 	if err := db.Refresh(context.Background(), sampleTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	date := time.Date(2026, 3, 27, 0, 0, 0, 0, time.UTC)
+	date := testBaseDate().AddDate(0, 0, -2)
 	airings, err := db.GetAirings(date)
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
@@ -574,7 +583,7 @@ func TestGetAirings_FieldMapping(t *testing.T) {
 	if err := db.Refresh(context.Background(), sampleTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	date := time.Date(2026, 3, 29, 0, 0, 0, 0, time.UTC)
+	date := testBaseDate()
 	airings, err := db.GetAirings(date)
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
@@ -611,7 +620,7 @@ func TestGetAirings_PremiereFlagAndCategories(t *testing.T) {
 	if err := db.Refresh(context.Background(), sampleTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	date := time.Date(2026, 3, 29, 0, 0, 0, 0, time.UTC)
+	date := testBaseDate()
 	airings, err := db.GetAirings(date)
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
@@ -1152,7 +1161,7 @@ func TestRefresh_Upsert_NoDuplicates(t *testing.T) {
 	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("second Refresh: %v", err)
 	}
-	date := time.Date(2026, 3, 29, 0, 0, 0, 0, time.UTC)
+	date := testBaseDate()
 	airings, err := db.GetAirings(date)
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)

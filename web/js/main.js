@@ -1,16 +1,5 @@
-// ── Configuration ────────────────────────────────────────────────────────────
-//
-// PX_PER_MIN controls the horizontal zoom level of the guide.
-// ROW_HEIGHT must match the --row-height CSS custom property in style.css.
-// Changing either value here is the only thing needed to adjust the layout.
-
-const CONFIG = {
-    PX_PER_MIN:     4,    // pixels per minute → 4 = 240px/hr, 2 hours = 480px on screen
-    ROW_HEIGHT:     54,   // px — must match --row-height in style.css
-    LABEL_INTERVAL: 30,   // minutes between time-axis labels
-    MINS_IN_DAY:    1440,
-    get TOTAL_WIDTH() { return this.MINS_IN_DAY * this.PX_PER_MIN; },
-};
+import { CONFIG } from './config.js';
+import { getTodayString, dateMidnight, formatTime, formatDateLong, minutesToHHMM, addDays, formatSearchDate } from './utils/date.js';
 
 // ── Application state ─────────────────────────────────────────────────────────
 
@@ -247,51 +236,6 @@ function setDateInURL(dateStr) {
         url.searchParams.set('date', dateStr);
     }
     history.pushState(null, '', url);
-}
-
-// ── Date / time utilities ─────────────────────────────────────────────────────
-
-function getTodayString() {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const d = String(now.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-}
-
-// Returns a Date representing midnight local time for a 'YYYY-MM-DD' string.
-function dateMidnight(dateStr) {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    return new Date(y, m - 1, d, 0, 0, 0, 0);
-}
-
-function formatTime(date) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-}
-
-function formatDateLong(dateStr) {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    return new Date(y, m - 1, d).toLocaleDateString([], {
-        weekday: 'short', day: 'numeric', month: 'short',
-    });
-}
-
-// Formats a minute-offset-from-midnight as "HH:MM".
-function minutesToHHMM(minutes) {
-    const h = Math.floor(minutes / 60) % 24;
-    const m = minutes % 60;
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
-
-// Returns a new date string offset by `days` from the given 'YYYY-MM-DD' string.
-function addDays(dateStr, days) {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    const date = new Date(y, m - 1, d + days);
-    return [
-        date.getFullYear(),
-        String(date.getMonth() + 1).padStart(2, '0'),
-        String(date.getDate()).padStart(2, '0'),
-    ].join('-');
 }
 
 // Loads the guide for `dateStr`, updates state, re-renders, and scrolls.
@@ -832,29 +776,6 @@ function openSearchAiringModal(airing, title) {
         isPremiere:        airing.isPremiere,
     };
     openProgrammeModal(prog);
-}
-
-function formatSearchDate(date) {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const weekAhead = new Date(today);
-    weekAhead.setDate(weekAhead.getDate() + 7);
-
-    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
-
-    if (dateOnly.getTime() === today.getTime()) {
-        return 'Today ' + time;
-    }
-    if (dateOnly.getTime() === tomorrow.getTime()) {
-        return 'Tomorrow ' + time;
-    }
-    if (dateOnly < weekAhead) {
-        return date.toLocaleDateString([], { weekday: 'short' }) + ' ' + time;
-    }
-    return date.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + time;
 }
 
 function renderCategoryChips() {
