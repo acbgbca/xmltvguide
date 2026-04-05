@@ -126,10 +126,24 @@ func TestIntegration_StaticFiles(t *testing.T) {
 		}
 	})
 
-	t.Run("app_js", func(t *testing.T) {
+	t.Run("app_js_removed", func(t *testing.T) {
 		resp, err := http.Get(srv.URL + "/app.js")
 		if err != nil {
 			t.Fatalf("GET /app.js: %v", err)
+		}
+		defer resp.Body.Close()
+		// The SPA handler falls back to index.html for missing files, so the
+		// response is 200 but with text/html — not a JavaScript file.
+		ct := resp.Header.Get("Content-Type")
+		if strings.Contains(ct, "javascript") {
+			t.Error("/app.js should no longer serve JavaScript (file should be removed)")
+		}
+	})
+
+	t.Run("main_js", func(t *testing.T) {
+		resp, err := http.Get(srv.URL + "/js/main.js")
+		if err != nil {
+			t.Fatalf("GET /js/main.js: %v", err)
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
@@ -138,6 +152,43 @@ func TestIntegration_StaticFiles(t *testing.T) {
 		ct := resp.Header.Get("Content-Type")
 		if !strings.Contains(ct, "javascript") {
 			t.Errorf("Content-Type: expected javascript, got %q", ct)
+		}
+	})
+
+	t.Run("index_uses_module_script", func(t *testing.T) {
+		resp, err := http.Get(srv.URL + "/")
+		if err != nil {
+			t.Fatalf("GET /: %v", err)
+		}
+		defer resp.Body.Close()
+		var buf strings.Builder
+		io.Copy(&buf, resp.Body) //nolint:errcheck
+		body := buf.String()
+		if !strings.Contains(body, `type="module"`) {
+			t.Error("index.html script tag should have type=\"module\"")
+		}
+		if !strings.Contains(body, `/js/main.js`) {
+			t.Error("index.html should reference /js/main.js")
+		}
+		if strings.Contains(body, `/app.js`) {
+			t.Error("index.html should not reference /app.js")
+		}
+	})
+
+	t.Run("sw_caches_main_js", func(t *testing.T) {
+		resp, err := http.Get(srv.URL + "/sw.js")
+		if err != nil {
+			t.Fatalf("GET /sw.js: %v", err)
+		}
+		defer resp.Body.Close()
+		var buf strings.Builder
+		io.Copy(&buf, resp.Body) //nolint:errcheck
+		body := buf.String()
+		if !strings.Contains(body, `/js/main.js`) {
+			t.Error("sw.js STATIC list should include /js/main.js")
+		}
+		if strings.Contains(body, `/app.js`) {
+			t.Error("sw.js should not reference /app.js")
 		}
 	})
 
@@ -431,7 +482,7 @@ func TestIntegration_Navigation_ButtonsEnabled(t *testing.T) {
 	}
 }
 
-// TestIntegration_Navigation_JSFunctions verifies that app.js exports the
+// TestIntegration_Navigation_JSFunctions verifies that js/main.js exports the
 // functions required for multi-day navigation.
 func TestIntegration_Navigation_JSFunctions(t *testing.T) {
 	xmlBytes, err := os.ReadFile("testdata/sample.xml")
@@ -441,9 +492,9 @@ func TestIntegration_Navigation_JSFunctions(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/app.js")
+	resp, err := http.Get(srv.URL + "/js/main.js")
 	if err != nil {
-		t.Fatalf("GET /app.js: %v", err)
+		t.Fatalf("GET /js/main.js: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -453,7 +504,7 @@ func TestIntegration_Navigation_JSFunctions(t *testing.T) {
 
 	for _, fn := range []string{"getDateFromURL", "setDateInURL", "navigateToDate", "addDays"} {
 		if !strings.Contains(body, fn) {
-			t.Errorf("expected app.js to define %s", fn)
+			t.Errorf("expected js/main.js to define %s", fn)
 		}
 	}
 }
@@ -835,7 +886,7 @@ func TestIntegration_SearchPage_HTMLElements(t *testing.T) {
 	}
 }
 
-// TestIntegration_SearchPage_JSFunctions verifies that app.js contains
+// TestIntegration_SearchPage_JSFunctions verifies that js/main.js contains
 // the functions required for the search UI.
 func TestIntegration_SearchPage_JSFunctions(t *testing.T) {
 	xmlBytes, err := os.ReadFile("testdata/sample.xml")
@@ -845,9 +896,9 @@ func TestIntegration_SearchPage_JSFunctions(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/app.js")
+	resp, err := http.Get(srv.URL + "/js/main.js")
 	if err != nil {
-		t.Fatalf("GET /app.js: %v", err)
+		t.Fatalf("GET /js/main.js: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -862,16 +913,16 @@ func TestIntegration_SearchPage_JSFunctions(t *testing.T) {
 		"formatSearchDate",
 	} {
 		if !strings.Contains(body, fn) {
-			t.Errorf("expected app.js to define %s", fn)
+			t.Errorf("expected js/main.js to define %s", fn)
 		}
 	}
 
 	// Verify state additions
 	if !strings.Contains(body, "state.categories") {
-		t.Error("expected state.categories in app.js")
+		t.Error("expected state.categories in js/main.js")
 	}
 	if !strings.Contains(body, "state.searchResults") {
-		t.Error("expected state.searchResults in app.js")
+		t.Error("expected state.searchResults in js/main.js")
 	}
 }
 
@@ -968,7 +1019,7 @@ func TestIntegration_FavouritesPage_HTMLElements(t *testing.T) {
 	}
 }
 
-// TestIntegration_FavouritesPage_JSFunctions verifies that app.js contains
+// TestIntegration_FavouritesPage_JSFunctions verifies that js/main.js contains
 // the functions required for the favourites feature.
 func TestIntegration_FavouritesPage_JSFunctions(t *testing.T) {
 	xmlBytes, err := os.ReadFile("testdata/sample.xml")
@@ -978,9 +1029,9 @@ func TestIntegration_FavouritesPage_JSFunctions(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/app.js")
+	resp, err := http.Get(srv.URL + "/js/main.js")
 	if err != nil {
-		t.Fatalf("GET /app.js: %v", err)
+		t.Fatalf("GET /js/main.js: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -998,21 +1049,21 @@ func TestIntegration_FavouritesPage_JSFunctions(t *testing.T) {
 		"editFavouriteSearch",
 	} {
 		if !strings.Contains(body, fn) {
-			t.Errorf("expected app.js to define %s", fn)
+			t.Errorf("expected js/main.js to define %s", fn)
 		}
 	}
 
 	// Verify state additions
 	if !strings.Contains(body, "state.favouriteSearches") {
-		t.Error("expected state.favouriteSearches in app.js")
+		t.Error("expected state.favouriteSearches in js/main.js")
 	}
 	if !strings.Contains(body, "state.favouriteResults") {
-		t.Error("expected state.favouriteResults in app.js")
+		t.Error("expected state.favouriteResults in js/main.js")
 	}
 
 	// Verify localStorage key
 	if !strings.Contains(body, "tvguide-favourites") {
-		t.Error("expected 'tvguide-favourites' localStorage key in app.js")
+		t.Error("expected 'tvguide-favourites' localStorage key in js/main.js")
 	}
 }
 

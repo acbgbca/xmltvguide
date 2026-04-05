@@ -1,5 +1,3 @@
-'use strict';
-
 // ── Configuration ────────────────────────────────────────────────────────────
 //
 // PX_PER_MIN controls the horizontal zoom level of the guide.
