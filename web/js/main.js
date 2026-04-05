@@ -1,23 +1,7 @@
 import { CONFIG } from './config.js';
 import { getTodayString, dateMidnight, formatTime, formatDateLong, minutesToHHMM, addDays, formatSearchDate } from './utils/date.js';
-
-// ── Application state ─────────────────────────────────────────────────────────
-
-const state = {
-    channels:    [],
-    programmes:  [],
-    currentDate: getTodayString(),  // 'YYYY-MM-DD' in browser local time
-    prefs:       loadPrefs(),
-    activePage:  'guide',           // current page: guide | search | favourites | settings
-    nowLineTimer: null,             // interval ID for the now-line updater
-    categories:    [],              // cached from /api/categories
-    searchResults: [],              // current search results
-    searchDebounce: null,           // debounce timer ID
-    selectedCategories: new Set(),  // currently selected category filters
-    favouriteSearches: loadFavouriteSearches(),  // saved search favourites from localStorage
-    favouriteResults: {},           // map of favourite ID → search results
-    favouriteResultsTime: 0,       // timestamp when favourites were last fetched
-};
+import { state } from './state.js';
+import { fetchChannels, fetchGuide, fetchCategories } from './api.js';
 
 // ── Preferences (localStorage) ───────────────────────────────────────────────
 
@@ -279,20 +263,6 @@ function hasAiringsStartingOn(airings, dateStr) {
     });
 }
 
-
-// ── API ───────────────────────────────────────────────────────────────────────
-
-async function fetchChannels() {
-    const res = await fetch('/api/channels');
-    if (!res.ok) throw new Error(`/api/channels returned ${res.status}`);
-    return res.json();
-}
-
-async function fetchGuide(dateStr) {
-    const res = await fetch(`/api/guide?date=${dateStr}`);
-    if (!res.ok) throw new Error(`/api/guide returned ${res.status}`);
-    return res.json();
-}
 
 // ── Channel ordering ──────────────────────────────────────────────────────────
 
@@ -601,14 +571,6 @@ function closeModal() {
 }
 
 // ── Search ───────────────────────────────────────────────────────────────────
-
-async function fetchCategories() {
-    if (state.categories.length > 0) return state.categories;
-    const res = await fetch('/api/categories');
-    if (!res.ok) throw new Error(`/api/categories returned ${res.status}`);
-    state.categories = await res.json();
-    return state.categories;
-}
 
 async function performSearch() {
     const input = document.getElementById('searchInput');
@@ -1014,6 +976,10 @@ function renderFavouriteResults() {
 // ── Initialisation ────────────────────────────────────────────────────────────
 
 async function init() {
+    // Populate localStorage-dependent state fields
+    state.prefs = loadPrefs();
+    state.favouriteSearches = loadFavouriteSearches();
+
     // Resolve the active page from the URL path
     const initialPage = getPageFromPath();
 
