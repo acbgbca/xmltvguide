@@ -405,6 +405,38 @@ func TestRefresh_IconRedownloadsIfURLChanged(t *testing.T) {
 	}
 }
 
+// TestRefresh_FTSRebuildSucceedsOnSubsequentRefresh verifies that a second
+// Refresh correctly clears and rebuilds the FTS index when it already contains
+// data. Regression test for GitHub issue #87 where DELETE FROM airings_fts
+// failed in scratch Docker containers (no /tmp directory) on the second
+// refresh, because FTS5 segment operations require a writable temp directory.
+func TestRefresh_FTSRebuildSucceedsOnSubsequentRefresh(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	tv := sampleTV()
+
+	// First refresh populates the FTS index.
+	if err := db.Refresh(ctx, tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("first Refresh: %v", err)
+	}
+
+	// Second refresh must clear and rebuild the populated FTS index without error.
+	if err := db.Refresh(ctx, tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("second Refresh (FTS rebuild): %v", err)
+	}
+
+	// FTS search must return results after the rebuild.
+	// Use SearchAdvanced with includePast=true so the result is not
+	// dependent on what time of day the test runs.
+	results, err := db.SearchAdvanced("Morning News", nil, true, true, false)
+	if err != nil {
+		t.Fatalf("SearchAdvanced after second refresh: %v", err)
+	}
+	if len(results) == 0 {
+		t.Error("expected FTS search results after second refresh, got none")
+	}
+}
+
 // TestEnsureChannelIcon_ReturnsPath verifies that EnsureChannelIcon returns the
 // local file path when the icon has already been downloaded.
 func TestEnsureChannelIcon_ReturnsPath(t *testing.T) {

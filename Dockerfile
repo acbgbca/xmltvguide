@@ -21,6 +21,12 @@ RUN sed -i "s/__CACHE_VERSION__/${VERSION}/" web/sw.js
 
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o tvguide .
 
+# Create an empty /tmp directory to carry into the scratch image.
+# SQLite FTS5 segment operations require a writable temp directory even when
+# PRAGMA temp_store=MEMORY is set; without /tmp the second+ refresh fails
+# with SQLITE_IOERR_WRITE (6410). See GitHub issue #87.
+RUN mkdir /scratch_tmp
+
 # ── Runtime stage ─────────────────────────────────────────────────
 # scratch: zero OS overhead (~0 MB vs ~8 MB for alpine).
 # Timezone data is embedded in the binary via `import _ "time/tzdata"`,
@@ -29,6 +35,7 @@ FROM scratch
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /app/tvguide /tvguide
+COPY --from=builder /scratch_tmp /tmp
 
 EXPOSE 8080
 
