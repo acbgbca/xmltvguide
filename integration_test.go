@@ -1073,8 +1073,8 @@ func TestIntegration_FavouritesPage_HTMLElements(t *testing.T) {
 	}
 }
 
-// TestIntegration_FavouritesPage_JSFunctions verifies that js/main.js contains
-// the functions required for the favourites feature.
+// TestIntegration_FavouritesPage_JSFunctions verifies that the favourites
+// feature functions are present across js/main.js and js/store/favourites.js.
 func TestIntegration_FavouritesPage_JSFunctions(t *testing.T) {
 	xmlBytes, err := os.ReadFile("testdata/sample.xml")
 	if err != nil {
@@ -1083,41 +1083,52 @@ func TestIntegration_FavouritesPage_JSFunctions(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/js/main.js")
-	if err != nil {
-		t.Fatalf("GET /js/main.js: %v", err)
+	fetchBody := func(path string) string {
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		defer resp.Body.Close()
+		var buf strings.Builder
+		io.Copy(&buf, resp.Body) //nolint:errcheck
+		return buf.String()
 	}
-	defer resp.Body.Close()
 
-	var buf strings.Builder
-	io.Copy(&buf, resp.Body) //nolint:errcheck
-	body := buf.String()
+	mainJS := fetchBody("/js/main.js")
+	storeJS := fetchBody("/js/store/favourites.js")
 
+	// Rendering and orchestration functions live in main.js
+	for _, fn := range []string{
+		"renderFavouritesPage",
+		"executeFavouriteSearches",
+		"editFavouriteSearch",
+	} {
+		if !strings.Contains(mainJS, fn) {
+			t.Errorf("expected js/main.js to define %s", fn)
+		}
+	}
+
+	// State references live in main.js
+	if !strings.Contains(mainJS, "state.favouriteSearches") {
+		t.Error("expected state.favouriteSearches in js/main.js")
+	}
+	if !strings.Contains(mainJS, "state.favouriteResults") {
+		t.Error("expected state.favouriteResults in js/main.js")
+	}
+
+	// Store functions and localStorage key live in js/store/favourites.js
 	for _, fn := range []string{
 		"loadFavouriteSearches",
 		"saveFavouriteSearches",
 		"addFavouriteSearch",
 		"removeFavouriteSearch",
-		"renderFavouritesPage",
-		"executeFavouriteSearches",
-		"editFavouriteSearch",
 	} {
-		if !strings.Contains(body, fn) {
-			t.Errorf("expected js/main.js to define %s", fn)
+		if !strings.Contains(storeJS, fn) {
+			t.Errorf("expected js/store/favourites.js to define %s", fn)
 		}
 	}
-
-	// Verify state additions
-	if !strings.Contains(body, "state.favouriteSearches") {
-		t.Error("expected state.favouriteSearches in js/main.js")
-	}
-	if !strings.Contains(body, "state.favouriteResults") {
-		t.Error("expected state.favouriteResults in js/main.js")
-	}
-
-	// Verify localStorage key
-	if !strings.Contains(body, "tvguide-favourites") {
-		t.Error("expected 'tvguide-favourites' localStorage key in js/main.js")
+	if !strings.Contains(storeJS, "tvguide-favourites") {
+		t.Error("expected 'tvguide-favourites' localStorage key in js/store/favourites.js")
 	}
 }
 
