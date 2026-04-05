@@ -2,91 +2,8 @@ import { CONFIG } from './config.js';
 import { getTodayString, dateMidnight, formatTime, formatDateLong, minutesToHHMM, addDays, formatSearchDate } from './utils/date.js';
 import { state } from './state.js';
 import { fetchChannels, fetchGuide, fetchCategories } from './api.js';
-
-// ── Preferences (localStorage) ───────────────────────────────────────────────
-
-function loadPrefs() {
-    try {
-        const raw = localStorage.getItem('tvguide-prefs');
-        const p = raw ? JSON.parse(raw) : {};
-        return { hidden: p.hidden || {}, favourites: p.favourites || {} };
-    } catch {
-        return { hidden: {}, favourites: {} };
-    }
-}
-
-function savePrefs() {
-    localStorage.setItem('tvguide-prefs', JSON.stringify(state.prefs));
-}
-
-function isHidden(channelId)    { return !!state.prefs.hidden[channelId]; }
-function isFavourite(channelId) { return !!state.prefs.favourites[channelId]; }
-
-function toggleHidden(channelId) {
-    state.prefs.hidden[channelId] = !state.prefs.hidden[channelId];
-    savePrefs();
-    renderGuide();
-}
-
-function toggleFavourite(channelId) {
-    state.prefs.favourites[channelId] = !state.prefs.favourites[channelId];
-    savePrefs();
-    renderGuide();
-    renderSettingsPanel();
-}
-
-// ── Favourite searches (localStorage) ────────────────────────────────────────
-
-function loadFavouriteSearches() {
-    try {
-        const raw = localStorage.getItem('tvguide-favourites');
-        return raw ? JSON.parse(raw) : [];
-    } catch {
-        return [];
-    }
-}
-
-function saveFavouriteSearches() {
-    localStorage.setItem('tvguide-favourites', JSON.stringify(state.favouriteSearches));
-}
-
-function addFavouriteSearch(searchConfig) {
-    const fav = {
-        id: crypto.randomUUID(),
-        name: searchConfig.query,
-        query: searchConfig.query,
-        mode: searchConfig.mode || 'simple',
-    };
-    if (fav.mode === 'advanced') {
-        if (searchConfig.categories && searchConfig.categories.length > 0) {
-            fav.categories = searchConfig.categories;
-        }
-        if (searchConfig.includePast) fav.includePast = true;
-        if (searchConfig.includeRepeats === false) fav.includeRepeats = false;
-    }
-    state.favouriteSearches.push(fav);
-    saveFavouriteSearches();
-    return fav;
-}
-
-function removeFavouriteSearch(id) {
-    state.favouriteSearches = state.favouriteSearches.filter(f => f.id !== id);
-    delete state.favouriteResults[id];
-    saveFavouriteSearches();
-}
-
-function findMatchingFavourite(query, mode, categories) {
-    return state.favouriteSearches.find(f => {
-        if (f.query !== query) return false;
-        if (f.mode !== mode) return false;
-        if (mode === 'advanced') {
-            const favCats = (f.categories || []).slice().sort().join(',');
-            const curCats = (categories || []).slice().sort().join(',');
-            if (favCats !== curCats) return false;
-        }
-        return true;
-    });
-}
+import { loadPrefs, isHidden, isFavourite, toggleHidden, toggleFavourite } from './store/preferences.js';
+import { loadFavouriteSearches, addFavouriteSearch, removeFavouriteSearch, findMatchingFavourite } from './store/favourites.js';
 
 function getCurrentSearchConfig() {
     const q = document.getElementById('searchInput').value.trim();
@@ -495,7 +412,11 @@ function renderSettingsPanel() {
         favBtn.className = 'settings-icon-btn fav-btn' + (fav ? ' active' : '');
         favBtn.textContent = '\u2605'; // ★
         favBtn.title = fav ? 'Remove from favourites' : 'Add to favourites';
-        favBtn.addEventListener('click', () => toggleFavourite(ch.id));
+        favBtn.addEventListener('click', () => {
+            toggleFavourite(ch.id);
+            renderGuide();
+            renderSettingsPanel();
+        });
 
         // Channel name
         const name = document.createElement('span');
@@ -509,6 +430,7 @@ function renderSettingsPanel() {
         hideBtn.title = hidden ? 'Show channel' : 'Hide channel';
         hideBtn.addEventListener('click', () => {
             toggleHidden(ch.id);
+            renderGuide();
             renderSettingsPanel();
         });
 
