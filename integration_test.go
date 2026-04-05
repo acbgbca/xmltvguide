@@ -685,11 +685,8 @@ func TestIntegration_ChannelIconProxy(t *testing.T) {
 // TestIntegration_Search verifies the full search flow: load XMLTV data,
 // then call /api/search and verify the response shape.
 func TestIntegration_Search(t *testing.T) {
-	xmlBytes, err := os.ReadFile("testdata/sample.xml")
-	if err != nil {
-		t.Fatalf("read sample.xml: %v", err)
-	}
-	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	base := time.Now().UTC().Truncate(24 * time.Hour)
+	mockSrv := startMockXMLTVServer(t, sampleXMLTVForDate(base))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
 	// Search for "News" — sample.xml has "Morning News" and "World News"
@@ -736,11 +733,8 @@ func TestIntegration_Search(t *testing.T) {
 // TestIntegration_Categories verifies the /api/categories endpoint returns
 // categories from the loaded XMLTV data.
 func TestIntegration_Categories(t *testing.T) {
-	xmlBytes, err := os.ReadFile("testdata/sample.xml")
-	if err != nil {
-		t.Fatalf("read sample.xml: %v", err)
-	}
-	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	base := time.Now().UTC().Truncate(24 * time.Hour)
+	mockSrv := startMockXMLTVServer(t, sampleXMLTVForDate(base))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
 	resp, err := http.Get(srv.URL + "/api/categories")
