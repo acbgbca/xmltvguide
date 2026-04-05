@@ -305,16 +305,76 @@ func TestIntegration_Channels(t *testing.T) {
 	}
 }
 
+// sampleXMLTVForDate generates XMLTV XML with the same shape as testdata/sample.xml
+// but with all programme times anchored to baseDate (midnight UTC). Using a
+// dynamic date prevents the "Late Night Movie" airing from ageing out of the
+// 7-day retention window as time passes.
+func sampleXMLTVForDate(baseDate time.Time) string {
+	const layout = "20060102150405 +0000"
+	prevEvening := baseDate.Add(-time.Hour)        // 23:00 the previous day
+	earlyMorning := baseDate.Add(time.Hour)         // 01:00 today
+	morning6 := baseDate.Add(6 * time.Hour)
+	morning7 := baseDate.Add(7 * time.Hour)
+	morning630 := baseDate.Add(6*time.Hour + 30*time.Minute)
+	morning730 := baseDate.Add(7*time.Hour + 30*time.Minute)
+	morning9 := baseDate.Add(9 * time.Hour)
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE tv SYSTEM "xmltv.dtd">
+<tv>
+  <channel id="ch1">
+    <display-name>ABC</display-name>
+    <lcn>2</lcn>
+    <icon src="https://example.com/abc.png"/>
+  </channel>
+  <channel id="ch2">
+    <display-name>SBS</display-name>
+  </channel>
+  <programme start="%s" stop="%s" channel="ch2">
+    <title>Late Night Movie</title>
+    <desc>A classic late night movie spanning midnight.</desc>
+    <category>Movie</category>
+  </programme>
+  <programme start="%s" stop="%s" channel="ch1">
+    <title>Morning News</title>
+    <desc>The latest news to start your day.</desc>
+    <category>News</category>
+    <rating system="ABA"><value>G</value></rating>
+  </programme>
+  <programme start="%s" stop="%s" channel="ch1">
+    <title>Sunrise</title>
+    <sub-title>Monday Edition</sub-title>
+    <desc>Morning breakfast television programme.</desc>
+    <category>Entertainment</category>
+    <episode-num system="xmltv_ns">5.12.0/1</episode-num>
+    <episode-num system="onscreen">S06 E13</episode-num>
+    <star-rating system="imdb"><value>3.5/5</value></star-rating>
+    <previously-shown/>
+  </programme>
+  <programme start="%s" stop="%s" channel="ch2">
+    <title>World News</title>
+    <sub-title>International Edition</sub-title>
+    <desc>Comprehensive international news coverage.</desc>
+    <category>News</category>
+    <category>International</category>
+    <date>2026</date>
+    <premiere>First broadcast</premiere>
+  </programme>
+</tv>`,
+		prevEvening.Format(layout), earlyMorning.Format(layout),
+		morning6.Format(layout), morning7.Format(layout),
+		morning7.Format(layout), morning9.Format(layout),
+		morning630.Format(layout), morning730.Format(layout),
+	)
+}
+
 func TestIntegration_Guide(t *testing.T) {
-	xmlBytes, err := os.ReadFile("testdata/sample.xml")
-	if err != nil {
-		t.Fatalf("read sample.xml: %v", err)
-	}
-	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	base := time.Now().UTC().Truncate(24 * time.Hour)
+	mockSrv := startMockXMLTVServer(t, sampleXMLTVForDate(base))
 
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/api/guide?date=2026-03-29")
+	dateStr := base.Format("2006-01-02")
+	resp, err := http.Get(srv.URL + "/api/guide?date=" + dateStr)
 	if err != nil {
 		t.Fatalf("GET /api/guide: %v", err)
 	}
