@@ -45,6 +45,8 @@ func newSeededServer(t *testing.T) *httptest.Server {
 		t.Fatalf("Open: %v", err)
 	}
 
+	// Use today's date so airings are never pruned by the retention window.
+	base := time.Now().UTC().Truncate(24 * time.Hour)
 	tv := &xmltv.TV{
 		Channels: []xmltv.Channel{
 			{
@@ -59,14 +61,14 @@ func newSeededServer(t *testing.T) *httptest.Server {
 		},
 		Programmes: []xmltv.Programme{
 			{
-				Start:   xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 6, 0, 0, 0, time.UTC)},
-				Stop:    xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 7, 0, 0, 0, time.UTC)},
+				Start:   xmltv.XmltvTime{Time: base.Add(6 * time.Hour)},
+				Stop:    xmltv.XmltvTime{Time: base.Add(7 * time.Hour)},
 				Channel: "ch1",
 				Titles:  []xmltv.Name{{Value: "Morning News"}},
 			},
 			{
-				Start:      xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 7, 0, 0, 0, time.UTC)},
-				Stop:       xmltv.XmltvTime{Time: time.Date(2026, 3, 29, 8, 0, 0, 0, time.UTC)},
+				Start:      xmltv.XmltvTime{Time: base.Add(7 * time.Hour)},
+				Stop:       xmltv.XmltvTime{Time: base.Add(8 * time.Hour)},
 				Channel:    "ch2",
 				Titles:     []xmltv.Name{{Value: "World News"}},
 				Categories: []xmltv.Name{{Value: "News"}},
@@ -226,7 +228,8 @@ func TestGetChannels_ContentType(t *testing.T) {
 
 func TestGetGuide_Date(t *testing.T) {
 	srv := newSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/guide?date=2026-03-29")
+	today := time.Now().UTC().Format("2006-01-02")
+	resp, err := http.Get(srv.URL + "/api/guide?date=" + today)
 	if err != nil {
 		t.Fatalf("GET /api/guide: %v", err)
 	}
