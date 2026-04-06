@@ -542,8 +542,8 @@ func TestIntegration_Navigation_ButtonsEnabled(t *testing.T) {
 	}
 }
 
-// TestIntegration_Navigation_JSFunctions verifies that js/main.js exports the
-// functions required for multi-day navigation.
+// TestIntegration_Navigation_JSFunctions verifies that the guide page module
+// and main.js together export the functions required for multi-day navigation.
 func TestIntegration_Navigation_JSFunctions(t *testing.T) {
 	xmlBytes, err := os.ReadFile("testdata/sample.xml")
 	if err != nil {
@@ -552,6 +552,7 @@ func TestIntegration_Navigation_JSFunctions(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
+	// Check main.js references the guide-related functions (via imports)
 	resp, err := http.Get(srv.URL + "/js/main.js")
 	if err != nil {
 		t.Fatalf("GET /js/main.js: %v", err)
@@ -562,9 +563,26 @@ func TestIntegration_Navigation_JSFunctions(t *testing.T) {
 	io.Copy(&buf, resp.Body) //nolint:errcheck
 	body := buf.String()
 
-	for _, fn := range []string{"getDateFromURL", "setDateInURL", "navigateToDate", "addDays"} {
+	for _, fn := range []string{"getDateFromURL", "navigateToDate", "addDays"} {
 		if !strings.Contains(body, fn) {
-			t.Errorf("expected js/main.js to define %s", fn)
+			t.Errorf("expected js/main.js to reference %s", fn)
+		}
+	}
+
+	// Check pages/guide.js defines the guide-specific URL and navigation functions
+	resp2, err := http.Get(srv.URL + "/js/pages/guide.js")
+	if err != nil {
+		t.Fatalf("GET /js/pages/guide.js: %v", err)
+	}
+	defer resp2.Body.Close()
+
+	var buf2 strings.Builder
+	io.Copy(&buf2, resp2.Body) //nolint:errcheck
+	guideBody := buf2.String()
+
+	for _, fn := range []string{"getDateFromURL", "setDateInURL", "navigateToDate"} {
+		if !strings.Contains(guideBody, fn) {
+			t.Errorf("expected js/pages/guide.js to define %s", fn)
 		}
 	}
 }
