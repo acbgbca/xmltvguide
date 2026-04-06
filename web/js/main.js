@@ -5,6 +5,10 @@ import { fetchChannels, fetchGuide, fetchCategories } from './api.js';
 import { loadPrefs, isHidden, isFavourite, toggleHidden, toggleFavourite } from './store/preferences.js';
 import { loadFavouriteSearches, addFavouriteSearch, removeFavouriteSearch, findMatchingFavourite } from './store/favourites.js';
 
+function showError(message) {
+    console.error(message);
+}
+
 function getCurrentSearchConfig() {
     const q = document.getElementById('searchInput').value.trim();
     const useAdvanced = document.getElementById('searchDescriptions').checked;
@@ -53,7 +57,7 @@ function editFavouriteSearch(id) {
     }
 
     // Render category chips and trigger search
-    fetchCategories().then(renderCategoryChips).catch(() => {});
+    fetchCategories().then(renderCategoryChips).catch(err => console.warn('Failed to load categories:', err));
     triggerSearch();
 }
 
@@ -536,9 +540,9 @@ async function performSearch() {
         state.searchResults = await res.json();
         renderSearchResults();
     } catch (err) {
-        console.error('Search failed:', err);
+        showError(`Search failed: ${err.message}`);
         document.getElementById('searchResults').innerHTML =
-            '<div class="search-empty">Search failed. Please try again.</div>';
+            `<div class="search-empty">Search failed: ${err.message}</div>`;
     } finally {
         document.getElementById('searchSpinner').classList.remove('visible');
     }
@@ -766,8 +770,8 @@ async function executeFavouriteSearches() {
             // Progressive rendering: update after each result
             renderFavouriteResults();
         } catch (err) {
-            console.error(`Favourite search "${fav.name}" failed:`, err);
-            state.favouriteResults[fav.id] = null; // mark as failed
+            showError(`Favourite search "${fav.name}" failed: ${err.message}`);
+            state.favouriteResults[fav.id] = { error: err.message };
         }
     });
 
@@ -837,11 +841,11 @@ function renderFavouriteResults() {
             loadingEl.className = 'fav-loading';
             loadingEl.innerHTML = '<div class="loading-spinner fav-spinner"></div>';
             groupEl.appendChild(loadingEl);
-        } else if (results === null) {
+        } else if (results && results.error) {
             // Failed
             const errorEl = document.createElement('div');
             errorEl.className = 'fav-no-results';
-            errorEl.textContent = 'Search failed. Try again later.';
+            errorEl.textContent = `Search failed: ${results.error}`;
             groupEl.appendChild(errorEl);
         } else {
             // Filter hidden channels
@@ -969,9 +973,9 @@ async function init() {
         }, 50);
 
     } catch (err) {
-        console.error('Failed to load guide data:', err);
+        showError(`Failed to load guide data: ${err.message}`);
         document.getElementById('loadingText').textContent =
-            'Failed to load guide data. Is the server running?';
+            `Failed to load guide data. Is the server running?\n${err.message}`;
         return; // leave loading screen visible as an error state
     }
 
