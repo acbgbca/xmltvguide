@@ -587,6 +587,67 @@ func TestIntegration_Navigation_JSFunctions(t *testing.T) {
 	}
 }
 
+// TestIntegration_Search_JSFunctions verifies that the search page module
+// and main.js together export the functions required for search functionality.
+func TestIntegration_Search_JSFunctions(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	// Check pages/search.js is served and defines the expected functions
+	resp, err := http.Get(srv.URL + "/js/pages/search.js")
+	if err != nil {
+		t.Fatalf("GET /js/pages/search.js: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /js/pages/search.js: expected 200, got %d", resp.StatusCode)
+	}
+
+	var buf strings.Builder
+	io.Copy(&buf, resp.Body) //nolint:errcheck
+	searchBody := buf.String()
+
+	for _, fn := range []string{"setupSearchPage", "triggerSearch", "renderCategoryChips", "getCurrentSearchConfig"} {
+		if !strings.Contains(searchBody, fn) {
+			t.Errorf("expected js/pages/search.js to define %s", fn)
+		}
+	}
+
+	// Check main.js imports from search.js and no longer defines these functions directly
+	resp2, err := http.Get(srv.URL + "/js/main.js")
+	if err != nil {
+		t.Fatalf("GET /js/main.js: %v", err)
+	}
+	defer resp2.Body.Close()
+
+	var buf2 strings.Builder
+	io.Copy(&buf2, resp2.Body) //nolint:errcheck
+	mainBody := buf2.String()
+
+	if !strings.Contains(mainBody, "pages/search.js") {
+		t.Error("expected js/main.js to import from pages/search.js")
+	}
+
+	// Check that search.js is listed in the service worker cache
+	resp3, err := http.Get(srv.URL + "/sw.js")
+	if err != nil {
+		t.Fatalf("GET /sw.js: %v", err)
+	}
+	defer resp3.Body.Close()
+
+	var buf3 strings.Builder
+	io.Copy(&buf3, resp3.Body) //nolint:errcheck
+	swBody := buf3.String()
+
+	if !strings.Contains(swBody, "pages/search.js") {
+		t.Error("expected sw.js to include js/pages/search.js in the cache list")
+	}
+}
+
 func TestIntegration_ChannelIconProxy(t *testing.T) {
 	// Mock server serves both XMLTV data and icon images.
 	iconRequests := 0
@@ -958,8 +1019,8 @@ func TestIntegration_SearchPage_HTMLElements(t *testing.T) {
 	}
 }
 
-// TestIntegration_SearchPage_JSFunctions verifies that js/main.js contains
-// the functions required for the search UI.
+// TestIntegration_SearchPage_JSFunctions verifies that the search page module
+// and main.js together contain the functions required for the search UI.
 func TestIntegration_SearchPage_JSFunctions(t *testing.T) {
 	xmlBytes, err := os.ReadFile("testdata/sample.xml")
 	if err != nil {
@@ -968,33 +1029,44 @@ func TestIntegration_SearchPage_JSFunctions(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/js/main.js")
-	if err != nil {
-		t.Fatalf("GET /js/main.js: %v", err)
+	fetchBody := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		defer resp.Body.Close()
+		var buf strings.Builder
+		io.Copy(&buf, resp.Body) //nolint:errcheck
+		return buf.String()
 	}
-	defer resp.Body.Close()
 
-	var buf strings.Builder
-	io.Copy(&buf, resp.Body) //nolint:errcheck
-	body := buf.String()
+	searchJS := fetchBody("/js/pages/search.js")
+	mainJS := fetchBody("/js/main.js")
 
+	// Search-specific functions live in pages/search.js
 	for _, fn := range []string{
 		"performSearch",
 		"fetchCategories",
 		"renderSearchResults",
 		"formatSearchDate",
 	} {
-		if !strings.Contains(body, fn) {
-			t.Errorf("expected js/main.js to define %s", fn)
+		if !strings.Contains(searchJS, fn) {
+			t.Errorf("expected js/pages/search.js to define %s", fn)
 		}
 	}
 
-	// Verify state additions
-	if !strings.Contains(body, "state.categories") {
-		t.Error("expected state.categories in js/main.js")
+	// State additions are referenced in pages/search.js
+	if !strings.Contains(searchJS, "state.categories") {
+		t.Error("expected state.categories in js/pages/search.js")
 	}
-	if !strings.Contains(body, "state.searchResults") {
-		t.Error("expected state.searchResults in js/main.js")
+	if !strings.Contains(searchJS, "state.searchResults") {
+		t.Error("expected state.searchResults in js/pages/search.js")
+	}
+
+	// main.js imports from search.js
+	if !strings.Contains(mainJS, "pages/search.js") {
+		t.Error("expected js/main.js to import from pages/search.js")
 	}
 }
 
@@ -1197,10 +1269,14 @@ func TestIntegration_ErrorLogging_JSFunctions(t *testing.T) {
 		t.Error("expected main.js to register unhandledrejection handler")
 	}
 
-	// All explicit catch sites must call logError with type: 'explicit'
-	if strings.Count(mainJS, "type: 'explicit'") < 4 {
-		t.Errorf("expected at least 4 explicit logError calls in main.js (guide load, search, favourite search, categories), got %d",
-			strings.Count(mainJS, "type: 'explicit'"))
+	searchJS := fetchBody("/js/pages/search.js")
+
+	// All explicit catch sites must call logError with type: 'explicit'.
+	// These are now split: guide load + favourite search in main.js,
+	// search fetch + categories in search.js.
+	totalExplicit := strings.Count(mainJS, "type: 'explicit'") + strings.Count(searchJS, "type: 'explicit'")
+	if totalExplicit < 4 {
+		t.Errorf("expected at least 4 explicit logError calls across main.js and search.js (guide load, search, favourite search, categories), got %d", totalExplicit)
 	}
 }
 
