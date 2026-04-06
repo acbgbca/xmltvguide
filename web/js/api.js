@@ -21,3 +21,11 @@ export async function fetchCategories() {
     state.categories = await res.json();
     return state.categories;
 }
+
+export function logError({ type, message, source, lineno, colno, stack, url }) {
+    fetch('/api/debug/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, message, source, lineno, colno, stack, url }),
+    }).catch(() => {}); // never throw from the error logger
+}
