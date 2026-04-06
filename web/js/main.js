@@ -1,21 +1,17 @@
 import { getTodayString, addDays, formatDateLong } from './utils/date.js';
 import { state } from './state.js';
-import { fetchChannels, fetchGuide, fetchCategories, logError } from './api.js';
+import { fetchChannels, fetchGuide, logError } from './api.js';
 import { loadPrefs } from './store/preferences.js';
 import { loadFavouriteSearches } from './store/favourites.js';
 import { closeModal } from './components/modal.js';
 import {
     renderGuide, renderTimeAxis, setupScrollSync, scrollToNow,
-    startNowLineTimer, stopNowLineTimer,
     navigateToDate, hasAiringsStartingOn,
     getDateFromURL,
 } from './pages/guide.js';
-import {
-    setupSearchPage, triggerSearch, renderCategoryChips, getCurrentSearchConfig,
-    loadSearchPageCategories,
-} from './pages/search.js';
-import { initFavouritesPage, renderFavouritesPage } from './pages/favourites.js';
+import { setupSearchPage } from './pages/search.js';
 import { renderSettingsPanel } from './pages/settings.js';
+import { getPageFromPath, navigateToPage } from './router.js';
 
 window.onerror = (message, source, lineno, colno, error) => {
     logError({ type: 'onerror', message: String(message), source, lineno, colno,
@@ -29,103 +25,6 @@ window.addEventListener('unhandledrejection', event => {
                 stack: err?.stack, url: location.href });
 });
 
-function showError(message) {
-    console.error(message);
-}
-
-function editFavouriteSearch(id) {
-    const fav = state.favouriteSearches.find(f => f.id === id);
-    if (!fav) return;
-
-    // Navigate to search page
-    navigateToPage('search');
-
-    // Pre-fill search input
-    document.getElementById('searchInput').value = fav.query;
-
-    // Pre-fill advanced options
-    const isAdvanced = fav.mode === 'advanced';
-    document.getElementById('searchDescriptions').checked = isAdvanced;
-    document.getElementById('includePast').checked = fav.includePast || false;
-    document.getElementById('hideRepeats').checked = fav.includeRepeats === false;
-
-    // Pre-fill categories
-    state.selectedCategories.clear();
-    if (fav.categories) {
-        for (const cat of fav.categories) {
-            state.selectedCategories.add(cat);
-        }
-    }
-
-    // Show advanced panel if needed
-    if (isAdvanced || (fav.categories && fav.categories.length > 0)) {
-        document.getElementById('advancedOptions').style.display = '';
-        document.getElementById('advancedToggle').classList.add('open');
-    }
-
-    // Render category chips and trigger search
-    fetchCategories().then(renderCategoryChips).catch(err => console.warn('Failed to load categories:', err));
-    triggerSearch();
-}
-
-// ── Routing ──────────────────────────────────────────────────────────────────
-
-const PAGES = ['guide', 'search', 'favourites', 'settings'];
-
-function getPageFromPath() {
-    const path = window.location.pathname.replace(/^\/+/, '').split('?')[0];
-    if (PAGES.includes(path)) return path;
-    return 'guide';
-}
-
-function navigateToPage(page, { pushState = true } = {}) {
-    if (!PAGES.includes(page)) page = 'guide';
-    state.activePage = page;
-
-    // Update URL
-    if (pushState) {
-        const url = page === 'guide' ? '/' + (window.location.search || '') : '/' + page;
-        history.pushState({}, '', url);
-    }
-
-    // Show/hide pages
-    for (const p of PAGES) {
-        const el = document.getElementById('page-' + p);
-        if (el) el.style.display = p === page ? '' : 'none';
-    }
-
-    // Update bottom nav active state
-    document.querySelectorAll('.bottom-nav-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.page === page);
-    });
-
-    // Top bar is only visible on the Guide tab
-    document.getElementById('topBar').style.display = page === 'guide' ? '' : 'none';
-
-    // Start/stop the now-line timer based on whether Guide is active
-    if (page === 'guide') {
-        startNowLineTimer();
-    } else {
-        stopNowLineTimer();
-    }
-
-    // Render settings when switching to that page
-    if (page === 'settings') {
-        renderSettingsPanel();
-    }
-
-    // Load categories when entering search page
-    if (page === 'search') {
-        loadSearchPageCategories();
-    }
-
-    // Load favourites when entering favourites page
-    if (page === 'favourites') {
-        renderFavouritesPage();
-    }
-}
-
-
 // ── Initialisation ────────────────────────────────────────────────────────────
 
 async function init() {
@@ -138,9 +37,6 @@ async function init() {
 
     // Resolve the active date from the URL (falls back to today)
     state.currentDate = getDateFromURL();
-
-    // Wire up cross-page callbacks
-    initFavouritesPage({ editFavouriteSearch });
 
     // Render static parts that don't depend on data
     renderTimeAxis();
@@ -203,7 +99,7 @@ async function init() {
         }, 50);
 
     } catch (err) {
-        showError(`Failed to load guide data: ${err.message}`);
+        console.error(`Failed to load guide data: ${err.message}`);
         logError({ type: 'explicit', message: err.message, stack: err?.stack, url: location.href });
         document.getElementById('loadingText').textContent =
             `Failed to load guide data. Is the server running?\n${err.message}`;
