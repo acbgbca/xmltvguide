@@ -52,6 +52,7 @@ type DB struct {
 	retentionDays int
 	sourceURL     string
 	imageCache    *images.Cache
+	clock         Clock
 
 	// lastRefresh and nextRefresh are kept in memory — they reflect the current
 	// process's poll cycle and reset on restart, which is intentional.
@@ -198,7 +199,14 @@ func Open(path string, retentionDays int, sourceURL string, imageCache *images.C
 		retentionDays: retentionDays,
 		sourceURL:     sourceURL,
 		imageCache:    imageCache,
+		clock:         realClock{},
 	}, nil
+}
+
+// SetClock replaces the DB's clock. Use a fixed clock in tests to make
+// time-dependent queries deterministic.
+func (d *DB) SetClock(c Clock) {
+	d.clock = c
 }
 
 // GetStatus returns the current refresh metadata.

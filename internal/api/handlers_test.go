@@ -912,6 +912,12 @@ func TestSearch_AiringsOrderedByStartTime(t *testing.T) {
 	t.Error("expected 'Cricket Live' group in results")
 }
 
+// fixedClock implements database.Clock with a pinned time, making time-dependent
+// search queries deterministic regardless of when the test runs.
+type fixedClock struct{ t time.Time }
+
+func (c fixedClock) Now() time.Time { return c.t }
+
 func TestSearch_TodayFilter_ExcludesTomorrow(t *testing.T) {
 	dir := t.TempDir()
 	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", images.NewCache(&http.Client{}, filepath.Join(dir, "images")))
@@ -919,7 +925,15 @@ func TestSearch_TodayFilter_ExcludesTomorrow(t *testing.T) {
 		t.Fatalf("Open: %v", err)
 	}
 
+	// Pin the clock to 09:00 today so search queries use a consistent "now".
+	// Airings are placed at 10:00 (today) and 10:00 (tomorrow) so that:
+	//   - stop_time > pinned_now  ✓  (11:00 > 09:00)
+	//   - today filter correctly includes/excludes based on start_time vs midnight
 	now := time.Now()
+	pinnedNow := time.Date(now.Year(), now.Month(), now.Day(), 9, 0, 0, 0, time.Local)
+	db.SetClock(fixedClock{t: pinnedNow})
+
+	todayAiring := time.Date(now.Year(), now.Month(), now.Day(), 10, 0, 0, 0, time.Local)
 	tomorrow := time.Date(now.Year(), now.Month(), now.Day()+1, 10, 0, 0, 0, time.Local)
 	tv := &xmltv.TV{
 		Channels: []xmltv.Channel{
@@ -927,8 +941,8 @@ func TestSearch_TodayFilter_ExcludesTomorrow(t *testing.T) {
 		},
 		Programmes: []xmltv.Programme{
 			{
-				Start:   xmltv.XmltvTime{Time: now.Add(1 * time.Hour)},
-				Stop:    xmltv.XmltvTime{Time: now.Add(2 * time.Hour)},
+				Start:   xmltv.XmltvTime{Time: todayAiring},
+				Stop:    xmltv.XmltvTime{Time: todayAiring.Add(1 * time.Hour)},
 				Channel: "ch1",
 				Titles:  []xmltv.Name{{Value: "Today Show"}},
 			},
@@ -1013,7 +1027,12 @@ func TestSearch_TodayFilter_AdvancedMode(t *testing.T) {
 		t.Fatalf("Open: %v", err)
 	}
 
+	// Pin the clock to 09:00 today — same rationale as TestSearch_TodayFilter_ExcludesTomorrow.
 	now := time.Now()
+	pinnedNow := time.Date(now.Year(), now.Month(), now.Day(), 9, 0, 0, 0, time.Local)
+	db.SetClock(fixedClock{t: pinnedNow})
+
+	todayAiring := time.Date(now.Year(), now.Month(), now.Day(), 10, 0, 0, 0, time.Local)
 	tomorrow := time.Date(now.Year(), now.Month(), now.Day()+1, 10, 0, 0, 0, time.Local)
 	tv := &xmltv.TV{
 		Channels: []xmltv.Channel{
@@ -1021,8 +1040,8 @@ func TestSearch_TodayFilter_AdvancedMode(t *testing.T) {
 		},
 		Programmes: []xmltv.Programme{
 			{
-				Start:      xmltv.XmltvTime{Time: now.Add(1 * time.Hour)},
-				Stop:       xmltv.XmltvTime{Time: now.Add(2 * time.Hour)},
+				Start:      xmltv.XmltvTime{Time: todayAiring},
+				Stop:       xmltv.XmltvTime{Time: todayAiring.Add(1 * time.Hour)},
 				Channel:    "ch1",
 				Titles:     []xmltv.Name{{Value: "Today Match"}},
 				Categories: []xmltv.Name{{Value: "Sport"}},

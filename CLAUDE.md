@@ -25,10 +25,23 @@ tvguide/
 │   └── api/handlers.go          # REST API handlers
 ├── web/                         # Frontend — embedded into binary via go:embed
 │   ├── index.html               # App shell (no JS framework)
-│   ├── app.js                   # All frontend logic
 │   ├── style.css                # Dark theme, CSS grid layout
 │   ├── manifest.json            # PWA manifest
-│   └── sw.js                    # Service worker (cache-first static, network-first API)
+│   ├── sw.js                    # Service worker (cache-first static, network-first API)
+│   └── js/
+│       ├── main.js              # Router, init, service worker registration
+│       ├── state.js             # Shared mutable state
+│       ├── api.js               # Fetch helpers for backend API
+│       ├── config.js            # PX_PER_MIN, ROW_HEIGHT constants
+│       ├── utils/date.js        # Date formatting utilities
+│       ├── store/preferences.js # Channel hide/favourite persistence (localStorage)
+│       ├── store/favourites.js  # Saved search persistence (localStorage)
+│       ├── components/modal.js  # Airing detail modal
+│       └── pages/
+│           ├── guide.js         # Guide tab rendering
+│           ├── search.js        # Search tab rendering
+│           ├── favourites.js    # Favourites tab rendering
+│           └── settings.js      # Settings tab rendering
 ├── Dockerfile                   # Multi-stage: golang:1.23-alpine → alpine:3.20
 └── docker-compose.yml
 ```
@@ -116,8 +129,8 @@ Two constants control the guide's visual layout. They must be kept in sync:
 
 | Location | Name | Default | Effect |
 |---|---|---|---|
-| `web/app.js` line ~9 | `CONFIG.PX_PER_MIN` | `4` | Pixels per minute — controls horizontal zoom |
-| `web/app.js` line ~10 | `CONFIG.ROW_HEIGHT` | `54` | Row height in px |
+| `web/js/config.js` | `CONFIG.PX_PER_MIN` | `4` | Pixels per minute — controls horizontal zoom |
+| `web/js/config.js` | `CONFIG.ROW_HEIGHT` | `54` | Row height in px |
 | `web/style.css` `:root` | `--row-height` | `54px` | Must match `CONFIG.ROW_HEIGHT` |
 
 The guide renders the full day (1440 minutes) as a scrollable area and scrolls to the current time on load.
