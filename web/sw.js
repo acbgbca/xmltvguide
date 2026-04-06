@@ -1,5 +1,5 @@
 const CACHE = 'tvguide-__CACHE_VERSION__';
-const STATIC = ['/', '/index.html', '/style.css', '/js/main.js', '/js/state.js', '/js/api.js', '/js/config.js', '/js/utils/date.js', '/js/store/preferences.js', '/js/store/favourites.js', '/js/components/modal.js', '/js/pages/guide.js', '/js/pages/search.js', '/manifest.json', '/icon.svg', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png'];
+const STATIC = ['/', '/index.html', '/style.css', '/js/main.js', '/js/state.js', '/js/api.js', '/js/config.js', '/js/utils/date.js', '/js/store/preferences.js', '/js/store/favourites.js', '/js/components/modal.js', '/js/pages/guide.js', '/js/pages/search.js', '/js/pages/favourites.js', '/manifest.json', '/icon.svg', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png'];
 
 // SPA routes that should be served from the cached index.html
 const SPA_ROUTES = ['/guide', '/search', '/favourites', '/settings'];
