@@ -41,6 +41,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/search", h.getSearch)
 	mux.HandleFunc("GET /api/categories", h.getCategories)
 	mux.HandleFunc("GET /images/channel/{id}", h.serveChannelIcon)
+	mux.HandleFunc("POST /api/debug/log", h.postDebugLog)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
