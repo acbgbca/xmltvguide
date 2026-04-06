@@ -1202,14 +1202,19 @@ func TestIntegration_FavouritesPage_JSFunctions(t *testing.T) {
 		}
 	}
 
-	// editFavouriteSearch remains in main.js (cross-page navigation)
-	if !strings.Contains(mainJS, "editFavouriteSearch") {
-		t.Error("expected js/main.js to reference editFavouriteSearch")
+	// editFavouriteSearch has moved to pages/search.js (alongside router import)
+	searchJS := fetchBody("/js/pages/search.js")
+	if !strings.Contains(searchJS, "editFavouriteSearch") {
+		t.Error("expected editFavouriteSearch to be defined in js/pages/search.js")
+	}
+	if strings.Contains(mainJS, "function editFavouriteSearch") {
+		t.Error("expected editFavouriteSearch NOT to be defined directly in js/main.js")
 	}
 
-	// main.js imports renderFavouritesPage from pages/favourites.js
-	if !strings.Contains(mainJS, "pages/favourites.js") {
-		t.Error("expected js/main.js to import from pages/favourites.js")
+	// router.js now imports renderFavouritesPage from pages/favourites.js
+	routerJS := fetchBody("/js/router.js")
+	if !strings.Contains(routerJS, "pages/favourites.js") {
+		t.Error("expected js/router.js to import from pages/favourites.js")
 	}
 
 	// State references live in pages/favourites.js

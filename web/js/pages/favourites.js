@@ -4,12 +4,7 @@ import { formatSearchDate } from '../utils/date.js';
 import { isHidden } from '../store/preferences.js';
 import { removeFavouriteSearch } from '../store/favourites.js';
 import { openSearchAiringModal } from '../components/modal.js';
-
-let _editFavouriteSearch;
-
-export function initFavouritesPage({ editFavouriteSearch }) {
-    _editFavouriteSearch = editFavouriteSearch;
-}
+import { editFavouriteSearch } from './search.js';
 
 export function renderFavouritesPage() {
     const list = document.getElementById('favouritesList');
@@ -104,7 +99,7 @@ function renderFavouriteResults() {
         editBtn.className = 'fav-action-btn';
         editBtn.textContent = 'Edit';
         editBtn.title = 'Edit this search';
-        editBtn.addEventListener('click', () => _editFavouriteSearch(fav.id));
+        editBtn.addEventListener('click', () => editFavouriteSearch(fav.id));
         actions.appendChild(editBtn);
 
         const deleteBtn = document.createElement('button');

@@ -4,6 +4,7 @@ import { fetchCategories, logError } from '../api.js';
 import { isHidden } from '../store/preferences.js';
 import { addFavouriteSearch, removeFavouriteSearch, findMatchingFavourite } from '../store/favourites.js';
 import { openSearchAiringModal } from '../components/modal.js';
+import { navigateToPage } from '../router.js';
 
 // ── Search ───────────────────────────────────────────────────────────────────
 
@@ -226,4 +227,39 @@ export function loadSearchPageCategories() {
         console.error('Failed to load categories:', err);
         logError({ type: 'explicit', message: err.message, stack: err?.stack, url: location.href });
     });
+}
+
+export function editFavouriteSearch(id) {
+    const fav = state.favouriteSearches.find(f => f.id === id);
+    if (!fav) return;
+
+    // Navigate to search page
+    navigateToPage('search');
+
+    // Pre-fill search input
+    document.getElementById('searchInput').value = fav.query;
+
+    // Pre-fill advanced options
+    const isAdvanced = fav.mode === 'advanced';
+    document.getElementById('searchDescriptions').checked = isAdvanced;
+    document.getElementById('includePast').checked = fav.includePast || false;
+    document.getElementById('hideRepeats').checked = fav.includeRepeats === false;
+
+    // Pre-fill categories
+    state.selectedCategories.clear();
+    if (fav.categories) {
+        for (const cat of fav.categories) {
+            state.selectedCategories.add(cat);
+        }
+    }
+
+    // Show advanced panel if needed
+    if (isAdvanced || (fav.categories && fav.categories.length > 0)) {
+        document.getElementById('advancedOptions').style.display = '';
+        document.getElementById('advancedToggle').classList.add('open');
+    }
+
+    // Render category chips and trigger search
+    fetchCategories().then(renderCategoryChips).catch(err => console.warn('Failed to load categories:', err));
+    triggerSearch();
 }
