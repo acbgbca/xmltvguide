@@ -1185,25 +1185,39 @@ func TestIntegration_FavouritesPage_JSFunctions(t *testing.T) {
 	}
 
 	mainJS := fetchBody("/js/main.js")
+	favouritesJS := fetchBody("/js/pages/favourites.js")
 	storeJS := fetchBody("/js/store/favourites.js")
 
-	// Rendering and orchestration functions live in main.js
+	// Rendering and orchestration functions live in pages/favourites.js
 	for _, fn := range []string{
 		"renderFavouritesPage",
 		"executeFavouriteSearches",
-		"editFavouriteSearch",
 	} {
-		if !strings.Contains(mainJS, fn) {
-			t.Errorf("expected js/main.js to define %s", fn)
+		if !strings.Contains(favouritesJS, fn) {
+			t.Errorf("expected js/pages/favourites.js to define %s", fn)
+		}
+		// And should NOT be defined directly in main.js (only referenced via import)
+		if strings.Contains(mainJS, "function "+fn) {
+			t.Errorf("expected js/main.js NOT to define %s directly (should be imported)", fn)
 		}
 	}
 
-	// State references live in main.js
-	if !strings.Contains(mainJS, "state.favouriteSearches") {
-		t.Error("expected state.favouriteSearches in js/main.js")
+	// editFavouriteSearch remains in main.js (cross-page navigation)
+	if !strings.Contains(mainJS, "editFavouriteSearch") {
+		t.Error("expected js/main.js to reference editFavouriteSearch")
 	}
-	if !strings.Contains(mainJS, "state.favouriteResults") {
-		t.Error("expected state.favouriteResults in js/main.js")
+
+	// main.js imports renderFavouritesPage from pages/favourites.js
+	if !strings.Contains(mainJS, "pages/favourites.js") {
+		t.Error("expected js/main.js to import from pages/favourites.js")
+	}
+
+	// State references live in pages/favourites.js
+	if !strings.Contains(favouritesJS, "state.favouriteSearches") {
+		t.Error("expected state.favouriteSearches in js/pages/favourites.js")
+	}
+	if !strings.Contains(favouritesJS, "state.favouriteResults") {
+		t.Error("expected state.favouriteResults in js/pages/favourites.js")
 	}
 
 	// Store functions and localStorage key live in js/store/favourites.js
@@ -1219,6 +1233,45 @@ func TestIntegration_FavouritesPage_JSFunctions(t *testing.T) {
 	}
 	if !strings.Contains(storeJS, "tvguide-favourites") {
 		t.Error("expected 'tvguide-favourites' localStorage key in js/store/favourites.js")
+	}
+}
+
+// TestIntegration_FavouritesPage_Module verifies that pages/favourites.js is
+// served, exports renderFavouritesPage, and is registered in the service worker.
+func TestIntegration_FavouritesPage_Module(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	fetchBody := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET %s: expected 200, got %d", path, resp.StatusCode)
+		}
+		var buf strings.Builder
+		io.Copy(&buf, resp.Body) //nolint:errcheck
+		return buf.String()
+	}
+
+	favouritesJS := fetchBody("/js/pages/favourites.js")
+
+	// The module exports the page entry point
+	if !strings.Contains(favouritesJS, "renderFavouritesPage") {
+		t.Error("expected js/pages/favourites.js to export renderFavouritesPage")
+	}
+
+	// pages/favourites.js is in the service worker pre-cache list
+	swJS := fetchBody("/sw.js")
+	if !strings.Contains(swJS, "pages/favourites.js") {
+		t.Error("expected sw.js to include js/pages/favourites.js in the cache list")
 	}
 }
 
@@ -1270,13 +1323,16 @@ func TestIntegration_ErrorLogging_JSFunctions(t *testing.T) {
 	}
 
 	searchJS := fetchBody("/js/pages/search.js")
+	favouritesJS := fetchBody("/js/pages/favourites.js")
 
 	// All explicit catch sites must call logError with type: 'explicit'.
-	// These are now split: guide load + favourite search in main.js,
-	// search fetch + categories in search.js.
-	totalExplicit := strings.Count(mainJS, "type: 'explicit'") + strings.Count(searchJS, "type: 'explicit'")
+	// guide load in main.js; search fetch + categories in search.js;
+	// favourite search in pages/favourites.js.
+	totalExplicit := strings.Count(mainJS, "type: 'explicit'") +
+		strings.Count(searchJS, "type: 'explicit'") +
+		strings.Count(favouritesJS, "type: 'explicit'")
 	if totalExplicit < 4 {
-		t.Errorf("expected at least 4 explicit logError calls across main.js and search.js (guide load, search, favourite search, categories), got %d", totalExplicit)
+		t.Errorf("expected at least 4 explicit logError calls across main.js, search.js, and favourites.js (guide load, search, favourite search, categories), got %d", totalExplicit)
 	}
 }
 
