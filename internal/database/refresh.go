@@ -155,7 +155,7 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 		}
 	}
 
-	cutoff := time.Now().AddDate(0, 0, -d.retentionDays).UTC().Format(time.RFC3339)
+	cutoff := d.clock.Now().AddDate(0, 0, -d.retentionDays).UTC().Format(time.RFC3339)
 	if _, err := tx.Exec(`DELETE FROM airings WHERE stop_time < ?`, cutoff); err != nil {
 		return fmt.Errorf("pruning airings: %w", err)
 	}

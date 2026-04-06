@@ -20,7 +20,7 @@ func (d *DB) ExecRaw(query string) (sql.Result, error) {
 // Returns future airings ordered by relevance then start time.
 // If includeRepeats is false, repeats are excluded.
 func (d *DB) SearchSimple(query string, includeRepeats bool, today bool) ([]model.SearchResult, error) {
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := d.clock.Now().UTC().Format(time.RFC3339)
 	q := `
 		SELECT
 			a.channel_id, a.start_time, a.stop_time,
@@ -43,7 +43,7 @@ func (d *DB) SearchSimple(query string, includeRepeats bool, today bool) ([]mode
 		q += ` AND a.is_repeat = 0`
 	}
 	if today {
-		endOfDay := endOfToday()
+		endOfDay := d.endOfToday()
 		q += ` AND a.start_time < ?`
 		args = append(args, endOfDay)
 	}
@@ -75,7 +75,7 @@ func (d *DB) SearchAdvanced(query string, categories []string, includePast bool,
 	args := []any{query}
 
 	if !includePast {
-		now := time.Now().UTC().Format(time.RFC3339)
+		now := d.clock.Now().UTC().Format(time.RFC3339)
 		q += ` AND a.stop_time > ?`
 		args = append(args, now)
 	}
@@ -91,7 +91,7 @@ func (d *DB) SearchAdvanced(query string, categories []string, includePast bool,
 		q += ` AND EXISTS (SELECT 1 FROM json_each(a.categories) WHERE value IN (` + strings.Join(placeholders, ",") + `))`
 	}
 	if today {
-		endOfDay := endOfToday()
+		endOfDay := d.endOfToday()
 		q += ` AND a.start_time < ?`
 		args = append(args, endOfDay)
 	}
@@ -101,8 +101,8 @@ func (d *DB) SearchAdvanced(query string, categories []string, includePast bool,
 }
 
 // endOfToday returns midnight tonight in the server's local timezone, formatted as RFC3339 in UTC.
-func endOfToday() string {
-	now := time.Now()
+func (d *DB) endOfToday() string {
+	now := d.clock.Now()
 	return time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, time.Local).UTC().Format(time.RFC3339)
 }
 
