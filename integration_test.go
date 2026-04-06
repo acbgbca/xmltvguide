@@ -1132,6 +1132,60 @@ func TestIntegration_FavouritesPage_JSFunctions(t *testing.T) {
 	}
 }
 
+// TestIntegration_ErrorLogging_JSFunctions verifies that the frontend error
+// logging plumbing is in place: logError exported from api.js, global handlers
+// registered in main.js, and all catch sites wired to logError.
+func TestIntegration_ErrorLogging_JSFunctions(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	fetchBody := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		defer resp.Body.Close()
+		var buf strings.Builder
+		io.Copy(&buf, resp.Body) //nolint:errcheck
+		return buf.String()
+	}
+
+	apiJS := fetchBody("/js/api.js")
+	mainJS := fetchBody("/js/main.js")
+
+	// api.js must export logError
+	if !strings.Contains(apiJS, "export function logError") {
+		t.Error("expected api.js to export logError")
+	}
+	if !strings.Contains(apiJS, "/api/debug/log") {
+		t.Error("expected api.js logError to POST to /api/debug/log")
+	}
+
+	// main.js must import logError from api.js
+	if !strings.Contains(mainJS, "logError") {
+		t.Error("expected main.js to import and use logError")
+	}
+
+	// Global error handlers must be registered
+	if !strings.Contains(mainJS, "window.onerror") {
+		t.Error("expected main.js to register window.onerror handler")
+	}
+	if !strings.Contains(mainJS, "unhandledrejection") {
+		t.Error("expected main.js to register unhandledrejection handler")
+	}
+
+	// All explicit catch sites must call logError with type: 'explicit'
+	if strings.Count(mainJS, "type: 'explicit'") < 4 {
+		t.Errorf("expected at least 4 explicit logError calls in main.js (guide load, search, favourite search, categories), got %d",
+			strings.Count(mainJS, "type: 'explicit'"))
+	}
+}
+
 // TestIntegration_SPAFallback_GuidePathReturnsHTML verifies that GET /guide
 // returns index.html content (SPA fallback).
 func TestIntegration_SPAFallback_GuidePathReturnsHTML(t *testing.T) {

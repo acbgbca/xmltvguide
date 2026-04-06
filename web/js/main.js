@@ -1,9 +1,21 @@
 import { CONFIG } from './config.js';
 import { getTodayString, dateMidnight, formatTime, formatDateLong, minutesToHHMM, addDays, formatSearchDate } from './utils/date.js';
 import { state } from './state.js';
-import { fetchChannels, fetchGuide, fetchCategories } from './api.js';
+import { fetchChannels, fetchGuide, fetchCategories, logError } from './api.js';
 import { loadPrefs, isHidden, isFavourite, toggleHidden, toggleFavourite } from './store/preferences.js';
 import { loadFavouriteSearches, addFavouriteSearch, removeFavouriteSearch, findMatchingFavourite } from './store/favourites.js';
+
+window.onerror = (message, source, lineno, colno, error) => {
+    logError({ type: 'onerror', message: String(message), source, lineno, colno,
+                stack: error?.stack, url: location.href });
+};
+
+window.addEventListener('unhandledrejection', event => {
+    const err = event.reason;
+    logError({ type: 'unhandledrejection',
+                message: err instanceof Error ? err.message : String(err),
+                stack: err?.stack, url: location.href });
+});
 
 function showError(message) {
     console.error(message);
@@ -111,6 +123,7 @@ function navigateToPage(page, { pushState = true } = {}) {
     if (page === 'search') {
         fetchCategories().then(renderCategoryChips).catch(err => {
             console.error('Failed to load categories:', err);
+            logError({ type: 'explicit', message: err.message, stack: err?.stack, url: location.href });
         });
     }
 
@@ -541,6 +554,7 @@ async function performSearch() {
         renderSearchResults();
     } catch (err) {
         showError(`Search failed: ${err.message}`);
+        logError({ type: 'explicit', message: err.message, stack: err?.stack, url: location.href });
         document.getElementById('searchResults').innerHTML =
             `<div class="search-empty">Search failed: ${err.message}</div>`;
     } finally {
@@ -771,6 +785,7 @@ async function executeFavouriteSearches() {
             renderFavouriteResults();
         } catch (err) {
             showError(`Favourite search "${fav.name}" failed: ${err.message}`);
+            logError({ type: 'explicit', message: err.message, stack: err?.stack, url: location.href });
             state.favouriteResults[fav.id] = { error: err.message };
         }
     });
@@ -974,6 +989,7 @@ async function init() {
 
     } catch (err) {
         showError(`Failed to load guide data: ${err.message}`);
+        logError({ type: 'explicit', message: err.message, stack: err?.stack, url: location.href });
         document.getElementById('loadingText').textContent =
             `Failed to load guide data. Is the server running?\n${err.message}`;
         return; // leave loading screen visible as an error state
