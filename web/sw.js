@@ -25,9 +25,10 @@ self.addEventListener('fetch', event => {
 
     if (url.pathname.startsWith('/api/')) {
         // Network-first for API: always try to get fresh data.
-        event.respondWith(
-            fetch(event.request).catch(() => caches.match(event.request))
-        );
+        // Do NOT fall back to cache on failure — if the network request fails
+        // (e.g. due to a Traefik/Authelia auth redirect), the error must
+        // propagate so the page can detect the opaqueredirect and re-authenticate.
+        event.respondWith(fetch(event.request));
     } else if (SPA_ROUTES.includes(url.pathname)) {
         // SPA routes: serve cached index.html (the SPA shell)
         event.respondWith(

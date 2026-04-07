@@ -1483,6 +1483,65 @@ func TestIntegration_CSSModularization_BaseHasCSSVariables(t *testing.T) {
 	}
 }
 
+// TestIntegration_AuthRedirectHandling verifies that api.js and sw.js are
+// configured to detect and handle Traefik/Authelia authentication redirects.
+func TestIntegration_AuthRedirectHandling(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	t.Run("api_js_uses_redirect_manual", func(t *testing.T) {
+		resp, err := http.Get(srv.URL + "/js/api.js")
+		if err != nil {
+			t.Fatalf("GET /js/api.js: %v", err)
+		}
+		defer resp.Body.Close()
+		var buf strings.Builder
+		io.Copy(&buf, resp.Body) //nolint:errcheck
+		body := buf.String()
+		if !strings.Contains(body, "redirect: 'manual'") {
+			t.Error("api.js should use redirect: 'manual' for API fetch calls to detect auth redirects")
+		}
+	})
+
+	t.Run("api_js_handles_opaqueredirect", func(t *testing.T) {
+		resp, err := http.Get(srv.URL + "/js/api.js")
+		if err != nil {
+			t.Fatalf("GET /js/api.js: %v", err)
+		}
+		defer resp.Body.Close()
+		var buf strings.Builder
+		io.Copy(&buf, resp.Body) //nolint:errcheck
+		body := buf.String()
+		if !strings.Contains(body, "opaqueredirect") {
+			t.Error("api.js should check for opaqueredirect response type to handle auth redirects")
+		}
+		if !strings.Contains(body, "window.location") {
+			t.Error("api.js should trigger a page navigation when an opaqueredirect is detected")
+		}
+	})
+
+	t.Run("sw_js_rethrows_on_api_fetch_failure", func(t *testing.T) {
+		resp, err := http.Get(srv.URL + "/sw.js")
+		if err != nil {
+			t.Fatalf("GET /sw.js: %v", err)
+		}
+		defer resp.Body.Close()
+		var buf strings.Builder
+		io.Copy(&buf, resp.Body) //nolint:errcheck
+		body := buf.String()
+		// The service worker should NOT silently fall back to the cache for API
+		// requests. If the network fails (e.g. due to an auth redirect), the
+		// error must propagate so the page can trigger re-authentication.
+		if strings.Contains(body, "fetch(event.request).catch(() => caches.match(event.request))") {
+			t.Error("sw.js must not fall back to stale cache on API fetch failure — re-throw so the page can handle auth redirects")
+		}
+	})
+}
+
 // TestIntegration_SPAFallback_GuidePathReturnsHTML verifies that GET /guide
 // returns index.html content (SPA fallback).
 func TestIntegration_SPAFallback_GuidePathReturnsHTML(t *testing.T) {
