@@ -1,0 +1,42 @@
+[
+  {
+    "channelId": "ch1",
+    "start": "2025-06-09T00:00:00Z",
+    "stop": "2025-06-09T06:00:00Z",
+    "title": "ABC Yesterday Special",
+    "isRepeat": true,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch1",
+    "start": "2025-06-09T06:00:00Z",
+    "stop": "2025-06-09T09:00:00Z",
+    "title": "ABC Breakfast",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch1",
+    "start": "2025-06-09T19:00:00Z",
+    "stop": "2025-06-09T20:00:00Z",
+    "title": "ABC Evening News",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch2",
+    "start": "2025-06-09T00:00:00Z",
+    "stop": "2025-06-09T06:00:00Z",
+    "title": "SBS Yesterday Film",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch3",
+    "start": "2025-06-09T06:00:00Z",
+    "stop": "2025-06-09T09:00:00Z",
+    "title": "Sunrise",
+    "isRepeat": false,
+    "isPremiere": false
+  }
+]
