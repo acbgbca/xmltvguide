@@ -7,7 +7,7 @@ TIMEOUT := 120s
 build:
 	CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BINARY) .
 
-## test: run all tests
+## test: run all Go tests
 test:
 	go test -timeout $(TIMEOUT) ./...
 
@@ -27,7 +27,7 @@ test-api:
 test-integration:
 	go test -timeout $(TIMEOUT) .
 
-## test-ui: run Playwright UI tests
+## test-ui: run Playwright UI tests (requires npm install first)
 test-ui:
 	npx playwright test --config=e2e/playwright.config.ts --pass-with-no-tests
 
