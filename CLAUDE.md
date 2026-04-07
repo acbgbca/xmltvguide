@@ -25,9 +25,16 @@ tvguide/
 │   └── api/handlers.go          # REST API handlers
 ├── web/                         # Frontend — embedded into binary via go:embed
 │   ├── index.html               # App shell (no JS framework)
-│   ├── style.css                # Dark theme, CSS grid layout
 │   ├── manifest.json            # PWA manifest
 │   ├── sw.js                    # Service worker (cache-first static, network-first API)
+│   ├── style/                   # Modular CSS (dark theme, CSS grid layout)
+│   │   ├── base.css             # Reset, :root CSS variables, loading animations
+│   │   ├── layout.css           # Top bar, pages, bottom navigation
+│   │   ├── guide.css            # Guide grid, channels, programmes, now-line
+│   │   ├── modal.css            # Programme details modal and badges
+│   │   ├── search.css           # Search interface components
+│   │   ├── favourites.css       # Favourites page styling
+│   │   └── settings.css         # Settings panel styling
 │   └── js/
 │       ├── main.js              # Router, init, service worker registration
 │       ├── state.js             # Shared mutable state
@@ -131,7 +138,7 @@ Two constants control the guide's visual layout. They must be kept in sync:
 |---|---|---|---|
 | `web/js/config.js` | `CONFIG.PX_PER_MIN` | `4` | Pixels per minute — controls horizontal zoom |
 | `web/js/config.js` | `CONFIG.ROW_HEIGHT` | `54` | Row height in px |
-| `web/style.css` `:root` | `--row-height` | `54px` | Must match `CONFIG.ROW_HEIGHT` |
+| `web/style/base.css` `:root` | `--row-height` | `54px` | Must match `CONFIG.ROW_HEIGHT` |
 
 The guide renders the full day (1440 minutes) as a scrollable area and scrolls to the current time on load.
 

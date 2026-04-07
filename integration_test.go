@@ -1092,7 +1092,7 @@ func TestIntegration_SPAFallback_APINotCaught(t *testing.T) {
 	}
 }
 
-// TestIntegration_SPAFallback_StaticFileNotCaught verifies that /style.css
+// TestIntegration_SPAFallback_StaticFileNotCaught verifies that /style/base.css
 // still returns the CSS file and is not caught by the SPA fallback.
 func TestIntegration_SPAFallback_StaticFileNotCaught(t *testing.T) {
 	xmlBytes, err := os.ReadFile("testdata/sample.xml")
@@ -1102,9 +1102,9 @@ func TestIntegration_SPAFallback_StaticFileNotCaught(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/style.css")
+	resp, err := http.Get(srv.URL + "/style/base.css")
 	if err != nil {
-		t.Fatalf("GET /style.css: %v", err)
+		t.Fatalf("GET /style/base.css: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -1338,6 +1338,148 @@ func TestIntegration_ErrorLogging_JSFunctions(t *testing.T) {
 		strings.Count(favouritesJS, "type: 'explicit'")
 	if totalExplicit < 4 {
 		t.Errorf("expected at least 4 explicit logError calls across main.js, search.js, and favourites.js (guide load, search, favourite search, categories), got %d", totalExplicit)
+	}
+}
+
+// TestIntegration_CSSModularization_FilesServed verifies that each modular CSS
+// file under web/style/ is served correctly and returns CSS content.
+func TestIntegration_CSSModularization_FilesServed(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	cssFiles := []string{
+		"/style/base.css",
+		"/style/layout.css",
+		"/style/guide.css",
+		"/style/modal.css",
+		"/style/search.css",
+		"/style/favourites.css",
+		"/style/settings.css",
+	}
+	for _, path := range cssFiles {
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("GET %s: expected 200, got %d", path, resp.StatusCode)
+		}
+		ct := resp.Header.Get("Content-Type")
+		if !strings.Contains(ct, "css") {
+			t.Errorf("GET %s: expected css content-type, got %q", path, ct)
+		}
+	}
+}
+
+// TestIntegration_CSSModularization_IndexLoadsModularCSS verifies that
+// index.html references the seven modular CSS files and not the old style.css.
+func TestIntegration_CSSModularization_IndexLoadsModularCSS(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	resp, err := http.Get(srv.URL + "/")
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+	defer resp.Body.Close()
+	var buf strings.Builder
+	io.Copy(&buf, resp.Body) //nolint:errcheck
+	body := buf.String()
+
+	cssFiles := []string{
+		"/style/base.css",
+		"/style/layout.css",
+		"/style/guide.css",
+		"/style/modal.css",
+		"/style/search.css",
+		"/style/favourites.css",
+		"/style/settings.css",
+	}
+	for _, path := range cssFiles {
+		if !strings.Contains(body, path) {
+			t.Errorf("expected index.html to reference %s", path)
+		}
+	}
+
+	if strings.Contains(body, `href="/style.css"`) {
+		t.Error("expected index.html NOT to reference the old /style.css")
+	}
+}
+
+// TestIntegration_CSSModularization_ServiceWorkerCachesAll verifies that
+// sw.js includes all seven modular CSS files in its pre-cache list.
+func TestIntegration_CSSModularization_ServiceWorkerCachesAll(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	resp, err := http.Get(srv.URL + "/sw.js")
+	if err != nil {
+		t.Fatalf("GET /sw.js: %v", err)
+	}
+	defer resp.Body.Close()
+	var buf strings.Builder
+	io.Copy(&buf, resp.Body) //nolint:errcheck
+	body := buf.String()
+
+	cssFiles := []string{
+		"style/base.css",
+		"style/layout.css",
+		"style/guide.css",
+		"style/modal.css",
+		"style/search.css",
+		"style/favourites.css",
+		"style/settings.css",
+	}
+	for _, path := range cssFiles {
+		if !strings.Contains(body, path) {
+			t.Errorf("expected sw.js to include %s in the cache list", path)
+		}
+	}
+
+	if strings.Contains(body, "'/style.css'") {
+		t.Error("expected sw.js NOT to cache the old /style.css")
+	}
+}
+
+// TestIntegration_CSSModularization_BaseHasCSSVariables verifies that base.css
+// contains the :root CSS custom properties used across all other files.
+func TestIntegration_CSSModularization_BaseHasCSSVariables(t *testing.T) {
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+	srv := newIntegrationServer(t, mockSrv.URL)
+
+	resp, err := http.Get(srv.URL + "/style/base.css")
+	if err != nil {
+		t.Fatalf("GET /style/base.css: %v", err)
+	}
+	defer resp.Body.Close()
+	var buf strings.Builder
+	io.Copy(&buf, resp.Body) //nolint:errcheck
+	body := buf.String()
+
+	if !strings.Contains(body, ":root") {
+		t.Error("expected base.css to contain :root CSS custom properties")
+	}
+	for _, v := range []string{"--bg-primary", "--text-primary", "--row-height"} {
+		if !strings.Contains(body, v) {
+			t.Errorf("expected base.css to define CSS variable %s", v)
+		}
 	}
 }
 
