@@ -1092,7 +1092,7 @@ func TestIntegration_SPAFallback_APINotCaught(t *testing.T) {
 	}
 }
 
-// TestIntegration_SPAFallback_StaticFileNotCaught verifies that /style.css
+// TestIntegration_SPAFallback_StaticFileNotCaught verifies that /style/base.css
 // still returns the CSS file and is not caught by the SPA fallback.
 func TestIntegration_SPAFallback_StaticFileNotCaught(t *testing.T) {
 	xmlBytes, err := os.ReadFile("testdata/sample.xml")
@@ -1102,9 +1102,9 @@ func TestIntegration_SPAFallback_StaticFileNotCaught(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/style.css")
+	resp, err := http.Get(srv.URL + "/style/base.css")
 	if err != nil {
-		t.Fatalf("GET /style.css: %v", err)
+		t.Fatalf("GET /style/base.css: %v", err)
 	}
 	defer resp.Body.Close()
 
