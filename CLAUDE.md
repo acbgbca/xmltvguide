@@ -7,7 +7,7 @@ A personal PWA TV guide that parses XMLTV data and displays it as a scrollable g
 | Layer | Choice | Reason |
 |---|---|---|
 | Backend | Go (one external dep: `modernc.org/sqlite`) | Low resource usage, single binary |
-| Frontend | Vanilla JS + HTML/CSS (no framework, no build step) | Lightweight, no toolchain needed |
+| Frontend | Vanilla JS ES modules + HTML/CSS (no framework, no build step) | Lightweight, no toolchain needed |
 | Database | SQLite via `modernc.org/sqlite` (pure Go, no CGO) | Persistent storage, simple queries, no separate service |
 | Container | Docker / docker-compose | Home-lab deployment |
 | Reverse proxy | Traefik + Authelia | Handled externally, not in this repo |
@@ -36,7 +36,8 @@ tvguide/
 │   │   ├── favourites.css       # Favourites page styling
 │   │   └── settings.css         # Settings panel styling
 │   └── js/
-│       ├── main.js              # Router, init, service worker registration
+│       ├── main.js              # Entry point: init, service worker registration
+│       ├── router.js            # SPA routing (History API, page switching)
 │       ├── state.js             # Shared mutable state
 │       ├── api.js               # Fetch helpers for backend API
 │       ├── config.js            # PX_PER_MIN, ROW_HEIGHT constants
