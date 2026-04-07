@@ -21,7 +21,7 @@
                 "golang.go"
             ]
         }
-    }
+    },
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},
@@ -29,7 +29,7 @@
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
 
-	"postCreateCommand": "npm install && npx playwright install --with-deps chromium",
+	"postCreateCommand": "npm install && npx playwright install --with-deps chromium"
 
 	// Configure tool-specific properties.
 	// "customizations": {},
