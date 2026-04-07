@@ -229,6 +229,8 @@ UI tests live in `e2e/` and use TypeScript + Playwright. Key design decisions:
 - The browser clock is frozen to `FIXED_NOW` via `page.clock.install()` so tests are time-deterministic regardless of when they run.
 - Service workers are blocked in the test browser context (`serviceWorkers: 'block'`) to prevent cache interference with route interception.
 - Run with `make test-ui`.
+- CI runs Playwright tests as a separate job in `.github/workflows/playwright.yml` (isolated from the Go test workflow in `pr.yml`).
+- The HTML test report is uploaded as a GitHub Actions artifact (`playwright-report`) on every CI run, retained for 14 days.
 
 ### Development approach
 

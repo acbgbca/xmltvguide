@@ -3,6 +3,7 @@ import { startNowLineTimer, stopNowLineTimer } from './pages/guide.js';
 import { loadSearchPageCategories } from './pages/search.js';
 import { renderFavouritesPage } from './pages/favourites.js';
 import { renderSettingsPanel } from './pages/settings.js';
+import { getTodayString } from './utils/date.js';
 
 // ── Routing ──────────────────────────────────────────────────────────────────
 
@@ -20,7 +21,19 @@ export function navigateToPage(page, { pushState = true } = {}) {
 
     // Update URL
     if (pushState) {
-        const url = page === 'guide' ? '/' + (window.location.search || '') : '/' + page;
+        let url;
+        if (page === 'guide') {
+            // Restore the guide's current date parameter from state rather than
+            // relying on window.location.search, which may be empty when returning
+            // from another tab (e.g. /search has no query string).
+            const today = getTodayString();
+            const dateParam = state.currentDate && state.currentDate !== today
+                ? '?date=' + state.currentDate
+                : '';
+            url = '/' + dateParam;
+        } else {
+            url = '/' + page;
+        }
         history.pushState({}, '', url);
     }
 
