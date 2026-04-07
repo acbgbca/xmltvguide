@@ -1,4 +1,4 @@
-.PHONY: build test test-db test-xmltv test-api test-integration clean
+.PHONY: build test test-db test-xmltv test-api test-integration test-ui clean
 
 BINARY  := tvguide
 TIMEOUT := 120s
@@ -26,6 +26,10 @@ test-api:
 ## test-integration: run full integration tests (requires Docker for Wiremock)
 test-integration:
 	go test -timeout $(TIMEOUT) .
+
+## test-ui: run Playwright UI tests
+test-ui:
+	npx playwright test --pass-with-no-tests
 
 ## dev: run the development environment (tvguide + WireMock)
 dev:

@@ -222,7 +222,13 @@ The application has three levels of tests:
 |---|---|---|
 | **Component tests** | Database and API logic in isolation | Real SQLite database; WireMock for external HTTP (XMLTV source) |
 | **API integration tests** | Full API end-to-end | Real SQLite database; WireMock simulating the XMLTV source |
-| **UI tests** | Full application E2E in a browser | Real API + database; WireMock simulating external services |
+| **UI tests** | Full application E2E in a browser | Static file server (`npx serve`); all API calls mocked via Playwright route interception |
+
+UI tests live in `e2e/` and use TypeScript + Playwright. Key design decisions:
+- All fixture data is anchored to `FIXED_NOW = 2025-06-10T14:00:00Z` — a past date that will never be "today" again, making fixtures permanently stable.
+- The browser clock is frozen to `FIXED_NOW` via `page.clock.install()` so tests are time-deterministic regardless of when they run.
+- Service workers are blocked in the test browser context (`serviceWorkers: 'block'`) to prevent cache interference with route interception.
+- Run with `make test-ui`.
 
 ### Development approach
 

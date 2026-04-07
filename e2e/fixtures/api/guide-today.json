@@ -1,0 +1,240 @@
+[
+  {
+    "channelId": "ch1",
+    "start": "2025-06-10T00:00:00Z",
+    "stop": "2025-06-10T01:30:00Z",
+    "title": "ABC News Overnight",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch1",
+    "start": "2025-06-10T01:30:00Z",
+    "stop": "2025-06-10T06:00:00Z",
+    "title": "ABC Late Night",
+    "isRepeat": true,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch1",
+    "start": "2025-06-10T06:00:00Z",
+    "stop": "2025-06-10T09:00:00Z",
+    "title": "ABC Breakfast",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch1",
+    "start": "2025-06-10T09:00:00Z",
+    "stop": "2025-06-10T12:00:00Z",
+    "title": "Morning News",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch1",
+    "start": "2025-06-10T12:00:00Z",
+    "stop": "2025-06-10T13:00:00Z",
+    "title": "ABC News at Noon",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch1",
+    "start": "2025-06-10T14:00:00Z",
+    "stop": "2025-06-10T15:00:00Z",
+    "title": "Afternoon Specials",
+    "subTitle": "Episode 3: The Discovery",
+    "description": "A fascinating documentary about wildlife in the Australian outback.",
+    "categories": ["Documentary", "Nature"],
+    "episodeNum": "1.2.0/1",
+    "episodeNumDisplay": "S01E03",
+    "isRepeat": false,
+    "isPremiere": true
+  },
+  {
+    "channelId": "ch1",
+    "start": "2025-06-10T19:00:00Z",
+    "stop": "2025-06-10T20:00:00Z",
+    "title": "ABC Evening News",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch1",
+    "start": "2025-06-10T20:00:00Z",
+    "stop": "2025-06-10T21:30:00Z",
+    "title": "Four Corners",
+    "description": "In-depth investigative journalism.",
+    "categories": ["News", "Documentary"],
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch2",
+    "start": "2025-06-10T00:00:00Z",
+    "stop": "2025-06-10T06:00:00Z",
+    "title": "SBS World News Tonight",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch2",
+    "start": "2025-06-10T06:00:00Z",
+    "stop": "2025-06-10T10:00:00Z",
+    "title": "SBS Morning",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch2",
+    "start": "2025-06-10T10:00:00Z",
+    "stop": "2025-06-10T13:00:00Z",
+    "title": "Film: Le Voyage",
+    "description": "A classic French film.",
+    "categories": ["Film"],
+    "isRepeat": true,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch2",
+    "start": "2025-06-10T15:00:00Z",
+    "stop": "2025-06-10T17:00:00Z",
+    "title": "SBS Dateline",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch2",
+    "start": "2025-06-10T19:30:00Z",
+    "stop": "2025-06-10T20:30:00Z",
+    "title": "SBS World News",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch3",
+    "start": "2025-06-10T00:00:00Z",
+    "stop": "2025-06-10T06:00:00Z",
+    "title": "Seven Late Night",
+    "isRepeat": true,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch3",
+    "start": "2025-06-10T06:00:00Z",
+    "stop": "2025-06-10T09:00:00Z",
+    "title": "Sunrise",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch3",
+    "start": "2025-06-10T09:00:00Z",
+    "stop": "2025-06-10T12:00:00Z",
+    "title": "The Morning Show",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch3",
+    "start": "2025-06-10T14:30:00Z",
+    "stop": "2025-06-10T16:30:00Z",
+    "title": "Cricket: Australia vs England",
+    "categories": ["Sport"],
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch3",
+    "start": "2025-06-10T19:00:00Z",
+    "stop": "2025-06-10T19:30:00Z",
+    "title": "Seven News",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch4",
+    "start": "2025-06-10T00:00:00Z",
+    "stop": "2025-06-10T06:00:00Z",
+    "title": "Nine Late",
+    "isRepeat": true,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch4",
+    "start": "2025-06-10T06:00:00Z",
+    "stop": "2025-06-10T09:00:00Z",
+    "title": "Today",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch4",
+    "start": "2025-06-10T09:00:00Z",
+    "stop": "2025-06-10T12:00:00Z",
+    "title": "Today Extra",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch4",
+    "start": "2025-06-10T15:00:00Z",
+    "stop": "2025-06-10T17:00:00Z",
+    "title": "Afternoon Drama",
+    "categories": ["Drama"],
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch4",
+    "start": "2025-06-10T18:00:00Z",
+    "stop": "2025-06-10T19:00:00Z",
+    "title": "Nine News",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch5",
+    "start": "2025-06-10T00:00:00Z",
+    "stop": "2025-06-10T06:00:00Z",
+    "title": "Ten Late Night",
+    "isRepeat": true,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch5",
+    "start": "2025-06-10T07:00:00Z",
+    "stop": "2025-06-10T09:00:00Z",
+    "title": "Studio 10",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch5",
+    "start": "2025-06-10T09:00:00Z",
+    "stop": "2025-06-10T12:00:00Z",
+    "title": "Bold and Beautiful",
+    "categories": ["Drama"],
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch5",
+    "start": "2025-06-10T16:00:00Z",
+    "stop": "2025-06-10T18:00:00Z",
+    "title": "The Project",
+    "isRepeat": false,
+    "isPremiere": false
+  },
+  {
+    "channelId": "ch5",
+    "start": "2025-06-10T19:00:00Z",
+    "stop": "2025-06-10T20:30:00Z",
+    "title": "MasterChef Australia",
+    "description": "The contestants face their toughest elimination challenge yet.",
+    "categories": ["Drama"],
+    "isRepeat": false,
+    "isPremiere": true
+  }
+]

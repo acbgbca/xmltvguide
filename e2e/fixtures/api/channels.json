@@ -1,0 +1,7 @@
+[
+  { "id": "ch1", "displayName": "ABC",   "lcn": 2 },
+  { "id": "ch2", "displayName": "SBS",   "lcn": 3 },
+  { "id": "ch3", "displayName": "Seven", "lcn": 7 },
+  { "id": "ch4", "displayName": "Nine",  "lcn": 9 },
+  { "id": "ch5", "displayName": "Ten",   "lcn": 10 }
+]
