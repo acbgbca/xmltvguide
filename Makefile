@@ -29,7 +29,7 @@ test-integration:
 
 ## test-ui: run Playwright UI tests
 test-ui:
-	npx playwright test --pass-with-no-tests
+	npx playwright test --config=e2e/playwright.config.ts --pass-with-no-tests
 
 ## dev: run the development environment (tvguide + WireMock)
 dev:
