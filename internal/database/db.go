@@ -69,16 +69,31 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 // migrations is the ordered list of schema changes applied after the base schema.
 // Append new entries; never modify or remove existing ones.
+//
+// populateSQL is optional. When non-empty it is executed immediately after the
+// migration's sql is applied, within the same connection, to back-fill any
+// derived/computed tables (e.g. FTS indexes, category caches) from data that
+// already exists in the database. It runs only once — the first time the
+// migration is applied — and is skipped on subsequent startups.
+//
+// Always include populateSQL for migrations that create derived tables; without
+// it those tables remain empty until the next scheduled XMLTV poll (up to 12 h).
 var migrations = []struct {
-	version int
-	sql     string
+	version     int
+	sql         string
+	populateSQL string
 }{
-	{1, `ALTER TABLE channels ADD COLUMN lcn INTEGER`},
-	{2, `ALTER TABLE channels ADD COLUMN icon_url TEXT`},
+	{1, `ALTER TABLE channels ADD COLUMN lcn INTEGER`, ""},
+	{2, `ALTER TABLE channels ADD COLUMN icon_url TEXT`, ""},
 	{3, `CREATE VIRTUAL TABLE IF NOT EXISTS airings_fts USING fts5(
 		channel_id, start_time, title, sub_title, description
-	)`},
-	{4, `CREATE TABLE IF NOT EXISTS categories (name TEXT PRIMARY KEY)`},
+	)`, `INSERT INTO airings_fts (channel_id, start_time, title, sub_title, description)
+		SELECT channel_id, start_time, title, COALESCE(sub_title, ''), COALESCE(description, '')
+		FROM airings`},
+	{4, `CREATE TABLE IF NOT EXISTS categories (name TEXT PRIMARY KEY)`,
+		`INSERT OR IGNORE INTO categories (name)
+		SELECT DISTINCT value FROM airings, json_each(airings.categories)
+		WHERE value IS NOT NULL AND value != ''`},
 }
 
 func applyMigrations(db *sql.DB) error {
@@ -107,6 +122,11 @@ func applyMigrations(db *sql.DB) error {
 		}
 		if _, err := db.Exec(m.sql); err != nil {
 			return fmt.Errorf("applying migration %d: %w", m.version, err)
+		}
+		if m.populateSQL != "" {
+			if _, err := db.Exec(m.populateSQL); err != nil {
+				return fmt.Errorf("populating migration %d: %w", m.version, err)
+			}
 		}
 		if _, err := db.Exec(`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
 			m.version, time.Now().UTC().Format(time.RFC3339)); err != nil {
