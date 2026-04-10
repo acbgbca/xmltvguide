@@ -131,6 +131,15 @@ On each poll: upsert channels → `INSERT OR REPLACE` airings (composite PK hand
 
 Historical airings not present in the latest XMLTV file are preserved until they age out.
 
+### Schema migrations
+
+Migrations live in the `migrations` slice in `internal/database/db.go`. Each entry has:
+- `version int` — monotonically increasing; never reuse or remove.
+- `sql string` — the DDL to apply (e.g. `ALTER TABLE`, `CREATE TABLE`).
+- `populateSQL string` — **required for migrations that create derived/computed tables** (FTS indexes, caches like `categories`). When non-empty, this SQL runs immediately after `sql` within the same connection, back-filling the new table from existing data. It runs only once — on the first apply — and is skipped on all subsequent startups. Omitting it leaves the derived table empty until the next scheduled XMLTV poll (up to 12 h).
+
+**Rule:** any migration that creates a table populated by `Refresh()` (currently `airings_fts` and `categories`) must include a `populateSQL` that back-fills from the `airings` table so upgrades are instantaneous with no network fetch required.
+
 ## Frontend layout constants
 
 Two constants control the guide's visual layout. They must be kept in sync:
