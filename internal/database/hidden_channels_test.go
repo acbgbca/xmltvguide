@@ -16,7 +16,7 @@ func openTestDBHidden(t *testing.T, hiddenIDs []string, hiddenLCNs []int) *datab
 	dir := t.TempDir()
 	client := &http.Client{Transport: &failingTransport{}}
 	cache := images.NewCache(client, filepath.Join(dir, "images"))
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test", cache, hiddenIDs, hiddenLCNs)
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test", cache, hiddenIDs, hiddenLCNs, nil)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

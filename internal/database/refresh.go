@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/acbgbca/xmltvguide/internal/xmltv"
@@ -123,6 +124,10 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 		if len(ch.DisplayNames) > 0 && ch.DisplayNames[0].Value != "" {
 			name = ch.DisplayNames[0].Value
 		}
+		for _, w := range d.stripWords {
+			name = stripWordCaseInsensitive(name, w)
+		}
+		name = strings.TrimSpace(name)
 		var icon, iconURL any
 		if ri, ok := resolved[ch.ID]; ok {
 			if ri.localPath != "" {
@@ -229,4 +234,28 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 	d.mu.Unlock()
 
 	return nil
+}
+
+// stripWordCaseInsensitive removes all occurrences of word from s, case-insensitively.
+// Both s and word are lowercased for comparison; the original casing of non-matched
+// characters in s is preserved. The word must be non-empty.
+func stripWordCaseInsensitive(s, word string) string {
+	if word == "" {
+		return s
+	}
+	sLower := strings.ToLower(s)
+	wLower := strings.ToLower(word)
+	wLen := len(wLower)
+	var result strings.Builder
+	for {
+		idx := strings.Index(sLower, wLower)
+		if idx < 0 {
+			result.WriteString(s)
+			break
+		}
+		result.WriteString(s[:idx])
+		s = s[idx+wLen:]
+		sLower = sLower[idx+wLen:]
+	}
+	return result.String()
 }

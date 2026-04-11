@@ -65,6 +65,7 @@ func main() {
 	}
 
 	hiddenIDs, hiddenLCNs := parseHiddenChannels(os.Getenv("HIDDEN_CHANNELS"))
+	stripWords := parseStripWords(os.Getenv("CHANNEL_NAME_STRIP"))
 
 	// Ensure the database directory exists (relevant when running outside Docker).
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
@@ -80,7 +81,7 @@ func main() {
 
 	imageCache := images.NewCache(httpClient, imageCacheDir)
 
-	db, err := database.Open(dbPath, retentionDays, xmltvURL, imageCache, hiddenIDs, hiddenLCNs)
+	db, err := database.Open(dbPath, retentionDays, xmltvURL, imageCache, hiddenIDs, hiddenLCNs, stripWords)
 	if err != nil {
 		log.Fatalf("opening database: %v", err)
 	}
@@ -190,6 +191,21 @@ func spaHandler(fsys http.FileSystem) http.Handler {
 		r.URL.Path = "/"
 		fileServer.ServeHTTP(w, r)
 	})
+}
+
+// parseStripWords splits the CHANNEL_NAME_STRIP value on commas and trims whitespace.
+func parseStripWords(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	var words []string
+	for _, token := range strings.Split(raw, ",") {
+		token = strings.TrimSpace(token)
+		if token != "" {
+			words = append(words, token)
+		}
+	}
+	return words
 }
 
 // parseHiddenChannels splits the HIDDEN_CHANNELS value on commas and classifies
