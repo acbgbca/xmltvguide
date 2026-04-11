@@ -106,7 +106,7 @@ test.describe('Explore tab — Mode switcher', () => {
     const explore = new ExplorePage(page);
     await explore.goto();
 
-    for (const mode of ['premieres', 'time-slot']) {
+    for (const mode of ['time-slot']) {
       await explore.clickMode(mode);
       await expect(explore.contentArea).toContainText('Coming soon');
     }
@@ -389,6 +389,290 @@ test.describe('Explore tab — Now/Next mode', () => {
     await explore.goto();
 
     await expect(explore.errorMessage).toBeVisible();
+  });
+});
+
+test.describe('Explore tab — Premieres mode', () => {
+  test('fetches and displays premiere airings as a flat list', async ({ page, setupApiRoutes }) => {
+    await setupApiRoutes({ '/api/search**': null });
+    await page.route('/api/search**', (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get('is_premiere') === 'true') {
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([
+            {
+              title: 'The Block',
+              airings: [
+                {
+                  channelId: 'ch5',
+                  channelName: 'Nine',
+                  startTime: '2025-06-10T19:00:00Z',
+                  stopTime: '2025-06-10T20:30:00Z',
+                  subTitle: 'Room Reveals',
+                  description: 'The contestants reveal their completed rooms.',
+                  categories: ['Reality'],
+                  isRepeat: false,
+                  isPremiere: true,
+                },
+              ],
+            },
+            {
+              title: 'Grand Designs Australia',
+              airings: [
+                {
+                  channelId: 'ch2',
+                  channelName: 'SBS',
+                  startTime: '2025-06-10T21:00:00Z',
+                  stopTime: '2025-06-10T22:00:00Z',
+                  description: 'A family builds their dream home on the coast.',
+                  categories: ['Documentary'],
+                  isRepeat: false,
+                  isPremiere: true,
+                },
+              ],
+            },
+          ]),
+        });
+      } else {
+        route.continue();
+      }
+    });
+
+    const explore = new ExplorePage(page);
+    await explore.goto('premieres');
+
+    await expect(explore.premieresList).toBeVisible();
+    await expect(explore.premieresItems).toHaveCount(2);
+  });
+
+  test('results are sorted by start time (earliest first)', async ({ page, setupApiRoutes }) => {
+    await setupApiRoutes({ '/api/search**': null });
+    await page.route('/api/search**', (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get('is_premiere') === 'true') {
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([
+            {
+              title: 'Late Show',
+              airings: [
+                {
+                  channelId: 'ch1',
+                  channelName: 'ABC',
+                  startTime: '2025-06-10T21:00:00Z',
+                  stopTime: '2025-06-10T22:00:00Z',
+                  categories: ['Drama'],
+                  isRepeat: false,
+                  isPremiere: true,
+                },
+              ],
+            },
+            {
+              title: 'Early Show',
+              airings: [
+                {
+                  channelId: 'ch2',
+                  channelName: 'SBS',
+                  startTime: '2025-06-10T19:00:00Z',
+                  stopTime: '2025-06-10T20:00:00Z',
+                  categories: ['Drama'],
+                  isRepeat: false,
+                  isPremiere: true,
+                },
+              ],
+            },
+          ]),
+        });
+      } else {
+        route.continue();
+      }
+    });
+
+    const explore = new ExplorePage(page);
+    await explore.goto('premieres');
+
+    const items = explore.premieresItems;
+    await expect(items.first()).toContainText('Early Show');
+    await expect(items.nth(1)).toContainText('Late Show');
+  });
+
+  test('each item shows title, channel, and date/time', async ({ page, setupApiRoutes }) => {
+    await setupApiRoutes({ '/api/search**': null });
+    await page.route('/api/search**', (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get('is_premiere') === 'true') {
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([
+            {
+              title: 'The Block',
+              airings: [
+                {
+                  channelId: 'ch5',
+                  channelName: 'Nine',
+                  startTime: '2025-06-10T19:00:00Z',
+                  stopTime: '2025-06-10T20:30:00Z',
+                  categories: ['Reality'],
+                  isRepeat: false,
+                  isPremiere: true,
+                },
+              ],
+            },
+          ]),
+        });
+      } else {
+        route.continue();
+      }
+    });
+
+    const explore = new ExplorePage(page);
+    await explore.goto('premieres');
+
+    const item = explore.premieresItems.first();
+    await expect(item).toContainText('The Block');
+    await expect(item).toContainText('Nine');
+    // Time should be formatted (e.g. "Today" since FIXED_NOW is same day)
+    await expect(item.locator('.premiere-time')).toBeVisible();
+  });
+
+  test('shows sub-title when present', async ({ page, setupApiRoutes }) => {
+    await setupApiRoutes({ '/api/search**': null });
+    await page.route('/api/search**', (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get('is_premiere') === 'true') {
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([
+            {
+              title: 'The Block',
+              airings: [
+                {
+                  channelId: 'ch5',
+                  channelName: 'Nine',
+                  startTime: '2025-06-10T19:00:00Z',
+                  stopTime: '2025-06-10T20:30:00Z',
+                  subTitle: 'Room Reveals',
+                  categories: ['Reality'],
+                  isRepeat: false,
+                  isPremiere: true,
+                },
+              ],
+            },
+          ]),
+        });
+      } else {
+        route.continue();
+      }
+    });
+
+    const explore = new ExplorePage(page);
+    await explore.goto('premieres');
+
+    await expect(explore.premieresItems.first()).toContainText('Room Reveals');
+  });
+
+  test('shows description when present', async ({ page, setupApiRoutes }) => {
+    await setupApiRoutes({ '/api/search**': null });
+    await page.route('/api/search**', (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get('is_premiere') === 'true') {
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([
+            {
+              title: 'Grand Designs Australia',
+              airings: [
+                {
+                  channelId: 'ch2',
+                  channelName: 'SBS',
+                  startTime: '2025-06-10T21:00:00Z',
+                  stopTime: '2025-06-10T22:00:00Z',
+                  description: 'A family builds their dream home on the coast.',
+                  categories: ['Documentary'],
+                  isRepeat: false,
+                  isPremiere: true,
+                },
+              ],
+            },
+          ]),
+        });
+      } else {
+        route.continue();
+      }
+    });
+
+    const explore = new ExplorePage(page);
+    await explore.goto('premieres');
+
+    await expect(explore.premieresItems.first()).toContainText('A family builds their dream home on the coast.');
+  });
+
+  test('shows loading state while fetching', async ({ page }) => {
+    let resolveRoute: () => void;
+    await page.route('/api/search**', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get('is_premiere') === 'true') {
+        await new Promise<void>(r => { resolveRoute = r; });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([]),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    const explore = new ExplorePage(page);
+    await explore.goto('premieres');
+
+    await expect(explore.loadingIndicator).toBeVisible();
+    resolveRoute!();
+  });
+
+  test('shows error state when API fails', async ({ page, setupApiRoutes }) => {
+    await setupApiRoutes({ '/api/search**': null });
+    await page.route('/api/search**', (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get('is_premiere') === 'true') {
+        route.fulfill({ status: 500, body: 'Internal Server Error' });
+      } else {
+        route.continue();
+      }
+    });
+
+    const explore = new ExplorePage(page);
+    await explore.goto('premieres');
+
+    await expect(explore.errorMessage).toBeVisible();
+  });
+
+  test('shows empty state when no premieres are found', async ({ page, setupApiRoutes }) => {
+    await setupApiRoutes({ '/api/search**': null });
+    await page.route('/api/search**', (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get('is_premiere') === 'true') {
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([]),
+        });
+      } else {
+        route.continue();
+      }
+    });
+
+    const explore = new ExplorePage(page);
+    await explore.goto('premieres');
+
+    await expect(explore.premieresEmpty).toBeVisible();
+    await expect(explore.premieresEmpty).toContainText('No upcoming premieres found');
   });
 });
 

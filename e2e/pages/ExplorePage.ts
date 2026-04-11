@@ -88,4 +88,17 @@ export class ExplorePage extends AppPage {
   get categoryEmpty(): Locator {
     return this.page.locator('.category-empty');
   }
+
+  // Premieres mode
+  get premieresList(): Locator {
+    return this.page.locator('.premieres-list');
+  }
+
+  get premieresItems(): Locator {
+    return this.page.locator('.premiere-item');
+  }
+
+  get premieresEmpty(): Locator {
+    return this.page.locator('.premieres-empty');
+  }
 }

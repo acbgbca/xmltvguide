@@ -34,7 +34,8 @@ tvguide/
 │   │   ├── modal.css            # Programme details modal and badges
 │   │   ├── search.css           # Search interface components
 │   │   ├── favourites.css       # Favourites page styling
-│   │   └── settings.css         # Settings panel styling
+│   │   ├── settings.css         # Settings panel styling
+│   │   └── explore.css          # Explore page (Now/Next, Categories, Premieres modes)
 │   └── js/
 │       ├── main.js              # Entry point: init, service worker registration
 │       ├── router.js            # SPA routing (History API, page switching)
@@ -201,6 +202,7 @@ The app uses a bottom navigation bar (iOS-style) with four tabs:
 | Search | `/search` | Search for programmes by title or with advanced filters |
 | Favourites | `/favourites` | Saved search favourites — shows upcoming airings for all saved searches |
 | Settings | `/settings` | Channel visibility and favourite toggles |
+| Explore | `/explore` | Browse TV by mode: Now/Next (default), Categories, Premieres, Time Slot (coming soon) |
 
 Navigation uses the **History API** (`pushState`/`popstate`) for client-side routing without full page reloads. The top bar (date display + prev/next day buttons) is only visible on the Guide tab. The Guide tab preserves its `?date=YYYY-MM-DD` query parameter behaviour.
 
