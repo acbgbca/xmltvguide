@@ -1,4 +1,4 @@
-.PHONY: build test test-db test-xmltv test-api test-integration test-ui lint verify clean
+.PHONY: build test test-db test-xmltv test-api test-integration test-ui lint lint-js verify clean
 
 BINARY  := tvguide
 TIMEOUT := 120s
@@ -35,8 +35,12 @@ test-ui:
 lint:
 	golangci-lint run --output.sarif.path golangci-lint.sarif
 
+## lint-js: run ESLint on frontend JS (outputs SARIF to eslint.sarif)
+lint-js:
+	npx eslint web/js/ web/sw.js --format @microsoft/eslint-formatter-sarif --output-file eslint.sarif
+
 ## verify: run all static analysis checks
-verify: lint
+verify: lint lint-js
 
 ## dev: run the development environment (tvguide + WireMock)
 dev:
