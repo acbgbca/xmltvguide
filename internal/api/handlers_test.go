@@ -1736,3 +1736,157 @@ func TestSearchRSS_LastBuildDate(t *testing.T) {
 		t.Errorf("lastBuildDate should be approximately now, got %v", buildDate)
 	}
 }
+
+// newNowNextServer creates a test server seeded with three channels and
+// airings anchored to FIXED_NOW (2025-06-10T14:00:00Z):
+//   - ch1 (lcn=1): Show A airing now (13:30–14:30), Show B coming next (14:30–15:00)
+//   - ch2 (lcn=2): no current airing, Show C next (15:00–16:00)
+//   - ch3 (no lcn): no airings at all
+func newNowNextServer(t *testing.T) (*httptest.Server, time.Time) {
+	t.Helper()
+	fixedNow := time.Date(2025, 6, 10, 14, 0, 0, 0, time.UTC)
+
+	dir := t.TempDir()
+	db, err := database.Open(
+		filepath.Join(dir, "test.db"), 7, "http://test-source",
+		images.NewCache(&http.Client{}, filepath.Join(dir, "images")),
+	)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	db.SetClock(fixedClock{t: fixedNow})
+
+	tv := &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{ID: "ch1", DisplayNames: []xmltv.Name{{Value: "ABC"}}, LCN: "1"},
+			{ID: "ch2", DisplayNames: []xmltv.Name{{Value: "SBS"}}, LCN: "2"},
+			{ID: "ch3", DisplayNames: []xmltv.Name{{Value: "Nine"}}},
+		},
+		Programmes: []xmltv.Programme{
+			{
+				Start:   xmltv.XmltvTime{Time: fixedNow.Add(-30 * time.Minute)},
+				Stop:    xmltv.XmltvTime{Time: fixedNow.Add(30 * time.Minute)},
+				Channel: "ch1",
+				Titles:  []xmltv.Name{{Value: "Show A"}},
+			},
+			{
+				Start:   xmltv.XmltvTime{Time: fixedNow.Add(30 * time.Minute)},
+				Stop:    xmltv.XmltvTime{Time: fixedNow.Add(60 * time.Minute)},
+				Channel: "ch1",
+				Titles:  []xmltv.Name{{Value: "Show B"}},
+			},
+			{
+				Start:   xmltv.XmltvTime{Time: fixedNow.Add(60 * time.Minute)},
+				Stop:    xmltv.XmltvTime{Time: fixedNow.Add(120 * time.Minute)},
+				Channel: "ch2",
+				Titles:  []xmltv.Name{{Value: "Show C"}},
+			},
+		},
+	}
+	if err := db.Refresh(context.Background(), tv, fixedNow.Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	handler := api.New(db, 0)
+	handler.RegisterRoutes(mux)
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(func() {
+		srv.Close()
+		db.Close()
+	})
+	return srv, fixedNow
+}
+
+func TestGetNowNext_API_StatusOK(t *testing.T) {
+	srv, _ := newNowNextServer(t)
+	resp, err := http.Get(srv.URL + "/api/explore/now-next")
+	if err != nil {
+		t.Fatalf("GET /api/explore/now-next: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetNowNext_API_ResponseShape(t *testing.T) {
+	srv, fixedNow := newNowNextServer(t)
+	resp, err := http.Get(srv.URL + "/api/explore/now-next")
+	if err != nil {
+		t.Fatalf("GET /api/explore/now-next: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var entries []struct {
+		ChannelID   string `json:"channelId"`
+		ChannelName string `json:"channelName"`
+		Current     *struct {
+			Title string    `json:"title"`
+			Start time.Time `json:"start"`
+			Stop  time.Time `json:"stop"`
+		} `json:"current"`
+		Next *struct {
+			Title string    `json:"title"`
+			Start time.Time `json:"start"`
+		} `json:"next"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(entries))
+	}
+
+	// ch1: current = Show A, next = Show B
+	e0 := entries[0]
+	if e0.ChannelID != "ch1" {
+		t.Errorf("entries[0].channelId = %q, want ch1", e0.ChannelID)
+	}
+	if e0.ChannelName != "ABC" {
+		t.Errorf("entries[0].channelName = %q, want ABC", e0.ChannelName)
+	}
+	if e0.Current == nil {
+		t.Fatal("entries[0].current is nil, want Show A")
+	}
+	if e0.Current.Title != "Show A" {
+		t.Errorf("entries[0].current.title = %q, want Show A", e0.Current.Title)
+	}
+	if e0.Next == nil {
+		t.Fatal("entries[0].next is nil, want Show B")
+	}
+	if e0.Next.Title != "Show B" {
+		t.Errorf("entries[0].next.title = %q, want Show B", e0.Next.Title)
+	}
+
+	// ch2: no current, next = Show C
+	e1 := entries[1]
+	if e1.ChannelID != "ch2" {
+		t.Errorf("entries[1].channelId = %q, want ch2", e1.ChannelID)
+	}
+	if e1.Current != nil {
+		t.Errorf("entries[1].current = %v, want null", e1.Current)
+	}
+	if e1.Next == nil {
+		t.Fatal("entries[1].next is nil, want Show C")
+	}
+	if e1.Next.Title != "Show C" {
+		t.Errorf("entries[1].next.title = %q, want Show C", e1.Next.Title)
+	}
+
+	// ch3: both null
+	e2 := entries[2]
+	if e2.ChannelID != "ch3" {
+		t.Errorf("entries[2].channelId = %q, want ch3", e2.ChannelID)
+	}
+	if e2.Current != nil {
+		t.Errorf("entries[2].current = %v, want null", e2.Current)
+	}
+	if e2.Next != nil {
+		t.Errorf("entries[2].next = %v, want null", e2.Next)
+	}
+
+	_ = fixedNow // used for seeding; referenced to suppress lint
+}

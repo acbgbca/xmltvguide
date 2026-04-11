@@ -1202,3 +1202,164 @@ func TestRefresh_Upsert_NoDuplicates(t *testing.T) {
 		t.Fatalf("expected 4 airings after double refresh, got %d", len(airings))
 	}
 }
+
+// nowNextTV builds a small XMLTV dataset anchored to a fixed clock time so
+// tests are deterministic. "now" is 2025-06-10T14:00:00Z (FIXED_NOW).
+func nowNextTV() (*xmltv.TV, time.Time) {
+	now := time.Date(2025, 6, 10, 14, 0, 0, 0, time.UTC)
+	return &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{ID: "ch1", DisplayNames: []xmltv.Name{{Value: "ABC"}}, LCN: "1"},
+			{ID: "ch2", DisplayNames: []xmltv.Name{{Value: "SBS"}}, LCN: "2"},
+			{ID: "ch3", DisplayNames: []xmltv.Name{{Value: "Nine"}}},
+		},
+		Programmes: []xmltv.Programme{
+			// ch1: currently airing Show A (13:30–14:30), next is Show B (14:30–15:00)
+			{
+				Start:   xmltv.XmltvTime{Time: now.Add(-30 * time.Minute)}, // 13:30
+				Stop:    xmltv.XmltvTime{Time: now.Add(30 * time.Minute)},  // 14:30
+				Channel: "ch1",
+				Titles:  []xmltv.Name{{Value: "Show A"}},
+			},
+			{
+				Start:   xmltv.XmltvTime{Time: now.Add(30 * time.Minute)},  // 14:30
+				Stop:    xmltv.XmltvTime{Time: now.Add(60 * time.Minute)},  // 15:00
+				Channel: "ch1",
+				Titles:  []xmltv.Name{{Value: "Show B"}},
+			},
+			// ch2: nothing current, next is Show C (15:00–16:00)
+			{
+				Start:   xmltv.XmltvTime{Time: now.Add(60 * time.Minute)},  // 15:00
+				Stop:    xmltv.XmltvTime{Time: now.Add(120 * time.Minute)}, // 16:00
+				Channel: "ch2",
+				Titles:  []xmltv.Name{{Value: "Show C"}},
+			},
+			// ch3: nothing at all (no airings)
+		},
+	}, now
+}
+
+func TestGetNowNext_CurrentAndNext(t *testing.T) {
+	db := openTestDB(t)
+	tv, now := nowNextTV()
+	db.SetClock(database.FixedClock(now))
+	if err := db.Refresh(context.Background(), tv, now.Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	entries, err := db.GetNowNext()
+	if err != nil {
+		t.Fatalf("GetNowNext: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(entries))
+	}
+
+	// ch1: has current and next
+	e := entries[0]
+	if e.ChannelID != "ch1" {
+		t.Errorf("entries[0].ChannelID = %q, want ch1", e.ChannelID)
+	}
+	if e.ChannelName != "ABC" {
+		t.Errorf("entries[0].ChannelName = %q, want ABC", e.ChannelName)
+	}
+	if e.Current == nil {
+		t.Fatal("entries[0].Current is nil, want Show A")
+	}
+	if e.Current.Title != "Show A" {
+		t.Errorf("entries[0].Current.Title = %q, want Show A", e.Current.Title)
+	}
+	if e.Next == nil {
+		t.Fatal("entries[0].Next is nil, want Show B")
+	}
+	if e.Next.Title != "Show B" {
+		t.Errorf("entries[0].Next.Title = %q, want Show B", e.Next.Title)
+	}
+}
+
+func TestGetNowNext_NullCurrent(t *testing.T) {
+	db := openTestDB(t)
+	tv, now := nowNextTV()
+	db.SetClock(database.FixedClock(now))
+	if err := db.Refresh(context.Background(), tv, now.Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	entries, err := db.GetNowNext()
+	if err != nil {
+		t.Fatalf("GetNowNext: %v", err)
+	}
+	if len(entries) < 2 {
+		t.Fatalf("expected at least 2 entries, got %d", len(entries))
+	}
+
+	// ch2: no current airing, but has a next
+	e := entries[1]
+	if e.ChannelID != "ch2" {
+		t.Errorf("entries[1].ChannelID = %q, want ch2", e.ChannelID)
+	}
+	if e.Current != nil {
+		t.Errorf("entries[1].Current = %v, want nil", e.Current)
+	}
+	if e.Next == nil {
+		t.Fatal("entries[1].Next is nil, want Show C")
+	}
+	if e.Next.Title != "Show C" {
+		t.Errorf("entries[1].Next.Title = %q, want Show C", e.Next.Title)
+	}
+}
+
+func TestGetNowNext_BothNull(t *testing.T) {
+	db := openTestDB(t)
+	tv, now := nowNextTV()
+	db.SetClock(database.FixedClock(now))
+	if err := db.Refresh(context.Background(), tv, now.Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	entries, err := db.GetNowNext()
+	if err != nil {
+		t.Fatalf("GetNowNext: %v", err)
+	}
+	if len(entries) < 3 {
+		t.Fatalf("expected at least 3 entries, got %d", len(entries))
+	}
+
+	// ch3: no airings at all
+	e := entries[2]
+	if e.ChannelID != "ch3" {
+		t.Errorf("entries[2].ChannelID = %q, want ch3", e.ChannelID)
+	}
+	if e.Current != nil {
+		t.Errorf("entries[2].Current = %v, want nil", e.Current)
+	}
+	if e.Next != nil {
+		t.Errorf("entries[2].Next = %v, want nil", e.Next)
+	}
+}
+
+func TestGetNowNext_SortOrder(t *testing.T) {
+	db := openTestDB(t)
+	tv, now := nowNextTV()
+	db.SetClock(database.FixedClock(now))
+	if err := db.Refresh(context.Background(), tv, now.Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	entries, err := db.GetNowNext()
+	if err != nil {
+		t.Fatalf("GetNowNext: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(entries))
+	}
+
+	// ch1 has lcn=1, ch2 has lcn=2, ch3 has no lcn (sort_order=3)
+	ids := []string{entries[0].ChannelID, entries[1].ChannelID, entries[2].ChannelID}
+	want := []string{"ch1", "ch2", "ch3"}
+	for i, id := range ids {
+		if id != want[i] {
+			t.Errorf("entries[%d].ChannelID = %q, want %q", i, id, want[i])
+		}
+	}
+}

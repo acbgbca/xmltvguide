@@ -18,6 +18,7 @@ type store interface {
 	SearchSimple(query string, includeRepeats bool, today bool) ([]model.SearchResult, error)
 	SearchAdvanced(query string, categories []string, includePast bool, includeRepeats bool, today bool) ([]model.SearchResult, error)
 	GetCategories() ([]string, error)
+	GetNowNext() ([]model.NowNextEntry, error)
 }
 
 // Handler holds the HTTP handler dependencies.
@@ -40,6 +41,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/status", h.getStatus)
 	mux.HandleFunc("GET /api/search", h.getSearch)
 	mux.HandleFunc("GET /api/categories", h.getCategories)
+	mux.HandleFunc("GET /api/explore/now-next", h.getNowNext)
 	mux.HandleFunc("GET /images/channel/{id}", h.serveChannelIcon)
 	mux.HandleFunc("POST /api/debug/log", h.postDebugLog)
 }
