@@ -4,7 +4,7 @@ export class AppPage {
   constructor(protected page: Page) {}
 
   // Navigation
-  async navigateTo(tab: 'guide' | 'search' | 'favourites' | 'settings'): Promise<void> {
+  async navigateTo(tab: 'guide' | 'search' | 'favourites' | 'settings' | 'explore'): Promise<void> {
     await this.page.getByRole('navigation').getByRole('button', { name: new RegExp(tab, 'i') }).click();
   }
 

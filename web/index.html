@@ -15,6 +15,7 @@
     <link rel="stylesheet" href="/style/search.css">
     <link rel="stylesheet" href="/style/favourites.css">
     <link rel="stylesheet" href="/style/settings.css">
+    <link rel="stylesheet" href="/style/explore.css">
 </head>
 <body>
 
@@ -108,6 +109,11 @@
         </div>
     </div>
 
+    <!-- Page: Explore -->
+    <div id="page-explore" style="display:none">
+        <!-- mode switcher and mode content rendered by JS -->
+    </div>
+
     <!-- Page: Settings -->
     <div class="page" id="page-settings" style="display:none">
         <div class="page-content">
@@ -135,6 +141,12 @@
                 <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
             </svg>
             <span>Favourites</span>
+        </button>
+        <button class="bottom-nav-btn" data-page="explore" aria-label="Explore">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
+            </svg>
+            <span>Explore</span>
         </button>
         <button class="bottom-nav-btn" data-page="settings" aria-label="Settings">
             <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

@@ -3,11 +3,12 @@ import { startNowLineTimer, stopNowLineTimer } from './pages/guide.js';
 import { loadSearchPageCategories } from './pages/search.js';
 import { renderFavouritesPage } from './pages/favourites.js';
 import { renderSettingsPanel } from './pages/settings.js';
+import { loadExplorePage } from './pages/explore.js';
 import { getTodayString } from './utils/date.js';
 
 // ── Routing ──────────────────────────────────────────────────────────────────
 
-export const PAGES = ['guide', 'search', 'favourites', 'settings'];
+export const PAGES = ['guide', 'search', 'favourites', 'explore', 'settings'];
 
 export function getPageFromPath() {
     const path = window.location.pathname.replace(/^\/+/, '').split('?')[0];
@@ -71,5 +72,10 @@ export function navigateToPage(page, { pushState = true } = {}) {
     // Load favourites when entering favourites page
     if (page === 'favourites') {
         renderFavouritesPage();
+    }
+
+    // Load explore page when entering explore tab
+    if (page === 'explore') {
+        loadExplorePage();
     }
 }
