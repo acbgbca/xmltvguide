@@ -100,6 +100,55 @@ func (d *DB) SearchAdvanced(query string, categories []string, includePast bool,
 	return d.scanSearchResults(q, args...)
 }
 
+// SearchBrowse queries the airings table directly (bypassing FTS) using plain SQL filters.
+// Used when q is empty and browse filters (isPremiere, categories) are provided.
+// Results are sorted by start_time ASC; Rank is set to 0 for all results.
+func (d *DB) SearchBrowse(categories []string, isPremiere bool, includePast bool, includeRepeats bool, today bool) ([]model.SearchResult, error) {
+	q := `
+		SELECT
+			a.channel_id, a.start_time, a.stop_time,
+			a.title, COALESCE(a.sub_title, ''), COALESCE(a.description, ''),
+			COALESCE(a.categories, '[]'),
+			COALESCE(a.episode_num, ''), COALESCE(a.episode_num_display, ''),
+			COALESCE(a.prog_id, ''), COALESCE(a.star_rating, ''),
+			COALESCE(a.content_rating, ''), COALESCE(a.year, ''),
+			COALESCE(a.icon, ''), COALESCE(a.country, ''),
+			a.is_repeat, a.is_premiere,
+			c.display_name, 0.0
+		FROM airings a
+		JOIN channels c ON c.id = a.channel_id
+		WHERE 1=1`
+	var args []any
+
+	if !includePast {
+		now := d.clock.Now().UTC().Format(time.RFC3339)
+		q += ` AND a.stop_time > ?`
+		args = append(args, now)
+	}
+	if isPremiere {
+		q += ` AND a.is_premiere = 1`
+	}
+	if !includeRepeats {
+		q += ` AND a.is_repeat = 0`
+	}
+	if len(categories) > 0 {
+		placeholders := make([]string, len(categories))
+		for i, c := range categories {
+			placeholders[i] = "?"
+			args = append(args, c)
+		}
+		q += ` AND EXISTS (SELECT 1 FROM json_each(a.categories) WHERE value IN (` + strings.Join(placeholders, ",") + `))`
+	}
+	if today {
+		endOfDay := d.endOfToday()
+		q += ` AND a.start_time < ?`
+		args = append(args, endOfDay)
+	}
+	q += ` ORDER BY a.start_time`
+
+	return d.scanSearchResults(q, args...)
+}
+
 // endOfToday returns midnight tonight in the server's local timezone, formatted as RFC3339 in UTC.
 func (d *DB) endOfToday() string {
 	now := d.clock.Now()

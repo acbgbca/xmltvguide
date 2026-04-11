@@ -17,6 +17,7 @@ type store interface {
 	EnsureChannelIcon(ctx context.Context, channelID string) (string, error)
 	SearchSimple(query string, includeRepeats bool, today bool) ([]model.SearchResult, error)
 	SearchAdvanced(query string, categories []string, includePast bool, includeRepeats bool, today bool) ([]model.SearchResult, error)
+	SearchBrowse(categories []string, isPremiere bool, includePast bool, includeRepeats bool, today bool) ([]model.SearchResult, error)
 	GetCategories() ([]string, error)
 	GetNowNext() ([]model.NowNextEntry, error)
 }

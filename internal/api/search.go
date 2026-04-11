@@ -32,8 +32,15 @@ type searchResultGroup struct {
 
 func (h *Handler) getSearch(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	if q == "" {
-		http.Error(w, "missing required parameter: q", http.StatusBadRequest)
+	isPremiere := r.URL.Query().Get("is_premiere") == "true"
+
+	var categories []string
+	if cats := r.URL.Query().Get("categories"); cats != "" {
+		categories = strings.Split(cats, ",")
+	}
+
+	if q == "" && !isPremiere && len(categories) == 0 {
+		http.Error(w, "at least one of q, is_premiere, or categories is required", http.StatusBadRequest)
 		return
 	}
 
@@ -44,11 +51,11 @@ func (h *Handler) getSearch(w http.ResponseWriter, r *http.Request) {
 	var results []model.SearchResult
 	var err error
 
-	var categories []string
-	if mode == "advanced" {
-		if cats := r.URL.Query().Get("categories"); cats != "" {
-			categories = strings.Split(cats, ",")
-		}
+	if q == "" {
+		// Browse mode: bypass FTS, query airings table directly.
+		includePast := r.URL.Query().Get("include_past") == "true"
+		results, err = h.db.SearchBrowse(categories, isPremiere, includePast, includeRepeats, today)
+	} else if mode == "advanced" {
 		includePast := r.URL.Query().Get("include_past") == "true"
 		results, err = h.db.SearchAdvanced(q, categories, includePast, includeRepeats, today)
 	} else {

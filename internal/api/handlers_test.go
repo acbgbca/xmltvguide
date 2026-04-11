@@ -1144,6 +1144,241 @@ func TestGetChannels_IconIsProxyURL(t *testing.T) {
 	}
 }
 
+// --- Browse mode search tests (q optional) ---
+
+// newBrowseSeededServer creates a test API server that includes premiere airings
+// for testing the browse-mode search (q-less queries).
+func newBrowseSeededServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	dir := t.TempDir()
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test-source", images.NewCache(&http.Client{}, filepath.Join(dir, "images")))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	now := time.Now()
+	tv := &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{ID: "ch1", DisplayNames: []xmltv.Name{{Value: "ABC"}}},
+			{ID: "ch2", DisplayNames: []xmltv.Name{{Value: "SBS"}}},
+		},
+		Programmes: []xmltv.Programme{
+			{
+				// Future, premiere, category News
+				Start:      xmltv.XmltvTime{Time: now.Add(1 * time.Hour)},
+				Stop:       xmltv.XmltvTime{Time: now.Add(2 * time.Hour)},
+				Channel:    "ch1",
+				Titles:     []xmltv.Name{{Value: "New Drama"}},
+				Categories: []xmltv.Name{{Value: "Drama"}},
+				Premiere:   &xmltv.Name{Value: "First broadcast"},
+			},
+			{
+				// Future, non-premiere, category Sport
+				Start:      xmltv.XmltvTime{Time: now.Add(3 * time.Hour)},
+				Stop:       xmltv.XmltvTime{Time: now.Add(4 * time.Hour)},
+				Channel:    "ch2",
+				Titles:     []xmltv.Name{{Value: "Sports Tonight"}},
+				Categories: []xmltv.Name{{Value: "Sport"}},
+			},
+			{
+				// Future, repeat, category Drama
+				Start:           xmltv.XmltvTime{Time: now.Add(5 * time.Hour)},
+				Stop:            xmltv.XmltvTime{Time: now.Add(6 * time.Hour)},
+				Channel:         "ch2",
+				Titles:          []xmltv.Name{{Value: "Old Drama Repeat"}},
+				Categories:      []xmltv.Name{{Value: "Drama"}},
+				PreviouslyShown: &xmltv.PreviouslyShown{},
+			},
+		},
+	}
+
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	handler := api.New(db, 0)
+	handler.RegisterRoutes(mux)
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(func() {
+		srv.Close()
+		db.Close()
+	})
+	return srv
+}
+
+func TestSearch_EmptyQ_NoFilters_Returns400(t *testing.T) {
+	srv := newBrowseSeededServer(t)
+
+	// No q and no browse filters
+	resp, err := http.Get(srv.URL + "/api/search")
+	if err != nil {
+		t.Fatalf("GET /api/search: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "at least one of q, is_premiere, or categories is required") {
+		t.Errorf("expected specific error message, got: %q", string(body))
+	}
+}
+
+func TestSearch_Browse_IsPremiere_Returns200(t *testing.T) {
+	srv := newBrowseSeededServer(t)
+
+	resp, err := http.Get(srv.URL + "/api/search?is_premiere=true")
+	if err != nil {
+		t.Fatalf("GET /api/search?is_premiere=true: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestSearch_Browse_IsPremiere_ReturnsOnlyPremieres(t *testing.T) {
+	srv := newBrowseSeededServer(t)
+
+	resp, err := http.Get(srv.URL + "/api/search?is_premiere=true")
+	if err != nil {
+		t.Fatalf("GET /api/search?is_premiere=true: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var result []struct {
+		Title   string `json:"title"`
+		Airings []struct {
+			IsPremiere bool `json:"isPremiere"`
+		} `json:"airings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if len(result) == 0 {
+		t.Fatal("expected at least 1 result group")
+	}
+	for _, g := range result {
+		for _, a := range g.Airings {
+			if !a.IsPremiere {
+				t.Errorf("browse is_premiere=true returned non-premiere in group %q", g.Title)
+			}
+		}
+	}
+	// "New Drama" should be present
+	hasNewDrama := false
+	for _, g := range result {
+		if g.Title == "New Drama" {
+			hasNewDrama = true
+		}
+	}
+	if !hasNewDrama {
+		t.Error("expected 'New Drama' in premiere results")
+	}
+	// "Sports Tonight" (non-premiere) should NOT be present
+	for _, g := range result {
+		if g.Title == "Sports Tonight" {
+			t.Error("'Sports Tonight' should not appear in premiere results")
+		}
+	}
+}
+
+func TestSearch_Browse_Categories_Returns200(t *testing.T) {
+	srv := newBrowseSeededServer(t)
+
+	resp, err := http.Get(srv.URL + "/api/search?categories=Sport")
+	if err != nil {
+		t.Fatalf("GET /api/search?categories=Sport: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestSearch_Browse_Categories_ReturnsMatchingAirings(t *testing.T) {
+	srv := newBrowseSeededServer(t)
+
+	resp, err := http.Get(srv.URL + "/api/search?categories=Sport")
+	if err != nil {
+		t.Fatalf("GET /api/search?categories=Sport: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var result []struct {
+		Title   string `json:"title"`
+		Airings []struct {
+			Categories []string `json:"categories"`
+		} `json:"airings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if len(result) == 0 {
+		t.Fatal("expected at least 1 result group")
+	}
+	for _, g := range result {
+		for _, a := range g.Airings {
+			hasSport := false
+			for _, c := range a.Categories {
+				if c == "Sport" {
+					hasSport = true
+					break
+				}
+			}
+			if !hasSport {
+				t.Errorf("browse categories=Sport returned airing without Sport in group %q", g.Title)
+			}
+		}
+	}
+	hasSportsTonightTitle := false
+	for _, g := range result {
+		if g.Title == "Sports Tonight" {
+			hasSportsTonightTitle = true
+		}
+	}
+	if !hasSportsTonightTitle {
+		t.Error("expected 'Sports Tonight' in Sport category results")
+	}
+}
+
+func TestSearch_Browse_NonEmptyQ_StillWorksAsSimpleSearch(t *testing.T) {
+	srv := newBrowseSeededServer(t)
+
+	resp, err := http.Get(srv.URL + "/api/search?q=Drama")
+	if err != nil {
+		t.Fatalf("GET /api/search?q=Drama: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var result []struct {
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	hasResult := false
+	for _, g := range result {
+		if strings.Contains(g.Title, "Drama") {
+			hasResult = true
+		}
+	}
+	if !hasResult {
+		t.Error("q=Drama should still match via FTS on title")
+	}
+}
+
 // --- RSS format tests ---
 
 // rssRoot mirrors the RSS 2.0 XML structure for test parsing.
