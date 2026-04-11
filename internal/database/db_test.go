@@ -1338,6 +1338,128 @@ func TestGetNowNext_BothNull(t *testing.T) {
 	}
 }
 
+// --- SearchBrowse tests (q-less browse mode) ---
+
+// searchTVWithPremiere returns test data that includes a premiere airing,
+// suitable for testing SearchBrowse with is_premiere=true.
+func searchTVWithPremiere() *xmltv.TV {
+	tv := searchTV()
+	tv.Programmes = append(tv.Programmes, xmltv.Programme{
+		Start:      xmltv.XmltvTime{Time: time.Now().Add(2 * time.Hour)},
+		Stop:       xmltv.XmltvTime{Time: time.Now().Add(3 * time.Hour)},
+		Channel:    "ch1",
+		Titles:     []xmltv.Name{{Value: "New Drama"}},
+		Descs:      []xmltv.Name{{Value: "A brand new drama series."}},
+		Categories: []xmltv.Name{{Value: "Drama"}},
+		Premiere:   &xmltv.Name{Value: "First broadcast"},
+	})
+	return tv
+}
+
+func TestSearchBrowse_IsPremiere_ReturnsOnlyPremieres(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTVWithPremiere(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	results, err := db.SearchBrowse(nil, true, false, true, false)
+	if err != nil {
+		t.Fatalf("SearchBrowse: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("expected at least 1 premiere airing")
+	}
+	for _, r := range results {
+		if !r.IsPremiere {
+			t.Errorf("SearchBrowse with isPremiere=true returned non-premiere: %q", r.Title)
+		}
+	}
+	hasNewDrama := false
+	for _, r := range results {
+		if r.Title == "New Drama" {
+			hasNewDrama = true
+		}
+	}
+	if !hasNewDrama {
+		t.Error("expected 'New Drama' in premiere results")
+	}
+}
+
+func TestSearchBrowse_Categories_ReturnsMatchingCategory(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	results, err := db.SearchBrowse([]string{"Sport"}, false, false, true, false)
+	if err != nil {
+		t.Fatalf("SearchBrowse: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("expected at least 1 Sport airing")
+	}
+	for _, r := range results {
+		hasCategory := false
+		for _, c := range r.Categories {
+			if c == "Sport" {
+				hasCategory = true
+				break
+			}
+		}
+		if !hasCategory {
+			t.Errorf("SearchBrowse with categories=[Sport] returned airing without Sport: %q", r.Title)
+		}
+	}
+}
+
+func TestSearchBrowse_ExcludesPastAirings(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTVWithPremiere(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	results, err := db.SearchBrowse(nil, true, false, true, false)
+	if err != nil {
+		t.Fatalf("SearchBrowse: %v", err)
+	}
+	for _, r := range results {
+		if r.Stop.Before(time.Now()) {
+			t.Errorf("SearchBrowse with includePast=false returned finished airing: %q", r.Title)
+		}
+	}
+}
+
+func TestSearchBrowse_SortedByStartTime(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	results, err := db.SearchBrowse([]string{"News"}, false, false, true, false)
+	if err != nil {
+		t.Fatalf("SearchBrowse: %v", err)
+	}
+	for i := 1; i < len(results); i++ {
+		if results[i].Start.Before(results[i-1].Start) {
+			t.Errorf("SearchBrowse results not sorted by start_time: result[%d] (%s) before result[%d] (%s)",
+				i, results[i].Start.Format(time.RFC3339),
+				i-1, results[i-1].Start.Format(time.RFC3339))
+		}
+	}
+}
+
+func TestSearchBrowse_ExcludesRepeats(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	results, err := db.SearchBrowse([]string{"News"}, false, false, false, false)
+	if err != nil {
+		t.Fatalf("SearchBrowse: %v", err)
+	}
+	for _, r := range results {
+		if r.IsRepeat {
+			t.Errorf("SearchBrowse with includeRepeats=false returned repeat: %q", r.Title)
+		}
+	}
+}
+
 func TestGetNowNext_SortOrder(t *testing.T) {
 	db := openTestDB(t)
 	tv, now := nowNextTV()
