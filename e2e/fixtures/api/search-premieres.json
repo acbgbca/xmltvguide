@@ -1,0 +1,47 @@
+[
+  {
+    "title": "The Block",
+    "airings": [
+      {
+        "channelId": "ch5",
+        "channelName": "Nine",
+        "startTime": "2025-06-10T19:00:00Z",
+        "stopTime": "2025-06-10T20:30:00Z",
+        "subTitle": "Room Reveals",
+        "description": "The contestants reveal their completed rooms to the judges.",
+        "categories": ["Reality"],
+        "isRepeat": false,
+        "isPremiere": true
+      }
+    ]
+  },
+  {
+    "title": "Grand Designs Australia",
+    "airings": [
+      {
+        "channelId": "ch2",
+        "channelName": "SBS",
+        "startTime": "2025-06-10T21:00:00Z",
+        "stopTime": "2025-06-10T22:00:00Z",
+        "description": "A family builds their dream home on the coast.",
+        "categories": ["Documentary"],
+        "isRepeat": false,
+        "isPremiere": true
+      }
+    ]
+  },
+  {
+    "title": "New Drama",
+    "airings": [
+      {
+        "channelId": "ch1",
+        "channelName": "ABC",
+        "startTime": "2025-06-10T20:00:00Z",
+        "stopTime": "2025-06-10T21:00:00Z",
+        "categories": ["Drama"],
+        "isRepeat": false,
+        "isPremiere": true
+      }
+    ]
+  }
+]

@@ -48,6 +48,8 @@ export function loadExplorePage() {
         renderNowNextMode(content);
     } else if (activeMode === 'categories') {
         renderCategoriesMode(content);
+    } else if (activeMode === 'premieres') {
+        renderPremieresMode(content);
     } else {
         content.innerHTML = '<p>Coming soon</p>';
     }
@@ -203,6 +205,93 @@ async function renderCategoryResults(container, category) {
     }
 
     container.appendChild(resultsContainer);
+}
+
+async function renderPremieresMode(container) {
+    const loading = document.createElement('div');
+    loading.className = 'explore-loading';
+    loading.textContent = 'Loading…';
+    container.appendChild(loading);
+
+    let results;
+    try {
+        const res = await fetch('/api/search?is_premiere=true&include_past=false');
+        if (!res.ok) throw new Error(`/api/search returned ${res.status}`);
+        results = await res.json();
+    } catch (err) {
+        container.innerHTML = '';
+        const error = document.createElement('div');
+        error.className = 'explore-error';
+        error.textContent = 'Failed to load premieres. Please try again.';
+        container.appendChild(error);
+        return;
+    }
+
+    container.innerHTML = '';
+
+    // Flatten grouped results into a single list sorted by start time
+    const airings = [];
+    for (const group of results) {
+        for (const airing of group.airings) {
+            airings.push({ ...airing, title: group.title });
+        }
+    }
+    airings.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+
+    if (airings.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'premieres-empty';
+        empty.textContent = 'No upcoming premieres found';
+        container.appendChild(empty);
+        return;
+    }
+
+    const list = document.createElement('div');
+    list.className = 'premieres-list';
+
+    for (const airing of airings) {
+        const item = document.createElement('div');
+        item.className = 'premiere-item';
+        item.addEventListener('click', () => openSearchAiringModal(airing, airing.title));
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'premiere-title';
+        titleEl.textContent = airing.title;
+        item.appendChild(titleEl);
+
+        const metaEl = document.createElement('div');
+        metaEl.className = 'premiere-meta';
+
+        const channelEl = document.createElement('span');
+        channelEl.className = 'premiere-channel';
+        channelEl.textContent = airing.channelName || airing.channelId;
+        metaEl.appendChild(channelEl);
+
+        const timeEl = document.createElement('span');
+        timeEl.className = 'premiere-time';
+        timeEl.textContent = formatSearchDate(new Date(airing.startTime));
+        metaEl.appendChild(timeEl);
+
+        item.appendChild(metaEl);
+
+        if (airing.subTitle) {
+            const subTitleEl = document.createElement('div');
+            subTitleEl.className = 'premiere-subtitle';
+            subTitleEl.textContent = airing.subTitle;
+            item.appendChild(subTitleEl);
+        }
+
+        if (airing.description) {
+            const descEl = document.createElement('div');
+            descEl.className = 'premiere-description';
+            descEl.textContent = airing.description;
+            item.appendChild(descEl);
+        }
+
+        list.appendChild(item);
+    }
+
+    container.appendChild(list);
 }
 
 async function renderNowNextMode(container) {
