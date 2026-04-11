@@ -45,3 +45,11 @@ type SearchResult struct {
 	ChannelName string  `json:"channelName"`
 	Rank        float64 `json:"-"`
 }
+
+// NowNextEntry holds the current and next airing for a single channel.
+type NowNextEntry struct {
+	ChannelID   string   `json:"channelId"`
+	ChannelName string   `json:"channelName"`
+	Current     *Airing  `json:"current"`
+	Next        *Airing  `json:"next"`
+}
