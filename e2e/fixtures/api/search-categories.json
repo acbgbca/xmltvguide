@@ -1,0 +1,32 @@
+[
+  {
+    "title": "MasterChef Australia",
+    "airings": [
+      {
+        "channelId": "ch5",
+        "channelName": "Ten",
+        "startTime": "2025-06-10T19:00:00Z",
+        "stopTime": "2025-06-10T20:30:00Z",
+        "description": "The contestants face their toughest elimination challenge yet.",
+        "categories": ["Drama"],
+        "isRepeat": false,
+        "isPremiere": true
+      }
+    ]
+  },
+  {
+    "title": "Four Corners",
+    "airings": [
+      {
+        "channelId": "ch1",
+        "channelName": "ABC",
+        "startTime": "2025-06-10T20:00:00Z",
+        "stopTime": "2025-06-10T21:30:00Z",
+        "description": "In-depth investigative journalism.",
+        "categories": ["Documentary"],
+        "isRepeat": false,
+        "isPremiere": false
+      }
+    ]
+  }
+]
