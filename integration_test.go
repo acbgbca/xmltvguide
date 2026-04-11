@@ -64,7 +64,7 @@ func startMockXMLTVServer(t *testing.T, xmlContent string) *countingServer {
 func newIntegrationServer(t *testing.T, xmltvURL string) *httptest.Server {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, xmltvURL, images.NewCache(&http.Client{}, filepath.Join(dir, "images")))
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, xmltvURL, images.NewCache(&http.Client{}, filepath.Join(dir, "images")), nil, nil)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -399,7 +399,7 @@ func TestStartup_FreshInstall_AlwaysFetches(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv", images.NewCache(&http.Client{}, filepath.Join(dir, "images")))
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv", images.NewCache(&http.Client{}, filepath.Join(dir, "images")), nil, nil)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -425,7 +425,7 @@ func TestStartup_ExistingData_SkipsFetch(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv", images.NewCache(&http.Client{}, filepath.Join(dir, "images")))
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv", images.NewCache(&http.Client{}, filepath.Join(dir, "images")), nil, nil)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -459,7 +459,7 @@ func TestStartup_RefreshOnStart_FetchesEvenWithData(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv", images.NewCache(&http.Client{}, filepath.Join(dir, "images")))
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv", images.NewCache(&http.Client{}, filepath.Join(dir, "images")), nil, nil)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -685,6 +685,7 @@ func TestIntegration_ChannelIconProxy(t *testing.T) {
 	db, err := database.Open(
 		filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv",
 		images.NewCache(mockSrv.Client(), filepath.Join(dir, "images")),
+		nil, nil,
 	)
 	if err != nil {
 		t.Fatalf("Open: %v", err)

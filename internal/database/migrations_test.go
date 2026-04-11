@@ -85,7 +85,7 @@ func openDBAt(t *testing.T, path string) *database.DB {
 	dir := filepath.Dir(path)
 	client := &http.Client{Transport: &failingTransport{}}
 	cache := images.NewCache(client, filepath.Join(dir, "images"))
-	db, err := database.Open(path, 7, "http://test", cache)
+	db, err := database.Open(path, 7, "http://test", cache, nil, nil)
 	if err != nil {
 		t.Fatalf("database.Open: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestMigration_PopulateSQL_SkipsAlreadyApplied(t *testing.T) {
 	{
 		client := &http.Client{Transport: &failingTransport{}}
 		cache := images.NewCache(client, filepath.Join(dir, "images"))
-		db1, err := database.Open(dbPath, 7, "http://test", cache)
+		db1, err := database.Open(dbPath, 7, "http://test", cache, nil, nil)
 		if err != nil {
 			t.Fatalf("database.Open (first): %v", err)
 		}
@@ -177,7 +177,7 @@ func TestMigration_PopulateSQL_SkipsAlreadyApplied(t *testing.T) {
 
 	// Second open: migrations are already recorded — populateSQL should NOT run.
 	cache := images.NewCache(&http.Client{Transport: &failingTransport{}}, filepath.Join(dir, "images2"))
-	db2, err := database.Open(dbPath, 7, "http://test", cache)
+	db2, err := database.Open(dbPath, 7, "http://test", cache, nil, nil)
 	if err != nil {
 		t.Fatalf("database.Open (second): %v", err)
 	}

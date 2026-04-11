@@ -21,8 +21,10 @@ func (d *DB) GetNowNext() ([]model.NowNextEntry, error) {
 		return nil, fmt.Errorf("getting channels: %w", err)
 	}
 
+	hiddenSQL, hiddenArgs := d.airingHiddenSQL("channel_id")
+
 	// Fetch all currently-airing programmes (start_time <= now < stop_time).
-	currentRows, err := d.db.Query(`
+	currentQ := `
 		SELECT
 			channel_id, start_time, stop_time, title,
 			COALESCE(sub_title, ''), COALESCE(description, ''),
@@ -33,8 +35,9 @@ func (d *DB) GetNowNext() ([]model.NowNextEntry, error) {
 			COALESCE(icon, ''), COALESCE(country, ''),
 			is_repeat, is_premiere
 		FROM airings
-		WHERE start_time <= ? AND stop_time > ?
-	`, now, now)
+		WHERE start_time <= ? AND stop_time > ?` + hiddenSQL
+	currentArgs := append([]any{now, now}, hiddenArgs...)
+	currentRows, err := d.db.Query(currentQ, currentArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("querying current airings: %w", err)
 	}
@@ -53,7 +56,7 @@ func (d *DB) GetNowNext() ([]model.NowNextEntry, error) {
 	}
 
 	// Fetch the next upcoming airing per channel using a window function.
-	nextRows, err := d.db.Query(`
+	nextQ := `
 		SELECT
 			channel_id, start_time, stop_time, title,
 			COALESCE(sub_title, ''), COALESCE(description, ''),
@@ -67,10 +70,12 @@ func (d *DB) GetNowNext() ([]model.NowNextEntry, error) {
 			SELECT *,
 				ROW_NUMBER() OVER (PARTITION BY channel_id ORDER BY start_time) AS rn
 			FROM airings
-			WHERE start_time > ?
+			WHERE start_time > ?` + hiddenSQL + `
 		)
 		WHERE rn = 1
-	`, now)
+	`
+	nextArgs := append([]any{now}, hiddenArgs...)
+	nextRows, err := d.db.Query(nextQ, nextArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("querying next airings: %w", err)
 	}

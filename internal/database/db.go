@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,6 +54,8 @@ type DB struct {
 	sourceURL     string
 	imageCache    *images.Cache
 	clock         Clock
+	hiddenIDs     []string
+	hiddenLCNs    []int
 
 	// lastRefresh and nextRefresh are kept in memory — they reflect the current
 	// process's poll cycle and reset on restart, which is intentional.
@@ -186,7 +189,9 @@ func columnExists(db *sql.DB, table, column string) (bool, error) {
 
 // Open opens (or creates) a SQLite database at path and applies the schema.
 // imageCache handles icon downloading and caching; pass nil to disable icon caching.
-func Open(path string, retentionDays int, sourceURL string, imageCache *images.Cache) (*DB, error) {
+// hiddenIDs and hiddenLCNs specify channels to exclude from all query results;
+// pass nil (or empty slices) for no filtering.
+func Open(path string, retentionDays int, sourceURL string, imageCache *images.Cache, hiddenIDs []string, hiddenLCNs []int) (*DB, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
@@ -220,6 +225,8 @@ func Open(path string, retentionDays int, sourceURL string, imageCache *images.C
 		sourceURL:     sourceURL,
 		imageCache:    imageCache,
 		clock:         realClock{},
+		hiddenIDs:     hiddenIDs,
+		hiddenLCNs:    hiddenLCNs,
 	}, nil
 }
 
@@ -258,4 +265,65 @@ func (d *DB) SetNextRefresh(t time.Time) {
 // Close closes the underlying database connection.
 func (d *DB) Close() error {
 	return d.db.Close()
+}
+
+// channelHiddenSQL returns SQL WHERE fragments (and matching args) that exclude
+// hidden channels from queries against the channels table.
+// col is the column name for the channel id (e.g. "id") and lcnCol for the lcn
+// column (e.g. "lcn"). Returns empty strings and nil args when no channels are hidden.
+func (d *DB) channelHiddenSQL(idCol, lcnCol string) (string, []any) {
+	var clauses []string
+	var args []any
+
+	if len(d.hiddenIDs) > 0 {
+		placeholders := make([]string, len(d.hiddenIDs))
+		for i, id := range d.hiddenIDs {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		clauses = append(clauses, idCol+" NOT IN ("+strings.Join(placeholders, ",")+")")
+	}
+	if len(d.hiddenLCNs) > 0 {
+		placeholders := make([]string, len(d.hiddenLCNs))
+		for i, lcn := range d.hiddenLCNs {
+			placeholders[i] = "?"
+			args = append(args, lcn)
+		}
+		clauses = append(clauses, "COALESCE("+lcnCol+", -1) NOT IN ("+strings.Join(placeholders, ",")+")")
+	}
+
+	if len(clauses) == 0 {
+		return "", nil
+	}
+	return " AND " + strings.Join(clauses, " AND "), args
+}
+
+// airingHiddenSQL returns SQL WHERE fragments (and matching args) that exclude
+// hidden channels from queries against the airings table.
+// channelIDCol is the column expression for the channel id (e.g. "a.channel_id" or "channel_id").
+func (d *DB) airingHiddenSQL(channelIDCol string) (string, []any) {
+	var clauses []string
+	var args []any
+
+	if len(d.hiddenIDs) > 0 {
+		placeholders := make([]string, len(d.hiddenIDs))
+		for i, id := range d.hiddenIDs {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		clauses = append(clauses, channelIDCol+" NOT IN ("+strings.Join(placeholders, ",")+")")
+	}
+	if len(d.hiddenLCNs) > 0 {
+		placeholders := make([]string, len(d.hiddenLCNs))
+		for i, lcn := range d.hiddenLCNs {
+			placeholders[i] = "?"
+			args = append(args, lcn)
+		}
+		clauses = append(clauses, channelIDCol+" NOT IN (SELECT id FROM channels WHERE COALESCE(lcn, -1) IN ("+strings.Join(placeholders, ",")+")"+")")
+	}
+
+	if len(clauses) == 0 {
+		return "", nil
+	}
+	return " AND " + strings.Join(clauses, " AND "), args
 }
