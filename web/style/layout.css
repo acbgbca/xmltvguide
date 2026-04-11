@@ -80,13 +80,14 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0));
 }
 
 .page-content {
     flex: 1;
     overflow-y: auto;
     padding: 20px 16px;
-    padding-bottom: calc(20px + var(--bottom-nav-height) + env(safe-area-inset-bottom, 0));
+    padding-bottom: 20px;
 }
 
 .page-content h1 {
