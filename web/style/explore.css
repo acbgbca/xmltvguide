@@ -255,3 +255,77 @@
     color: var(--text-secondary);
     font-size: 14px;
 }
+
+/* ── Time Slot mode ─────────────────────────────────────────────── */
+
+.time-slot-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.time-slot-date-input,
+.time-slot-time-select {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.time-slot-date-input:focus,
+.time-slot-time-select:focus {
+    outline: none;
+    border-color: var(--text-secondary);
+}
+
+.time-slot-results {
+    flex: 1;
+}
+
+.time-slot-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.time-slot-row {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 4px 12px;
+    align-items: center;
+}
+
+.time-slot-channel {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.time-slot-show {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    flex-wrap: wrap;
+}
+
+.time-slot-title {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.time-slot-time {
+    color: var(--text-secondary);
+    font-size: 12px;
+    flex-shrink: 0;
+}
