@@ -1,12 +1,5 @@
 /* ── Explore page ─────────────────────────────────────────────── */
 
-#page-explore {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    overflow: hidden;
-}
-
 .explore-mode-switcher {
     display: flex;
     gap: 6px;
