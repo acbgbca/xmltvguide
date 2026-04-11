@@ -102,14 +102,92 @@ test.describe('Explore tab — Mode switcher', () => {
     expect(await explore.activeMode()).toBe('categories');
   });
 
-  test('each mode shows placeholder content', async ({ page }) => {
+  test('non-implemented modes show placeholder content', async ({ page }) => {
     const explore = new ExplorePage(page);
     await explore.goto();
 
-    for (const mode of ['now-next', 'categories', 'premieres', 'time-slot']) {
+    for (const mode of ['categories', 'premieres', 'time-slot']) {
       await explore.clickMode(mode);
       await expect(explore.contentArea).toContainText('Coming soon');
     }
+  });
+});
+
+test.describe('Explore tab — Now/Next mode', () => {
+  test('renders a row per channel with data', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto();
+
+    await expect(explore.nowNextRow('ch1')).toBeVisible();
+    await expect(explore.nowNextRow('ch2')).toBeVisible();
+    await expect(explore.nowNextRow('ch3')).toBeVisible();
+    await expect(explore.nowNextRow('ch4')).toBeVisible();
+  });
+
+  test('shows channel name in each row', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto();
+
+    await expect(explore.nowNextRow('ch1')).toContainText('ABC');
+    await expect(explore.nowNextRow('ch2')).toContainText('SBS');
+  });
+
+  test('shows current show title with time remaining', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto();
+
+    // ch1: "News at Noon", stops at 14:30, now is ~14:00 → ~30 min remaining
+    await expect(explore.nowNextRow('ch1')).toContainText('News at Noon');
+    await expect(explore.nowNextRow('ch1')).toContainText(/ends in \d+ min/);
+  });
+
+  test('shows next show title with start time', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto();
+
+    // ch1 next: "Afternoon Show" starts at 14:30Z
+    await expect(explore.nowNextRow('ch1')).toContainText('Afternoon Show');
+  });
+
+  test('shows "Nothing airing" when current is null', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto();
+
+    // ch3 has no current show
+    await expect(explore.nowNextRow('ch3')).toContainText('Nothing airing');
+  });
+
+  test('omits next section when next is null', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto();
+
+    // ch4 has no next show — its row should exist but no "next" content
+    const row = explore.nowNextRow('ch4');
+    await expect(row).toBeVisible();
+    await expect(row.locator('.now-next-next')).not.toBeVisible();
+  });
+
+  test('channels with both null current and null next are shown at the bottom', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto();
+
+    // ch5 has no current and no next — should still appear but at the bottom
+    const rows = explore.nowNextList.locator('.now-next-row');
+    const count = await rows.count();
+    const lastRow = rows.nth(count - 1);
+    await expect(lastRow).toHaveAttribute('data-channel-id', 'ch5');
+  });
+
+  test('shows error state when API fails', async ({ page, setupApiRoutes }) => {
+    await setupApiRoutes({ '/api/explore/now-next': null });
+    await page.route('/api/explore/now-next', route =>
+      route.fulfill({ status: 500, body: 'Internal Server Error' })
+    );
+
+    const explore = new ExplorePage(page);
+    await explore.goto();
+
+    await expect(explore.errorMessage).toBeVisible();
   });
 });
 
