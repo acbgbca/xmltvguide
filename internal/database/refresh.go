@@ -32,11 +32,24 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 		}
 	}
 
+	// Build the set of hidden channel IDs (combining ID-based and LCN-based rules)
+	// so airings can be filtered by ID alone without needing per-airing LCN lookups.
+	hiddenChannelIDs := map[string]bool{}
+	for _, ch := range tv.Channels {
+		if d.isChannelHidden(ch.ID, ch.LCN) {
+			hiddenChannelIDs[ch.ID] = true
+		}
+	}
+
 	// Phase 2: Resolve icons — download when URL changed or file is absent.
+	// Hidden channels are skipped entirely.
 	type resolvedIcon struct{ localPath, iconURL string }
 	resolved := map[string]resolvedIcon{}
 
 	for _, ch := range tv.Channels {
+		if hiddenChannelIDs[ch.ID] {
+			continue
+		}
 		if len(ch.Icons) == 0 {
 			continue
 		}
@@ -77,6 +90,22 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 	}
 	defer tx.Rollback()
 
+	// Delete any previously stored data for channels that are now hidden.
+	// Airings must be deleted before channels due to the foreign key constraint.
+	if len(d.hiddenIDs) > 0 || len(d.hiddenLCNs) > 0 {
+		idArgs, lcnArgs, filterSQL := buildHiddenFilter(d.hiddenIDs, d.hiddenLCNs)
+		deleteArgs := append(idArgs, lcnArgs...)
+		if _, err := tx.Exec(
+			`DELETE FROM airings WHERE channel_id IN (SELECT id FROM channels WHERE `+filterSQL+`)`,
+			deleteArgs...,
+		); err != nil {
+			return fmt.Errorf("deleting airings for hidden channels: %w", err)
+		}
+		if _, err := tx.Exec(`DELETE FROM channels WHERE `+filterSQL, deleteArgs...); err != nil {
+			return fmt.Errorf("deleting hidden channels: %w", err)
+		}
+	}
+
 	chStmt, err := tx.Prepare(`
 		INSERT OR REPLACE INTO channels (id, display_name, icon, sort_order, lcn, icon_url)
 		VALUES (?, ?, ?, ?, ?, ?)
@@ -87,6 +116,9 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 	defer chStmt.Close()
 
 	for i, ch := range tv.Channels {
+		if hiddenChannelIDs[ch.ID] {
+			continue
+		}
 		name := ch.ID
 		if len(ch.DisplayNames) > 0 && ch.DisplayNames[0].Value != "" {
 			name = ch.DisplayNames[0].Value
@@ -124,6 +156,9 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 	defer airStmt.Close()
 
 	for _, p := range tv.Programmes {
+		if hiddenChannelIDs[p.Channel] {
+			continue
+		}
 		a := airingFromXMLTV(p)
 
 		cats := []string{}

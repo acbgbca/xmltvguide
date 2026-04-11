@@ -10,16 +10,12 @@ import (
 // GetChannels returns all channels ordered by their source sort order.
 // The Icon field contains the proxy URL (/images/channel/{id}) for channels
 // that have an icon; it is empty for channels without one.
-// Channels matching the DB's hiddenIDs or hiddenLCNs are excluded.
 func (d *DB) GetChannels() ([]model.Channel, error) {
-	hiddenSQL, hiddenArgs := d.channelHiddenSQL("id", "lcn")
-	q := `
+	rows, err := d.db.Query(`
 		SELECT id, display_name, COALESCE(icon_url, ''), lcn
 		FROM channels
-		WHERE 1=1` + hiddenSQL + `
 		ORDER BY sort_order
-	`
-	rows, err := d.db.Query(q, hiddenArgs...)
+	`)
 	if err != nil {
 		return nil, fmt.Errorf("querying channels: %w", err)
 	}

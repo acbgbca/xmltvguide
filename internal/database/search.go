@@ -47,9 +47,6 @@ func (d *DB) SearchSimple(query string, includeRepeats bool, today bool) ([]mode
 		q += ` AND a.start_time < ?`
 		args = append(args, endOfDay)
 	}
-	hiddenSQL, hiddenArgs := d.airingHiddenSQL("a.channel_id")
-	q += hiddenSQL
-	args = append(args, hiddenArgs...)
 	q += ` ORDER BY f.rank, a.start_time`
 
 	return d.scanSearchResults(q, args...)
@@ -98,9 +95,6 @@ func (d *DB) SearchAdvanced(query string, categories []string, includePast bool,
 		q += ` AND a.start_time < ?`
 		args = append(args, endOfDay)
 	}
-	hiddenSQL, hiddenArgs := d.airingHiddenSQL("a.channel_id")
-	q += hiddenSQL
-	args = append(args, hiddenArgs...)
 	q += ` ORDER BY f.rank, a.start_time`
 
 	return d.scanSearchResults(q, args...)
@@ -150,9 +144,6 @@ func (d *DB) SearchBrowse(categories []string, isPremiere bool, includePast bool
 		q += ` AND a.start_time < ?`
 		args = append(args, endOfDay)
 	}
-	hiddenSQL, hiddenArgs := d.airingHiddenSQL("a.channel_id")
-	q += hiddenSQL
-	args = append(args, hiddenArgs...)
 	q += ` ORDER BY a.start_time`
 
 	return d.scanSearchResults(q, args...)

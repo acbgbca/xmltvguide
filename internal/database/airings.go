@@ -16,8 +16,7 @@ func (d *DB) GetAirings(date time.Time) ([]model.Airing, error) {
 	dayStart := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.Local).UTC()
 	dayEnd := dayStart.Add(24 * time.Hour)
 
-	hiddenSQL, hiddenArgs := d.airingHiddenSQL("channel_id")
-	q := `
+	rows, err := d.db.Query(`
 		SELECT
 			channel_id,
 			start_time,
@@ -37,11 +36,9 @@ func (d *DB) GetAirings(date time.Time) ([]model.Airing, error) {
 			is_repeat,
 			is_premiere
 		FROM airings
-		WHERE stop_time > ? AND start_time < ?` + hiddenSQL + `
+		WHERE stop_time > ? AND start_time < ?
 		ORDER BY start_time
-	`
-	args := append([]any{dayStart.Format(time.RFC3339), dayEnd.Format(time.RFC3339)}, hiddenArgs...)
-	rows, err := d.db.Query(q, args...)
+	`, dayStart.Format(time.RFC3339), dayEnd.Format(time.RFC3339))
 	if err != nil {
 		return nil, fmt.Errorf("querying airings: %w", err)
 	}
