@@ -16,6 +16,7 @@ services:
       # RETENTION_DAYS: "7"
       # DB_PATH: "/data/tvguide.db"
       # REFRESH_ON_START: "false"
+      # HIDDEN_CHANNELS: "6,9,10"  # Comma-separated channel IDs or LCN numbers to hide for all users
     ports:
       - "8080:8080"
     volumes:
