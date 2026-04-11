@@ -36,7 +36,7 @@ func openTestDB(t *testing.T) *database.DB {
 	dir := t.TempDir()
 	client := &http.Client{Transport: &failingTransport{}}
 	cache := images.NewCache(client, filepath.Join(dir, "images"))
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test", cache)
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test", cache, nil, nil)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -50,7 +50,7 @@ func openTestDBWithIconServer(t *testing.T, iconServer *httptest.Server) *databa
 	t.Helper()
 	dir := t.TempDir()
 	cache := images.NewCache(iconServer.Client(), filepath.Join(dir, "images"))
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test", cache)
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, "http://test", cache, nil, nil)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

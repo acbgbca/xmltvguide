@@ -90,6 +90,7 @@ tvguide/
 | `IMAGE_CACHE_DIR` | `/data/images` | Directory for cached channel icon files. Files are stored at `{IMAGE_CACHE_DIR}/channels/{channel-id}.{ext}`. The directory is created on startup if absent. The `/data` volume already covers this path. |
 | `PORT` | `8080` | HTTP listen port |
 | `RSS_TTL` | `360` | Default TTL (time-to-live) in minutes for RSS feed responses. Tells feed readers how often to re-poll. Can be overridden per-request via the `ttl` query parameter on `/api/search`. Must be a positive integer; invalid values are ignored. |
+| `HIDDEN_CHANNELS` | *(unset)* | Comma-separated list of channels to exclude from all API responses. Integers are treated as LCN numbers; anything else is treated as a channel ID. Example: `ch1.xmltv.id,ch2.id,6,9,10` |
 
 ## How to build and run
 

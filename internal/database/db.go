@@ -3,6 +3,8 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,6 +55,8 @@ type DB struct {
 	sourceURL     string
 	imageCache    *images.Cache
 	clock         Clock
+	hiddenIDs     []string
+	hiddenLCNs    []int
 
 	// lastRefresh and nextRefresh are kept in memory — they reflect the current
 	// process's poll cycle and reset on restart, which is intentional.
@@ -186,7 +190,9 @@ func columnExists(db *sql.DB, table, column string) (bool, error) {
 
 // Open opens (or creates) a SQLite database at path and applies the schema.
 // imageCache handles icon downloading and caching; pass nil to disable icon caching.
-func Open(path string, retentionDays int, sourceURL string, imageCache *images.Cache) (*DB, error) {
+// hiddenIDs and hiddenLCNs specify channels to exclude from all query results;
+// pass nil (or empty slices) for no filtering.
+func Open(path string, retentionDays int, sourceURL string, imageCache *images.Cache, hiddenIDs []string, hiddenLCNs []int) (*DB, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
@@ -220,6 +226,8 @@ func Open(path string, retentionDays int, sourceURL string, imageCache *images.C
 		sourceURL:     sourceURL,
 		imageCache:    imageCache,
 		clock:         realClock{},
+		hiddenIDs:     hiddenIDs,
+		hiddenLCNs:    hiddenLCNs,
 	}, nil
 }
 
@@ -258,4 +266,53 @@ func (d *DB) SetNextRefresh(t time.Time) {
 // Close closes the underlying database connection.
 func (d *DB) Close() error {
 	return d.db.Close()
+}
+
+// isChannelHidden reports whether the given channel ID or LCN (as a raw string
+// from the XMLTV source) should be excluded based on the configured hidden lists.
+// lcnStr is the raw LCN string from the XMLTV source; it may be empty or non-numeric.
+func (d *DB) isChannelHidden(id, lcnStr string) bool {
+	for _, hid := range d.hiddenIDs {
+		if hid == id {
+			return true
+		}
+	}
+	if len(d.hiddenLCNs) > 0 && lcnStr != "" {
+		if n, err := strconv.Atoi(lcnStr); err == nil {
+			for _, hlcn := range d.hiddenLCNs {
+				if hlcn == n {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// buildHiddenFilter constructs the SQL fragment and argument slices for deleting
+// hidden channels. Returns idArgs, lcnArgs, and a WHERE clause such as:
+//
+//	id IN (?,?) OR COALESCE(lcn,-1) IN (?,?)
+//
+// When one list is empty the corresponding clause is omitted.
+// Callers must concatenate idArgs + lcnArgs to form the full arg slice.
+func buildHiddenFilter(hiddenIDs []string, hiddenLCNs []int) (idArgs []any, lcnArgs []any, sql string) {
+	var clauses []string
+	if len(hiddenIDs) > 0 {
+		ph := make([]string, len(hiddenIDs))
+		for i, id := range hiddenIDs {
+			ph[i] = "?"
+			idArgs = append(idArgs, id)
+		}
+		clauses = append(clauses, "id IN ("+strings.Join(ph, ",")+")")
+	}
+	if len(hiddenLCNs) > 0 {
+		ph := make([]string, len(hiddenLCNs))
+		for i, lcn := range hiddenLCNs {
+			ph[i] = "?"
+			lcnArgs = append(lcnArgs, lcn)
+		}
+		clauses = append(clauses, "COALESCE(lcn,-1) IN ("+strings.Join(ph, ",")+")")
+	}
+	return idArgs, lcnArgs, strings.Join(clauses, " OR ")
 }

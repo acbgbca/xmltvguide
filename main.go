@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 	_ "time/tzdata" // embed IANA timezone database so the binary works on scratch
@@ -63,6 +64,8 @@ func main() {
 		port = "8080"
 	}
 
+	hiddenIDs, hiddenLCNs := parseHiddenChannels(os.Getenv("HIDDEN_CHANNELS"))
+
 	// Ensure the database directory exists (relevant when running outside Docker).
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
 		log.Fatalf("creating database directory %s: %v", filepath.Dir(dbPath), err)
@@ -77,7 +80,7 @@ func main() {
 
 	imageCache := images.NewCache(httpClient, imageCacheDir)
 
-	db, err := database.Open(dbPath, retentionDays, xmltvURL, imageCache)
+	db, err := database.Open(dbPath, retentionDays, xmltvURL, imageCache, hiddenIDs, hiddenLCNs)
 	if err != nil {
 		log.Fatalf("opening database: %v", err)
 	}
@@ -187,6 +190,26 @@ func spaHandler(fsys http.FileSystem) http.Handler {
 		r.URL.Path = "/"
 		fileServer.ServeHTTP(w, r)
 	})
+}
+
+// parseHiddenChannels splits the HIDDEN_CHANNELS value on commas and classifies
+// each token: integers are treated as LCN numbers, anything else as a channel ID.
+func parseHiddenChannels(raw string) (ids []string, lcns []int) {
+	if raw == "" {
+		return nil, nil
+	}
+	for _, token := range strings.Split(raw, ",") {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
+		}
+		if n, err := strconv.Atoi(token); err == nil {
+			lcns = append(lcns, n)
+		} else {
+			ids = append(ids, token)
+		}
+	}
+	return ids, lcns
 }
 
 func refresh(db *database.DB, client *http.Client, url string, interval time.Duration) error {
