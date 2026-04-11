@@ -101,4 +101,21 @@ export class ExplorePage extends AppPage {
   get premieresEmpty(): Locator {
     return this.page.locator('.premieres-empty');
   }
+
+  // Time Slot mode
+  get timeSlotDateInput(): Locator {
+    return this.page.locator('.time-slot-date-input');
+  }
+
+  get timeSlotTimeSelect(): Locator {
+    return this.page.locator('.time-slot-time-select');
+  }
+
+  get timeSlotList(): Locator {
+    return this.page.locator('.time-slot-list');
+  }
+
+  timeSlotRow(channelId: string): Locator {
+    return this.page.locator(`.time-slot-row[data-channel-id="${channelId}"]`);
+  }
 }

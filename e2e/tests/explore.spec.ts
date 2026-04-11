@@ -106,7 +106,7 @@ test.describe('Explore tab — Mode switcher', () => {
     const explore = new ExplorePage(page);
     await explore.goto();
 
-    for (const mode of ['time-slot']) {
+    for (const mode of [] as string[]) {
       await explore.clickMode(mode);
       await expect(explore.contentArea).toContainText('Coming soon');
     }
@@ -673,6 +673,204 @@ test.describe('Explore tab — Premieres mode', () => {
 
     await expect(explore.premieresEmpty).toBeVisible();
     await expect(explore.premieresEmpty).toContainText('No upcoming premieres found');
+  });
+});
+
+test.describe('Explore tab — Time Slot mode', () => {
+  test('shows a date picker and time picker', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto('time-slot');
+
+    await expect(explore.timeSlotDateInput).toBeVisible();
+    await expect(explore.timeSlotTimeSelect).toBeVisible();
+  });
+
+  test('default date is today', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto('time-slot');
+
+    // FIXED_NOW = 2025-06-10T14:00:00Z → today is 2025-06-10
+    await expect(explore.timeSlotDateInput).toHaveValue('2025-06-10');
+  });
+
+  test('default time is current hour rounded to nearest 30 min', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto('time-slot');
+
+    // FIXED_NOW = 14:00 UTC → 14:00 local → rounded to 14:00
+    await expect(explore.timeSlotTimeSelect).toHaveValue('14:00');
+  });
+
+  test('shows one row per channel in channel sort order', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto('time-slot');
+
+    await expect(explore.timeSlotRow('ch1')).toBeVisible();
+    await expect(explore.timeSlotRow('ch2')).toBeVisible();
+    await expect(explore.timeSlotRow('ch3')).toBeVisible();
+    await expect(explore.timeSlotRow('ch4')).toBeVisible();
+    await expect(explore.timeSlotRow('ch5')).toBeVisible();
+  });
+
+  test('shows channel name in each row', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto('time-slot');
+
+    await expect(explore.timeSlotRow('ch1')).toContainText('ABC');
+    await expect(explore.timeSlotRow('ch2')).toContainText('SBS');
+  });
+
+  test('shows airing title for channel with a show at the selected time', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto('time-slot');
+
+    // At 14:00, ch1 has "Afternoon Specials" (14:00–15:00)
+    await expect(explore.timeSlotRow('ch1')).toContainText('Afternoon Specials');
+  });
+
+  test('shows start–stop times for an airing', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto('time-slot');
+
+    // ch1 at 14:00: Afternoon Specials 14:00–15:00
+    const row = explore.timeSlotRow('ch1');
+    await expect(row.locator('.time-slot-time')).toBeVisible();
+  });
+
+  test('shows "Nothing airing" for channels with no show at the selected time', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto('time-slot');
+
+    // At 14:00, ch2 has nothing (Film ends 13:00, Dateline starts 15:00)
+    await expect(explore.timeSlotRow('ch2')).toContainText('Nothing airing');
+    await expect(explore.timeSlotRow('ch3')).toContainText('Nothing airing');
+  });
+
+  test('URL reflects the selected date and time on load', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto('time-slot');
+
+    expect(page.url()).toContain('mode=time-slot');
+    expect(page.url()).toContain('date=2025-06-10');
+    expect(page.url()).toContain('time=14%3A00');
+  });
+
+  test('changing time filters results client-side without re-fetching', async ({ page, setupApiRoutes }) => {
+    await setupApiRoutes({ '/api/guide**': null });
+    let fetchCount = 0;
+    await page.route('/api/guide**', async (route) => {
+      fetchCount++;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            channelId: 'ch2',
+            start: '2025-06-10T15:00:00Z',
+            stop: '2025-06-10T17:00:00Z',
+            title: 'SBS Dateline',
+            isRepeat: false,
+            isPremiere: false,
+          },
+        ]),
+      });
+    });
+
+    const explore = new ExplorePage(page);
+    await explore.goto('time-slot');
+
+    const fetchesBefore = fetchCount;
+
+    // Change time to 15:00 — should filter client-side
+    await explore.timeSlotTimeSelect.selectOption('15:00');
+
+    // No additional fetch should have occurred
+    expect(fetchCount).toBe(fetchesBefore);
+    // ch2 now has SBS Dateline at 15:00
+    await expect(explore.timeSlotRow('ch2')).toContainText('SBS Dateline');
+  });
+
+  test('changing time updates the URL', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto('time-slot');
+
+    await explore.timeSlotTimeSelect.selectOption('15:00');
+
+    expect(page.url()).toContain('time=15%3A00');
+  });
+
+  test('changing date re-fetches guide data', async ({ page, setupApiRoutes }) => {
+    await setupApiRoutes({ '/api/guide**': null });
+    let lastRequestedDate = '';
+    await page.route('/api/guide**', async (route) => {
+      const url = new URL(route.request().url());
+      lastRequestedDate = url.searchParams.get('date') ?? '';
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      });
+    });
+
+    const explore = new ExplorePage(page);
+    await explore.goto('time-slot');
+
+    // Set date input to a new date
+    await explore.timeSlotDateInput.fill('2025-06-11');
+    await explore.timeSlotDateInput.dispatchEvent('change');
+
+    await expect(explore.timeSlotList).toBeVisible();
+    expect(lastRequestedDate).toBe('2025-06-11');
+  });
+
+  test('shows loading state while fetching guide data', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    // Navigate to a different mode first so the app fully initializes
+    await explore.goto();
+
+    // Now block subsequent guide requests
+    let resolveRoute: () => void;
+    await page.route('/api/guide**', async (route) => {
+      await new Promise<void>(r => { resolveRoute = r; });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      });
+    });
+
+    // Switching to time-slot triggers a new guide fetch that is now blocked
+    await explore.clickMode('time-slot');
+
+    await expect(explore.loadingIndicator).toBeVisible();
+    resolveRoute!();
+  });
+
+  test('shows error state when guide API fails', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    // Navigate to a different mode first so the app fully initializes
+    await explore.goto();
+
+    // Now route guide requests to fail
+    await page.route('/api/guide**', (route) =>
+      route.fulfill({ status: 500, body: 'Internal Server Error' })
+    );
+
+    // Switching to time-slot triggers a new guide fetch that will fail
+    await explore.clickMode('time-slot');
+
+    await expect(explore.errorMessage).toBeVisible();
+  });
+
+  test('direct navigation with date and time in URL shows correct results', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await page.goto('/explore?mode=time-slot&date=2025-06-10&time=15:00');
+    await explore.waitForAppReady();
+
+    // At 15:00, ch2 has SBS Dateline (15:00–17:00)
+    await expect(explore.timeSlotRow('ch2')).toContainText('SBS Dateline');
+    await expect(explore.timeSlotDateInput).toHaveValue('2025-06-10');
+    await expect(explore.timeSlotTimeSelect).toHaveValue('15:00');
   });
 });
 

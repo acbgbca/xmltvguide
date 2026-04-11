@@ -1,6 +1,7 @@
-import { formatTime, formatSearchDate } from '../utils/date.js';
-import { fetchCategories } from '../api.js';
+import { formatTime, formatSearchDate, getTodayString } from '../utils/date.js';
+import { fetchCategories, fetchChannels } from '../api.js';
 import { openSearchAiringModal } from '../components/modal.js';
+import { state } from '../state.js';
 
 const MODES = [
     { id: 'now-next',   label: 'Now/Next' },
@@ -50,6 +51,8 @@ export function loadExplorePage() {
         renderCategoriesMode(content);
     } else if (activeMode === 'premieres') {
         renderPremieresMode(content);
+    } else if (activeMode === 'time-slot') {
+        renderTimeSlotMode(content);
     } else {
         content.innerHTML = '<p>Coming soon</p>';
     }
@@ -292,6 +295,156 @@ async function renderPremieresMode(container) {
     }
 
     container.appendChild(list);
+}
+
+function getRoundedTime(date) {
+    const h = date.getHours();
+    const m = date.getMinutes() < 30 ? 0 : 30;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+async function renderTimeSlotMode(container) {
+    const params = new URLSearchParams(window.location.search);
+    const now = new Date();
+
+    const selectedDate = params.get('date') || getTodayString();
+    const selectedTime = params.get('time') || getRoundedTime(now);
+
+    // Controls
+    const controls = document.createElement('div');
+    controls.className = 'time-slot-controls';
+
+    const dateInput = document.createElement('input');
+    dateInput.type = 'date';
+    dateInput.className = 'time-slot-date-input';
+    dateInput.value = selectedDate;
+    controls.appendChild(dateInput);
+
+    const timeSelect = document.createElement('select');
+    timeSelect.className = 'time-slot-time-select';
+    for (let h = 0; h < 24; h++) {
+        for (const m of [0, 30]) {
+            const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            const opt = document.createElement('option');
+            opt.value = timeStr;
+            opt.textContent = timeStr;
+            if (timeStr === selectedTime) opt.selected = true;
+            timeSelect.appendChild(opt);
+        }
+    }
+    controls.appendChild(timeSelect);
+
+    container.appendChild(controls);
+
+    // Results area
+    const results = document.createElement('div');
+    results.className = 'time-slot-results';
+    container.appendChild(results);
+
+    let guideData = null;
+
+    function updateURL(date, time) {
+        const newParams = new URLSearchParams(window.location.search);
+        newParams.set('mode', 'time-slot');
+        newParams.set('date', date);
+        newParams.set('time', time);
+        history.replaceState({}, '', '/explore?' + newParams.toString());
+    }
+
+    function renderResults(date, time) {
+        results.innerHTML = '';
+
+        if (guideData === null) return;
+
+        const [y, mo, d] = date.split('-').map(Number);
+        const [th, tm] = time.split(':').map(Number);
+        const selectedMs = new Date(y, mo - 1, d, th, tm, 0, 0).getTime();
+
+        const list = document.createElement('div');
+        list.className = 'time-slot-list';
+
+        for (const channel of state.channels) {
+            const row = document.createElement('div');
+            row.className = 'time-slot-row';
+            row.dataset.channelId = channel.id;
+
+            const channelEl = document.createElement('div');
+            channelEl.className = 'time-slot-channel';
+            channelEl.textContent = channel.displayName;
+            row.appendChild(channelEl);
+
+            const airing = guideData.find(a =>
+                a.channelId === channel.id &&
+                new Date(a.start).getTime() <= selectedMs &&
+                new Date(a.stop).getTime() > selectedMs
+            );
+
+            const showEl = document.createElement('div');
+            showEl.className = 'time-slot-show';
+
+            if (airing) {
+                const titleEl = document.createElement('span');
+                titleEl.className = 'time-slot-title';
+                titleEl.textContent = airing.title;
+                showEl.appendChild(titleEl);
+
+                const timeEl = document.createElement('span');
+                timeEl.className = 'time-slot-time';
+                timeEl.textContent = `${formatTime(new Date(airing.start))} – ${formatTime(new Date(airing.stop))}`;
+                showEl.appendChild(timeEl);
+            } else {
+                showEl.textContent = 'Nothing airing';
+            }
+
+            row.appendChild(showEl);
+            list.appendChild(row);
+        }
+
+        results.appendChild(list);
+    }
+
+    async function fetchAndRender(date, time) {
+        updateURL(date, time);
+
+        results.innerHTML = '';
+        const loading = document.createElement('div');
+        loading.className = 'explore-loading';
+        loading.textContent = 'Loading…';
+        results.appendChild(loading);
+
+        try {
+            const needChannels = state.channels.length === 0;
+            const [guideResult, channelData] = await Promise.all([
+                fetch(`/api/guide?date=${date}`).then(r => {
+                    if (!r.ok) throw new Error(`/api/guide returned ${r.status}`);
+                    return r.json();
+                }),
+                needChannels ? fetchChannels() : Promise.resolve(state.channels),
+            ]);
+            guideData = guideResult;
+            if (needChannels) state.channels = channelData;
+        } catch (err) {
+            results.innerHTML = '';
+            const error = document.createElement('div');
+            error.className = 'explore-error';
+            error.textContent = 'Failed to load guide data. Please try again.';
+            results.appendChild(error);
+            return;
+        }
+
+        renderResults(date, time);
+    }
+
+    dateInput.addEventListener('change', () => {
+        fetchAndRender(dateInput.value, timeSelect.value);
+    });
+
+    timeSelect.addEventListener('change', () => {
+        updateURL(dateInput.value, timeSelect.value);
+        renderResults(dateInput.value, timeSelect.value);
+    });
+
+    await fetchAndRender(selectedDate, selectedTime);
 }
 
 async function renderNowNextMode(container) {
