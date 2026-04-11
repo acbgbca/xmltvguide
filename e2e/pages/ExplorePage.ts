@@ -59,4 +59,33 @@ export class ExplorePage extends AppPage {
   get errorMessage(): Locator {
     return this.page.locator('.explore-error');
   }
+
+  // Categories mode
+  get categoryPicker(): Locator {
+    return this.page.locator('.category-picker');
+  }
+
+  categoryButton(name: string): Locator {
+    return this.page.locator(`.category-picker-btn[data-category="${name}"]`);
+  }
+
+  get categoryResults(): Locator {
+    return this.page.locator('.category-results');
+  }
+
+  get categoryBackButton(): Locator {
+    return this.page.locator('.category-back-btn');
+  }
+
+  get categoryResultsTitle(): Locator {
+    return this.page.locator('.category-results-title');
+  }
+
+  get categorySearchGroups(): Locator {
+    return this.page.locator('.category-results .search-group');
+  }
+
+  get categoryEmpty(): Locator {
+    return this.page.locator('.category-empty');
+  }
 }
