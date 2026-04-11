@@ -1,4 +1,4 @@
-.PHONY: build test test-db test-xmltv test-api test-integration test-ui clean
+.PHONY: build test test-db test-xmltv test-api test-integration test-ui lint verify clean
 
 BINARY  := tvguide
 TIMEOUT := 120s
@@ -30,6 +30,13 @@ test-integration:
 ## test-ui: run Playwright UI tests (requires npm install first)
 test-ui:
 	npx playwright test --config=e2e/playwright.config.ts --pass-with-no-tests
+
+## lint: run golangci-lint (outputs SARIF to golangci-lint.sarif)
+lint:
+	golangci-lint run --output.sarif.path golangci-lint.sarif
+
+## verify: run all static analysis checks
+verify: lint
 
 ## dev: run the development environment (tvguide + WireMock)
 dev:

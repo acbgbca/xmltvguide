@@ -21,3 +21,6 @@ Thumbs.db
 node_modules/
 playwright-report/
 test-results/
+
+# Static analysis — local SARIF output (uploaded to GitHub by CI)
+*.sarif
