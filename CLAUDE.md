@@ -22,7 +22,15 @@ tvguide/
 ├── internal/
 │   ├── xmltv/parser.go          # Fetch XMLTV from URL and parse into structs
 │   ├── database/db.go           # SQLite store: schema, Refresh, GetChannels, GetAirings
-│   └── api/handlers.go          # REST API handlers
+│   └── api/                     # REST API handlers (one file per resource)
+│       ├── handler.go           # Router setup and shared middleware
+│       ├── guide.go             # GET /api/guide
+│       ├── channels.go          # GET /api/channels
+│       ├── search.go            # GET /api/search
+│       ├── categories.go        # GET /api/categories
+│       ├── explore.go           # GET /api/explore/now-next
+│       ├── rss.go               # RSS feed formatting
+│       └── debug.go             # Debug/status endpoints
 ├── web/                         # Frontend — embedded into binary via go:embed
 │   ├── index.html               # App shell (no JS framework)
 │   ├── manifest.json            # PWA manifest
@@ -35,7 +43,7 @@ tvguide/
 │   │   ├── search.css           # Search interface components
 │   │   ├── favourites.css       # Favourites page styling
 │   │   ├── settings.css         # Settings panel styling
-│   │   └── explore.css          # Explore page (Now/Next, Categories, Premieres modes)
+│   │   └── explore.css          # Explore page (Now/Next, Categories, Premieres, Time Slot modes)
 │   └── js/
 │       ├── main.js              # Entry point: init, service worker registration
 │       ├── router.js            # SPA routing (History API, page switching)
@@ -50,7 +58,8 @@ tvguide/
 │           ├── guide.js         # Guide tab rendering
 │           ├── search.js        # Search tab rendering
 │           ├── favourites.js    # Favourites tab rendering
-│           └── settings.js      # Settings tab rendering
+│           ├── settings.js      # Settings tab rendering
+│           └── explore.js       # Explore tab rendering (Now/Next, Categories, Premieres, Time Slot modes)
 ├── Dockerfile                   # Multi-stage: golang:1.23-alpine → alpine:3.20
 └── docker-compose.yml
 ```
