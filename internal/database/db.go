@@ -57,6 +57,7 @@ type DB struct {
 	clock         Clock
 	hiddenIDs     []string
 	hiddenLCNs    []int
+	stripWords    []string
 
 	// lastRefresh and nextRefresh are kept in memory — they reflect the current
 	// process's poll cycle and reset on restart, which is intentional.
@@ -192,7 +193,9 @@ func columnExists(db *sql.DB, table, column string) (bool, error) {
 // imageCache handles icon downloading and caching; pass nil to disable icon caching.
 // hiddenIDs and hiddenLCNs specify channels to exclude from all query results;
 // pass nil (or empty slices) for no filtering.
-func Open(path string, retentionDays int, sourceURL string, imageCache *images.Cache, hiddenIDs []string, hiddenLCNs []int) (*DB, error) {
+// stripWords specifies words/phrases to strip from channel display names at refresh time;
+// matching is case-insensitive. Pass nil or empty slice for no stripping.
+func Open(path string, retentionDays int, sourceURL string, imageCache *images.Cache, hiddenIDs []string, hiddenLCNs []int, stripWords []string) (*DB, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
@@ -228,6 +231,7 @@ func Open(path string, retentionDays int, sourceURL string, imageCache *images.C
 		clock:         realClock{},
 		hiddenIDs:     hiddenIDs,
 		hiddenLCNs:    hiddenLCNs,
+		stripWords:    stripWords,
 	}, nil
 }
 
