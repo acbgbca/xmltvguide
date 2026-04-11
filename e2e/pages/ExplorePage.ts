@@ -42,4 +42,21 @@ export class ExplorePage extends AppPage {
   async activeMode(): Promise<string> {
     return (await this.activeModeButton.getAttribute('data-mode')) ?? '';
   }
+
+  // Now/Next mode
+  get nowNextList(): Locator {
+    return this.page.locator('.now-next-list');
+  }
+
+  nowNextRow(channelId: string): Locator {
+    return this.page.locator(`.now-next-row[data-channel-id="${channelId}"]`);
+  }
+
+  get loadingIndicator(): Locator {
+    return this.page.locator('.explore-loading');
+  }
+
+  get errorMessage(): Locator {
+    return this.page.locator('.explore-error');
+  }
 }

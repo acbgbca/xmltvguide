@@ -3,6 +3,7 @@ import channelsFixture from './api/channels.json';
 import guideTodayFixture from './api/guide-today.json';
 import categoriesFixture from './api/categories.json';
 import searchResultsFixture from './api/search-results.json';
+import exploreNowNextFixture from './api/explore-now-next.json';
 
 export const FIXED_NOW = new Date('2025-06-10T14:00:00.000Z').getTime();
 
@@ -19,6 +20,7 @@ export async function setupApiRoutes(
     '/api/guide**': guideTodayFixture,
     '/api/categories': categoriesFixture,
     '/api/search**': searchResultsFixture,
+    '/api/explore/now-next': exploreNowNextFixture,
   };
 
   for (const [pattern, body] of Object.entries(defaultRoutes)) {
