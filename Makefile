@@ -1,4 +1,4 @@
-.PHONY: build test test-db test-xmltv test-api test-integration test-ui lint lint-js vuln verify clean
+.PHONY: build test test-db test-xmltv test-api test-integration test-ui lint lint-js vuln semgrep verify clean
 
 BINARY  := tvguide
 TIMEOUT := 120s
@@ -43,8 +43,12 @@ lint-js:
 vuln:
 	osv-scanner scan --format sarif --output osv-scanner.sarif --lockfile go.sum --lockfile package-lock.json
 
+## semgrep: run Semgrep security and code-quality analysis (outputs SARIF to semgrep.sarif)
+semgrep:
+	semgrep scan --config=auto --sarif --output=semgrep.sarif
+
 ## verify: run all static analysis checks
-verify: lint lint-js vuln
+verify: lint lint-js vuln semgrep
 
 ## dev: run the development environment (tvguide + WireMock)
 dev:

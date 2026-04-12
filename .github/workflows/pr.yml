@@ -76,6 +76,25 @@ jobs:
         with:
           sarif_file: osv-scanner.sarif
 
+  semgrep:
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        run: semgrep scan --config=auto --sarif --output=semgrep.sarif
+        continue-on-error: true
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+
   test:
     runs-on: ubuntu-latest
     steps:
