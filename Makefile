@@ -41,7 +41,7 @@ lint-js:
 
 ## vuln: scan Go and JS dependencies for known vulnerabilities (outputs SARIF to osv-scanner.sarif)
 vuln:
-	osv-scanner scan --format sarif --output osv-scanner.sarif --lockfile go.sum --lockfile package-lock.json
+	osv-scanner scan --format sarif --output-file osv-scanner.sarif --lockfile go.mod --lockfile package-lock.json
 
 ## semgrep: run Semgrep security and code-quality analysis (outputs SARIF to semgrep.sarif)
 semgrep:
