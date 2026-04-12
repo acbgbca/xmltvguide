@@ -1,4 +1,4 @@
-.PHONY: build test test-db test-xmltv test-api test-integration test-ui lint lint-js verify clean
+.PHONY: build test test-db test-xmltv test-api test-integration test-ui lint lint-js vuln verify clean
 
 BINARY  := tvguide
 TIMEOUT := 120s
@@ -39,8 +39,12 @@ lint:
 lint-js:
 	npx eslint web/js/ web/sw.js --format @microsoft/eslint-formatter-sarif --output-file eslint.sarif
 
+## vuln: scan Go and JS dependencies for known vulnerabilities (outputs SARIF to osv-scanner.sarif)
+vuln:
+	osv-scanner scan --format sarif --output osv-scanner.sarif --lockfile go.sum --lockfile package-lock.json
+
 ## verify: run all static analysis checks
-verify: lint lint-js
+verify: lint lint-js vuln
 
 ## dev: run the development environment (tvguide + WireMock)
 dev:
