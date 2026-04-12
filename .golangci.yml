@@ -1,0 +1,56 @@
+version: "2"
+
+formatters:
+  enable:
+    - gofmt      # standard Go formatting
+    - goimports  # import grouping (stdlib / external / internal)
+    - gci        # enforces import order: stdlib, external, project-local
+
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/acbgbca/xmltvguide)
+
+linters:
+  default: none
+  enable:
+    # Correctness
+    - govet        # go vet: reports suspicious constructs
+    - errcheck     # checks that errors are handled
+    - staticcheck  # advanced static analysis
+    - unused       # checks for unused constants, variables, functions and types
+
+    # Best practices
+    - gocritic     # opinionated checks: performance, style, diagnostics
+    - bodyclose    # checks that http response bodies are closed
+    - noctx        # detects http requests without context
+    - misspell     # catches common spelling mistakes in comments/strings
+    - unparam      # reports unused function parameters
+
+    # Complexity / smells
+    - cyclop       # cyclomatic complexity per function
+    - dupl         # code duplication detection
+    - gocognit     # cognitive complexity
+
+    # Security
+    - gosec        # security checks (G### rules)
+
+  settings:
+    cyclop:
+      max-complexity: 15
+
+    gocognit:
+      min-complexity: 20
+
+    dupl:
+      threshold: 120
+
+    gosec:
+      excludes:
+        - G404   # use of weak random — acceptable for non-cryptographic use
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

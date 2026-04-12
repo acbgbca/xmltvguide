@@ -1,4 +1,4 @@
-.PHONY: build test test-db test-xmltv test-api test-integration test-ui clean
+.PHONY: build test test-db test-xmltv test-api test-integration test-ui lint lint-js vuln semgrep verify clean
 
 BINARY  := tvguide
 TIMEOUT := 120s
@@ -30,6 +30,25 @@ test-integration:
 ## test-ui: run Playwright UI tests (requires npm install first)
 test-ui:
 	npx playwright test --config=e2e/playwright.config.ts --pass-with-no-tests
+
+## lint: run golangci-lint (outputs SARIF to golangci-lint.sarif)
+lint:
+	golangci-lint run --output.sarif.path golangci-lint.sarif
+
+## lint-js: run ESLint on frontend JS (outputs SARIF to eslint.sarif)
+lint-js:
+	npx eslint web/js/ web/sw.js --format @microsoft/eslint-formatter-sarif --output-file eslint.sarif
+
+## vuln: scan Go and JS dependencies for known vulnerabilities (outputs SARIF to osv-scanner.sarif)
+vuln:
+	osv-scanner scan --format sarif --output-file osv-scanner.sarif --lockfile go.mod --lockfile package-lock.json
+
+## semgrep: run Semgrep security and code-quality analysis (outputs SARIF to semgrep.sarif)
+semgrep:
+	semgrep scan --config=auto --sarif --output=semgrep.sarif
+
+## verify: run all static analysis checks
+verify: lint lint-js vuln semgrep
 
 ## dev: run the development environment (tvguide + WireMock)
 dev:
