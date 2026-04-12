@@ -1485,3 +1485,88 @@ func TestGetNowNext_SortOrder(t *testing.T) {
 		}
 	}
 }
+
+// TestRefresh_OverlappingAiringIsReplaced reproduces the bug where a schedule
+// shift (start_time changes) leaves the old record alongside the new one,
+// causing overlapping entries in the guide.
+//
+// Scenario: Show A runs 14:00–15:00, Show B runs 15:00–16:00.
+// After a schedule update Show A runs 14:00–15:02, Show B runs 15:02–16:00.
+// The old Show B record (start_time=15:00) must be deleted; only the new one
+// (start_time=15:02) should remain.
+func TestRefresh_OverlappingAiringIsReplaced(t *testing.T) {
+	db := openTestDB(t)
+	base := testBaseDate().Add(14 * time.Hour) // 14:00 today
+
+	initial := &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{ID: "ch1", DisplayNames: []xmltv.Name{{Value: "Test Channel"}}},
+		},
+		Programmes: []xmltv.Programme{
+			{
+				Channel: "ch1",
+				Start:   xmltv.XmltvTime{Time: base},                      // 14:00
+				Stop:    xmltv.XmltvTime{Time: base.Add(time.Hour)},        // 15:00
+				Titles:  []xmltv.Name{{Value: "Show A"}},
+			},
+			{
+				Channel: "ch1",
+				Start:   xmltv.XmltvTime{Time: base.Add(time.Hour)},        // 15:00
+				Stop:    xmltv.XmltvTime{Time: base.Add(2 * time.Hour)},    // 16:00
+				Titles:  []xmltv.Name{{Value: "Show B"}},
+			},
+		},
+	}
+
+	if err := db.Refresh(context.Background(), initial, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("initial Refresh: %v", err)
+	}
+
+	// Schedule shift: Show A now ends at 15:02, Show B now starts at 15:02.
+	updated := &xmltv.TV{
+		Channels: []xmltv.Channel{
+			{ID: "ch1", DisplayNames: []xmltv.Name{{Value: "Test Channel"}}},
+		},
+		Programmes: []xmltv.Programme{
+			{
+				Channel: "ch1",
+				Start:   xmltv.XmltvTime{Time: base},                               // 14:00 (unchanged)
+				Stop:    xmltv.XmltvTime{Time: base.Add(time.Hour + 2*time.Minute)}, // 15:02 (extended)
+				Titles:  []xmltv.Name{{Value: "Show A"}},
+			},
+			{
+				Channel: "ch1",
+				Start:   xmltv.XmltvTime{Time: base.Add(time.Hour + 2*time.Minute)}, // 15:02 (shifted)
+				Stop:    xmltv.XmltvTime{Time: base.Add(2 * time.Hour)},              // 16:00 (unchanged)
+				Titles:  []xmltv.Name{{Value: "Show B"}},
+			},
+		},
+	}
+
+	if err := db.Refresh(context.Background(), updated, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("updated Refresh: %v", err)
+	}
+
+	airings, err := db.GetAirings(testBaseDate())
+	if err != nil {
+		t.Fatalf("GetAirings: %v", err)
+	}
+
+	// Filter to ch1 only.
+	var ch1Airings []model.Airing
+	for _, a := range airings {
+		if a.ChannelID == "ch1" {
+			ch1Airings = append(ch1Airings, a)
+		}
+	}
+
+	if len(ch1Airings) != 2 {
+		t.Fatalf("expected 2 airings for ch1, got %d (old overlapping record was not removed)", len(ch1Airings))
+	}
+
+	// Verify the correct records are present (no stale 15:00 entry).
+	expectedStart := base.Add(time.Hour + 2*time.Minute).UTC()
+	if !ch1Airings[1].Start.Equal(expectedStart) {
+		t.Errorf("Show B start: expected %v, got %v (stale start_time still present)", expectedStart, ch1Airings[1].Start)
+	}
+}

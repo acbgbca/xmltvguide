@@ -146,6 +146,22 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 		}
 	}
 
+	// deleteOverlapStmt removes any existing airing for the same channel whose
+	// time range overlaps the incoming airing but has a different start_time.
+	// This handles schedule shifts where a show's start time changes slightly —
+	// the old record would otherwise remain alongside the new one.
+	deleteOverlapStmt, err := tx.Prepare(`
+		DELETE FROM airings
+		WHERE channel_id = ?
+		AND start_time != ?
+		AND start_time < ?
+		AND stop_time > ?
+	`)
+	if err != nil {
+		return fmt.Errorf("preparing overlap delete: %w", err)
+	}
+	defer deleteOverlapStmt.Close()
+
 	airStmt, err := tx.Prepare(`
 		INSERT OR REPLACE INTO airings (
 			channel_id, start_time, stop_time,
@@ -166,6 +182,13 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 		}
 		a := airingFromXMLTV(p)
 
+		startStr := a.Start.UTC().Format(time.RFC3339)
+		stopStr := a.Stop.UTC().Format(time.RFC3339)
+
+		if _, err := deleteOverlapStmt.Exec(a.ChannelID, startStr, stopStr, startStr); err != nil {
+			return fmt.Errorf("deleting overlapping airings: %w", err)
+		}
+
 		cats := []string{}
 		if len(a.Categories) > 0 {
 			cats = a.Categories
@@ -174,8 +197,8 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 
 		if _, err := airStmt.Exec(
 			a.ChannelID,
-			a.Start.UTC().Format(time.RFC3339),
-			a.Stop.UTC().Format(time.RFC3339),
+			startStr,
+			stopStr,
 			a.Title,
 			nullIfEmpty(a.SubTitle),
 			nullIfEmpty(a.Description),
