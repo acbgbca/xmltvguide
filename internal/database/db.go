@@ -170,23 +170,12 @@ func tableExists(db *sql.DB, table string) (bool, error) {
 
 // columnExists reports whether the named column is present in the given table.
 func columnExists(db *sql.DB, table, column string) (bool, error) {
-	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?", table, column).Scan(&count)
 	if err != nil {
 		return false, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var cid, notNull, pk int
-		var name, colType string
-		var dfltValue sql.NullString
-		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
-			return false, err
-		}
-		if name == column {
-			return true, nil
-		}
-	}
-	return false, rows.Err()
+	return count > 0, nil
 }
 
 // Open opens (or creates) a SQLite database at path and applies the schema.
