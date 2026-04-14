@@ -39,4 +39,8 @@ COPY --from=builder /scratch_tmp /tmp
 
 EXPOSE 8080
 
+# Run as non-root (numeric UID required for scratch images which have no /etc/passwd).
+# UID 65534 is the conventional "nobody" user on Linux.
+USER 65534:65534
+
 ENTRYPOINT ["/tvguide"]

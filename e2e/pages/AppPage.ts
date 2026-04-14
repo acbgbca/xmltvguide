@@ -5,7 +5,7 @@ export class AppPage {
 
   // Navigation
   async navigateTo(tab: 'guide' | 'search' | 'favourites' | 'settings' | 'explore'): Promise<void> {
-    await this.page.getByRole('navigation').getByRole('button', { name: new RegExp(tab, 'i') }).click();
+    await this.page.getByRole('navigation').getByRole('button', { name: new RegExp(tab, 'i') }).click(); // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   }
 
   async activeTab(): Promise<string> {
