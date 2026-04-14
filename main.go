@@ -68,12 +68,12 @@ func main() {
 	stripWords := parseStripWords(os.Getenv("CHANNEL_NAME_STRIP"))
 
 	// Ensure the database directory exists (relevant when running outside Docker).
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0750); err != nil {
 		log.Fatalf("creating database directory %s: %v", filepath.Dir(dbPath), err)
 	}
 
 	// Ensure the image cache directory exists.
-	if err := os.MkdirAll(filepath.Join(imageCacheDir, "channels"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(imageCacheDir, "channels"), 0750); err != nil {
 		log.Fatalf("creating image cache directory %s: %v", imageCacheDir, err)
 	}
 
@@ -145,7 +145,7 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Printf("forced shutdown: %v", err)
 	}
-	db.Close()
+	_ = db.Close()
 }
 
 func runInitialRefresh(db *database.DB, client *http.Client, xmltvURL string, pollInterval time.Duration, refreshOnStart bool) {
@@ -184,7 +184,7 @@ func spaHandler(fsys http.FileSystem) http.Handler {
 		}
 		f, err := fsys.Open(path)
 		if err == nil {
-			f.Close()
+			_ = f.Close()
 			fileServer.ServeHTTP(w, r)
 			return
 		}

@@ -51,14 +51,15 @@ func (h *Handler) getSearch(w http.ResponseWriter, r *http.Request) {
 	var results []model.SearchResult
 	var err error
 
-	if q == "" {
+	switch {
+	case q == "":
 		// Browse mode: bypass FTS, query airings table directly.
 		includePast := r.URL.Query().Get("include_past") == "true"
 		results, err = h.db.SearchBrowse(categories, isPremiere, includePast, includeRepeats, today)
-	} else if mode == "advanced" {
+	case mode == "advanced":
 		includePast := r.URL.Query().Get("include_past") == "true"
 		results, err = h.db.SearchAdvanced(q, categories, includePast, includeRepeats, today)
-	} else {
+	default:
 		results, err = h.db.SearchSimple(q, includeRepeats, today)
 	}
 

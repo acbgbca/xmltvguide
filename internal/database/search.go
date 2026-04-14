@@ -211,7 +211,7 @@ func (d *DB) scanSearchResults(query string, args ...any) ([]model.SearchResult,
 
 		sr.Start, _ = time.Parse(time.RFC3339, startStr)
 		sr.Stop, _ = time.Parse(time.RFC3339, stopStr)
-		json.Unmarshal([]byte(catsJSON), &sr.Categories)
+		_ = json.Unmarshal([]byte(catsJSON), &sr.Categories) // malformed JSON yields nil slice, which is acceptable
 		sr.IsRepeat = isRepeat == 1
 		sr.IsPremiere = isPremiere == 1
 
