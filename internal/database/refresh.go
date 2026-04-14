@@ -2,7 +2,9 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -24,7 +26,11 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 	if rows, err := d.db.QueryContext(ctx,
 		`SELECT id, COALESCE(icon, ''), COALESCE(icon_url, '') FROM channels`,
 	); err == nil {
-		defer rows.Close()
+		defer func() {
+			if err := rows.Close(); err != nil {
+				log.Printf("closing channel rows: %v", err)
+			}
+		}()
 		for rows.Next() {
 			var id, localPath, iconURL string
 			if rows.Scan(&id, &localPath, &iconURL) == nil {
@@ -89,13 +95,19 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			log.Printf("rollback error: %v", rbErr)
+		}
+	}()
 
 	// Delete any previously stored data for channels that are now hidden.
 	// Airings must be deleted before channels due to the foreign key constraint.
 	if len(d.hiddenIDs) > 0 || len(d.hiddenLCNs) > 0 {
 		idArgs, lcnArgs, filterSQL := buildHiddenFilter(d.hiddenIDs, d.hiddenLCNs)
-		deleteArgs := append(idArgs, lcnArgs...)
+		deleteArgs := make([]any, 0, len(idArgs)+len(lcnArgs))
+		deleteArgs = append(deleteArgs, idArgs...)
+		deleteArgs = append(deleteArgs, lcnArgs...)
 		if _, err := tx.Exec(
 			`DELETE FROM airings WHERE channel_id IN (SELECT id FROM channels WHERE `+filterSQL+`)`,
 			deleteArgs...,
@@ -114,7 +126,11 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 	if err != nil {
 		return fmt.Errorf("preparing channel upsert: %w", err)
 	}
-	defer chStmt.Close()
+	defer func() {
+		if err := chStmt.Close(); err != nil {
+			log.Printf("closing channel statement: %v", err)
+		}
+	}()
 
 	for i, ch := range tv.Channels {
 		if hiddenChannelIDs[ch.ID] {
@@ -160,7 +176,11 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 	if err != nil {
 		return fmt.Errorf("preparing overlap delete: %w", err)
 	}
-	defer deleteOverlapStmt.Close()
+	defer func() {
+		if err := deleteOverlapStmt.Close(); err != nil {
+			log.Printf("closing overlap delete statement: %v", err)
+		}
+	}()
 
 	airStmt, err := tx.Prepare(`
 		INSERT OR REPLACE INTO airings (
@@ -174,7 +194,11 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 	if err != nil {
 		return fmt.Errorf("preparing airing upsert: %w", err)
 	}
-	defer airStmt.Close()
+	defer func() {
+		if err := airStmt.Close(); err != nil {
+			log.Printf("closing airing statement: %v", err)
+		}
+	}()
 
 	for _, p := range tv.Programmes {
 		if hiddenChannelIDs[p.Channel] {

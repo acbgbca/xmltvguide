@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -53,7 +54,11 @@ func (c *Cache) Download(ctx context.Context, channelID, iconURL string) (string
 	if err != nil {
 		return "", fmt.Errorf("downloading: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("closing response body: %v", err)
+		}
+	}()
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("unexpected status %d from %s", resp.StatusCode, iconURL)
 	}
@@ -72,12 +77,12 @@ func (c *Cache) Download(ctx context.Context, channelID, iconURL string) (string
 	}
 
 	dir := filepath.Join(c.dir, "channels")
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return "", fmt.Errorf("creating image directory: %w", err)
 	}
 
 	localPath := filepath.Join(dir, channelID+ext)
-	if err := os.WriteFile(localPath, data, 0644); err != nil {
+	if err := os.WriteFile(localPath, data, 0600); err != nil {
 		return "", fmt.Errorf("writing icon file: %w", err)
 	}
 

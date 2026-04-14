@@ -114,32 +114,32 @@ func buildRSSItem(sr model.SearchResult) xmlRSSItem {
 
 	// Build description HTML.
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("<p><strong>Channel:</strong> %s</p>\n", sr.ChannelName))
+	fmt.Fprintf(&b, "<p><strong>Channel:</strong> %s</p>\n", sr.ChannelName)
 
 	timeFmt := "Mon 2 Jan 3:04 PM"
-	b.WriteString(fmt.Sprintf("<p><strong>Time:</strong> %s – %s</p>\n",
-		sr.Start.Local().Format(timeFmt), sr.Stop.Local().Format(timeFmt)))
+	fmt.Fprintf(&b, "<p><strong>Time:</strong> %s – %s</p>\n",
+		sr.Start.Local().Format(timeFmt), sr.Stop.Local().Format(timeFmt))
 
 	if sr.Description != "" {
-		b.WriteString(fmt.Sprintf("<p>%s</p>\n", sr.Description))
+		fmt.Fprintf(&b, "<p>%s</p>\n", sr.Description)
 	}
 	if sr.EpisodeNumDisplay != "" {
-		b.WriteString(fmt.Sprintf("<p><strong>Episode:</strong> %s</p>\n", sr.EpisodeNumDisplay))
+		fmt.Fprintf(&b, "<p><strong>Episode:</strong> %s</p>\n", sr.EpisodeNumDisplay)
 	}
 	if sr.StarRating != "" {
-		b.WriteString(fmt.Sprintf("<p><strong>Rating:</strong> %s</p>\n", sr.StarRating))
+		fmt.Fprintf(&b, "<p><strong>Rating:</strong> %s</p>\n", sr.StarRating)
 	}
 	if sr.ContentRating != "" {
-		b.WriteString(fmt.Sprintf("<p><strong>Classification:</strong> %s</p>\n", sr.ContentRating))
+		fmt.Fprintf(&b, "<p><strong>Classification:</strong> %s</p>\n", sr.ContentRating)
 	}
 	if sr.Year != "" {
-		b.WriteString(fmt.Sprintf("<p><strong>Year:</strong> %s</p>\n", sr.Year))
+		fmt.Fprintf(&b, "<p><strong>Year:</strong> %s</p>\n", sr.Year)
 	}
 	if sr.Country != "" {
-		b.WriteString(fmt.Sprintf("<p><strong>Country:</strong> %s</p>\n", sr.Country))
+		fmt.Fprintf(&b, "<p><strong>Country:</strong> %s</p>\n", sr.Country)
 	}
 	if len(sr.Categories) > 0 {
-		b.WriteString(fmt.Sprintf("<p><strong>Categories:</strong> %s</p>\n", strings.Join(sr.Categories, ", ")))
+		fmt.Fprintf(&b, "<p><strong>Categories:</strong> %s</p>\n", strings.Join(sr.Categories, ", "))
 	}
 	if sr.IsPremiere {
 		b.WriteString("<p><em>Premiere</em></p>\n")

@@ -148,12 +148,12 @@ func sampleTV() *xmltv.TV {
 		},
 		Programmes: []xmltv.Programme{
 			{
-				Start:       xmltv.XmltvTime{Time: base.Add(-time.Hour)},          // 23:00 the previous day
-				Stop:        xmltv.XmltvTime{Time: base.Add(time.Hour)},           // 01:00 today — overlaps midnight
-				Channel:     "ch2",
-				Titles:      []xmltv.Name{{Value: "Late Night Movie"}},
-				Descs:       []xmltv.Name{{Value: "A classic late night movie spanning midnight."}},
-				Categories:  []xmltv.Name{{Value: "Movie"}},
+				Start:      xmltv.XmltvTime{Time: base.Add(-time.Hour)}, // 23:00 the previous day
+				Stop:       xmltv.XmltvTime{Time: base.Add(time.Hour)},  // 01:00 today — overlaps midnight
+				Channel:    "ch2",
+				Titles:     []xmltv.Name{{Value: "Late Night Movie"}},
+				Descs:      []xmltv.Name{{Value: "A classic late night movie spanning midnight."}},
+				Categories: []xmltv.Name{{Value: "Movie"}},
 			},
 			{
 				Start:      xmltv.XmltvTime{Time: base.Add(6 * time.Hour)},
@@ -165,13 +165,13 @@ func sampleTV() *xmltv.TV {
 				Ratings:    []xmltv.Rating{{Value: "G", System: "ABA"}},
 			},
 			{
-				Start:       xmltv.XmltvTime{Time: base.Add(7 * time.Hour)},
-				Stop:        xmltv.XmltvTime{Time: base.Add(9 * time.Hour)},
-				Channel:     "ch1",
-				Titles:      []xmltv.Name{{Value: "Sunrise"}},
-				SubTitles:   []xmltv.Name{{Value: "Monday Edition"}},
-				Descs:       []xmltv.Name{{Value: "Morning breakfast television programme."}},
-				Categories:  []xmltv.Name{{Value: "Entertainment"}},
+				Start:      xmltv.XmltvTime{Time: base.Add(7 * time.Hour)},
+				Stop:       xmltv.XmltvTime{Time: base.Add(9 * time.Hour)},
+				Channel:    "ch1",
+				Titles:     []xmltv.Name{{Value: "Sunrise"}},
+				SubTitles:  []xmltv.Name{{Value: "Monday Edition"}},
+				Descs:      []xmltv.Name{{Value: "Morning breakfast television programme."}},
+				Categories: []xmltv.Name{{Value: "Entertainment"}},
 				EpisodeNums: []xmltv.EpisodeNum{
 					{Value: "5.12.0/1", System: "xmltv_ns"},
 					{Value: "S06 E13", System: "onscreen"},
@@ -1222,8 +1222,8 @@ func nowNextTV() (*xmltv.TV, time.Time) {
 				Titles:  []xmltv.Name{{Value: "Show A"}},
 			},
 			{
-				Start:   xmltv.XmltvTime{Time: now.Add(30 * time.Minute)},  // 14:30
-				Stop:    xmltv.XmltvTime{Time: now.Add(60 * time.Minute)},  // 15:00
+				Start:   xmltv.XmltvTime{Time: now.Add(30 * time.Minute)}, // 14:30
+				Stop:    xmltv.XmltvTime{Time: now.Add(60 * time.Minute)}, // 15:00
 				Channel: "ch1",
 				Titles:  []xmltv.Name{{Value: "Show B"}},
 			},
@@ -1505,14 +1505,14 @@ func TestRefresh_OverlappingAiringIsReplaced(t *testing.T) {
 		Programmes: []xmltv.Programme{
 			{
 				Channel: "ch1",
-				Start:   xmltv.XmltvTime{Time: base},                      // 14:00
-				Stop:    xmltv.XmltvTime{Time: base.Add(time.Hour)},        // 15:00
+				Start:   xmltv.XmltvTime{Time: base},                // 14:00
+				Stop:    xmltv.XmltvTime{Time: base.Add(time.Hour)}, // 15:00
 				Titles:  []xmltv.Name{{Value: "Show A"}},
 			},
 			{
 				Channel: "ch1",
-				Start:   xmltv.XmltvTime{Time: base.Add(time.Hour)},        // 15:00
-				Stop:    xmltv.XmltvTime{Time: base.Add(2 * time.Hour)},    // 16:00
+				Start:   xmltv.XmltvTime{Time: base.Add(time.Hour)},     // 15:00
+				Stop:    xmltv.XmltvTime{Time: base.Add(2 * time.Hour)}, // 16:00
 				Titles:  []xmltv.Name{{Value: "Show B"}},
 			},
 		},
@@ -1530,14 +1530,14 @@ func TestRefresh_OverlappingAiringIsReplaced(t *testing.T) {
 		Programmes: []xmltv.Programme{
 			{
 				Channel: "ch1",
-				Start:   xmltv.XmltvTime{Time: base},                               // 14:00 (unchanged)
+				Start:   xmltv.XmltvTime{Time: base},                                // 14:00 (unchanged)
 				Stop:    xmltv.XmltvTime{Time: base.Add(time.Hour + 2*time.Minute)}, // 15:02 (extended)
 				Titles:  []xmltv.Name{{Value: "Show A"}},
 			},
 			{
 				Channel: "ch1",
 				Start:   xmltv.XmltvTime{Time: base.Add(time.Hour + 2*time.Minute)}, // 15:02 (shifted)
-				Stop:    xmltv.XmltvTime{Time: base.Add(2 * time.Hour)},              // 16:00 (unchanged)
+				Stop:    xmltv.XmltvTime{Time: base.Add(2 * time.Hour)},             // 16:00 (unchanged)
 				Titles:  []xmltv.Name{{Value: "Show B"}},
 			},
 		},

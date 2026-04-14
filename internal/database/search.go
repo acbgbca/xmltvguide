@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -161,7 +162,11 @@ func (d *DB) GetCategories() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("querying categories: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("closing category rows: %v", err)
+		}
+	}()
 
 	cats := []string{}
 	for rows.Next() {
@@ -181,7 +186,11 @@ func (d *DB) scanSearchResults(query string, args ...any) ([]model.SearchResult,
 	if err != nil {
 		return nil, fmt.Errorf("querying search results: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("closing search rows: %v", err)
+		}
+	}()
 
 	var results []model.SearchResult
 	for rows.Next() {
@@ -202,7 +211,7 @@ func (d *DB) scanSearchResults(query string, args ...any) ([]model.SearchResult,
 
 		sr.Start, _ = time.Parse(time.RFC3339, startStr)
 		sr.Stop, _ = time.Parse(time.RFC3339, stopStr)
-		json.Unmarshal([]byte(catsJSON), &sr.Categories)
+		_ = json.Unmarshal([]byte(catsJSON), &sr.Categories) // malformed JSON yields nil slice, which is acceptable
 		sr.IsRepeat = isRepeat == 1
 		sr.IsPremiere = isPremiere == 1
 

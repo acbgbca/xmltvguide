@@ -3,6 +3,7 @@ package database
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -42,7 +43,11 @@ func (d *DB) GetAirings(date time.Time) ([]model.Airing, error) {
 	if err != nil {
 		return nil, fmt.Errorf("querying airings: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("closing airing rows: %v", err)
+		}
+	}()
 
 	airings := []model.Airing{}
 	for rows.Next() {
@@ -62,42 +67,7 @@ func (d *DB) GetAirings(date time.Time) ([]model.Airing, error) {
 
 		a.Start, _ = time.Parse(time.RFC3339, startStr)
 		a.Stop, _ = time.Parse(time.RFC3339, stopStr)
-		json.Unmarshal([]byte(catsJSON), &a.Categories) //nolint:errcheck — malformed JSON yields nil slice, which is acceptable
-		a.IsRepeat = isRepeat == 1
-		a.IsPremiere = isPremiere == 1
-
-		airings = append(airings, a)
-	}
-	return airings, rows.Err()
-}
-
-// scanAirings executes a query and scans results into Airing slices.
-func (d *DB) scanAirings(query string, args ...any) ([]model.Airing, error) {
-	rows, err := d.db.Query(query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("querying airings: %w", err)
-	}
-	defer rows.Close()
-
-	airings := []model.Airing{}
-	for rows.Next() {
-		var a model.Airing
-		var startStr, stopStr, catsJSON string
-		var isRepeat, isPremiere int
-
-		if err := rows.Scan(
-			&a.ChannelID, &startStr, &stopStr,
-			&a.Title, &a.SubTitle, &a.Description, &catsJSON,
-			&a.EpisodeNum, &a.EpisodeNumDisplay, &a.ProgID,
-			&a.StarRating, &a.ContentRating, &a.Year, &a.Icon, &a.Country,
-			&isRepeat, &isPremiere,
-		); err != nil {
-			return nil, fmt.Errorf("scanning airing: %w", err)
-		}
-
-		a.Start, _ = time.Parse(time.RFC3339, startStr)
-		a.Stop, _ = time.Parse(time.RFC3339, stopStr)
-		json.Unmarshal([]byte(catsJSON), &a.Categories)
+		json.Unmarshal([]byte(catsJSON), &a.Categories) //nolint:errcheck // malformed JSON yields nil slice, which is acceptable
 		a.IsRepeat = isRepeat == 1
 		a.IsPremiere = isPremiere == 1
 

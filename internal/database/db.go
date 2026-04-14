@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -175,7 +176,23 @@ func columnExists(db *sql.DB, table, column string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return count > 0, nil
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("closing column info rows: %v", err)
+		}
+	}()
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, colType string
+		var dfltValue sql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 // Open opens (or creates) a SQLite database at path and applies the schema.
@@ -197,18 +214,24 @@ func Open(path string, retentionDays int, sourceURL string, imageCache *images.C
 		"PRAGMA temp_store=MEMORY", // scratch image has no /tmp; keep all temp data in RAM
 	} {
 		if _, err := db.Exec(pragma); err != nil {
-			db.Close()
+			if closeErr := db.Close(); closeErr != nil {
+				log.Printf("closing database after pragma error: %v", closeErr)
+			}
 			return nil, fmt.Errorf("setting %s: %w", pragma, err)
 		}
 	}
 
 	if _, err := db.Exec(schema); err != nil {
-		db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("closing database after schema error: %v", closeErr)
+		}
 		return nil, fmt.Errorf("applying schema: %w", err)
 	}
 
 	if err := applyMigrations(db); err != nil {
-		db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("closing database after migration error: %v", closeErr)
+		}
 		return nil, err
 	}
 
@@ -244,7 +267,7 @@ func (d *DB) GetStatus() model.Status {
 // HasData reports whether the database contains any channels.
 func (d *DB) HasData() bool {
 	var count int
-	d.db.QueryRow(`SELECT COUNT(*) FROM channels`).Scan(&count) //nolint:errcheck — zero count on error is the safe default
+	d.db.QueryRow(`SELECT COUNT(*) FROM channels`).Scan(&count) //nolint:errcheck // zero count on error is the safe default
 	return count > 0
 }
 
