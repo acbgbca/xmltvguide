@@ -3,6 +3,7 @@ package database
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -42,7 +43,11 @@ func (d *DB) GetAirings(date time.Time) ([]model.Airing, error) {
 	if err != nil {
 		return nil, fmt.Errorf("querying airings: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("closing airing rows: %v", err)
+		}
+	}()
 
 	airings := []model.Airing{}
 	for rows.Next() {
@@ -77,7 +82,11 @@ func (d *DB) scanAirings(query string, args ...any) ([]model.Airing, error) {
 	if err != nil {
 		return nil, fmt.Errorf("querying airings: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("closing airing rows: %v", err)
+		}
+	}()
 
 	airings := []model.Airing{}
 	for rows.Next() {
