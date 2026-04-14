@@ -1,6 +1,8 @@
 package model
 
-import "time"
+import (
+	"time"
+)
 
 // Channel holds display data for a TV channel.
 type Channel struct {
@@ -48,8 +50,8 @@ type SearchResult struct {
 
 // NowNextEntry holds the current and next airing for a single channel.
 type NowNextEntry struct {
-	ChannelID   string   `json:"channelId"`
-	ChannelName string   `json:"channelName"`
-	Current     *Airing  `json:"current"`
-	Next        *Airing  `json:"next"`
+	ChannelID   string  `json:"channelId"`
+	ChannelName string  `json:"channelName"`
+	Current     *Airing `json:"current"`
+	Next        *Airing `json:"next"`
 }
