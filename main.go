@@ -145,7 +145,7 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Printf("forced shutdown: %v", err)
 	}
-	db.Close()
+	_ = db.Close()
 }
 
 func runInitialRefresh(db *database.DB, client *http.Client, xmltvURL string, pollInterval time.Duration, refreshOnStart bool) {
@@ -184,7 +184,7 @@ func spaHandler(fsys http.FileSystem) http.Handler {
 		}
 		f, err := fsys.Open(path)
 		if err == nil {
-			f.Close()
+			_ = f.Close()
 			fileServer.ServeHTTP(w, r)
 			return
 		}
