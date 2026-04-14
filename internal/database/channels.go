@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"log"
 
 	"github.com/acbgbca/xmltvguide/internal/model"
 )
@@ -19,7 +20,11 @@ func (d *DB) GetChannels() ([]model.Channel, error) {
 	if err != nil {
 		return nil, fmt.Errorf("querying channels: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("closing channel rows: %v", err)
+		}
+	}()
 
 	channels := []model.Channel{}
 	for rows.Next() {

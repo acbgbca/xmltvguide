@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/acbgbca/xmltvguide/internal/model"
@@ -38,7 +39,11 @@ func (d *DB) GetNowNext() ([]model.NowNextEntry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("querying current airings: %w", err)
 	}
-	defer currentRows.Close()
+	defer func() {
+		if err := currentRows.Close(); err != nil {
+			log.Printf("closing current rows: %v", err)
+		}
+	}()
 
 	current := map[string]*model.Airing{}
 	for currentRows.Next() {
@@ -74,7 +79,11 @@ func (d *DB) GetNowNext() ([]model.NowNextEntry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("querying next airings: %w", err)
 	}
-	defer nextRows.Close()
+	defer func() {
+		if err := nextRows.Close(); err != nil {
+			log.Printf("closing next rows: %v", err)
+		}
+	}()
 
 	next := map[string]*model.Airing{}
 	for nextRows.Next() {

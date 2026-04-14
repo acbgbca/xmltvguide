@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -161,7 +162,11 @@ func (d *DB) GetCategories() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("querying categories: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("closing category rows: %v", err)
+		}
+	}()
 
 	cats := []string{}
 	for rows.Next() {
@@ -181,7 +186,11 @@ func (d *DB) scanSearchResults(query string, args ...any) ([]model.SearchResult,
 	if err != nil {
 		return nil, fmt.Errorf("querying search results: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("closing search rows: %v", err)
+		}
+	}()
 
 	var results []model.SearchResult
 	for rows.Next() {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -53,7 +54,11 @@ func (c *Cache) Download(ctx context.Context, channelID, iconURL string) (string
 	if err != nil {
 		return "", fmt.Errorf("downloading: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("closing response body: %v", err)
+		}
+	}()
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("unexpected status %d from %s", resp.StatusCode, iconURL)
 	}

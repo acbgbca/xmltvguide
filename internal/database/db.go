@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -174,7 +175,11 @@ func columnExists(db *sql.DB, table, column string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("closing column info rows: %v", err)
+		}
+	}()
 	for rows.Next() {
 		var cid, notNull, pk int
 		var name, colType string
@@ -208,18 +213,24 @@ func Open(path string, retentionDays int, sourceURL string, imageCache *images.C
 		"PRAGMA temp_store=MEMORY", // scratch image has no /tmp; keep all temp data in RAM
 	} {
 		if _, err := db.Exec(pragma); err != nil {
-			db.Close()
+			if closeErr := db.Close(); closeErr != nil {
+				log.Printf("closing database after pragma error: %v", closeErr)
+			}
 			return nil, fmt.Errorf("setting %s: %w", pragma, err)
 		}
 	}
 
 	if _, err := db.Exec(schema); err != nil {
-		db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("closing database after schema error: %v", closeErr)
+		}
 		return nil, fmt.Errorf("applying schema: %w", err)
 	}
 
 	if err := applyMigrations(db); err != nil {
-		db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("closing database after migration error: %v", closeErr)
+		}
 		return nil, err
 	}
 
