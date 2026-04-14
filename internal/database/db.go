@@ -176,23 +176,7 @@ func columnExists(db *sql.DB, table, column string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer func() {
-		if err := rows.Close(); err != nil {
-			log.Printf("closing column info rows: %v", err)
-		}
-	}()
-	for rows.Next() {
-		var cid, notNull, pk int
-		var name, colType string
-		var dfltValue sql.NullString
-		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
-			return false, err
-		}
-		if name == column {
-			return true, nil
-		}
-	}
-	return false, rows.Err()
+	return count > 0, nil
 }
 
 // Open opens (or creates) a SQLite database at path and applies the schema.
