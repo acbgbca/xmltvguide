@@ -11,15 +11,15 @@ import (
 
 // store is the narrow interface the Handler needs from the database layer.
 type store interface {
-	GetChannels() ([]model.Channel, error)
-	GetAirings(date time.Time) ([]model.Airing, error)
+	GetChannels(ctx context.Context) ([]model.Channel, error)
+	GetAirings(ctx context.Context, date time.Time) ([]model.Airing, error)
 	GetStatus() model.Status
 	EnsureChannelIcon(ctx context.Context, channelID string) (string, error)
-	SearchSimple(query string, includeRepeats bool, today bool) ([]model.SearchResult, error)
-	SearchAdvanced(query string, categories []string, includePast bool, includeRepeats bool, today bool) ([]model.SearchResult, error)
-	SearchBrowse(categories []string, isPremiere bool, includePast bool, includeRepeats bool, today bool) ([]model.SearchResult, error)
-	GetCategories() ([]string, error)
-	GetNowNext() ([]model.NowNextEntry, error)
+	SearchSimple(ctx context.Context, query string, includeRepeats bool, today bool) ([]model.SearchResult, error)
+	SearchAdvanced(ctx context.Context, query string, categories []string, includePast bool, includeRepeats bool, today bool) ([]model.SearchResult, error)
+	SearchBrowse(ctx context.Context, categories []string, isPremiere bool, includePast bool, includeRepeats bool, today bool) ([]model.SearchResult, error)
+	GetCategories(ctx context.Context) ([]string, error)
+	GetNowNext(ctx context.Context) ([]model.NowNextEntry, error)
 }
 
 // Handler holds the HTTP handler dependencies.

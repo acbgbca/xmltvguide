@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -103,12 +104,15 @@ var migrations = []struct {
 }
 
 func applyMigrations(db *sql.DB) error {
-	if _, err := db.Exec(createMigrationsTable); err != nil {
+	// Migrations run at startup before the server accepts requests;
+	// context.Background() is appropriate — migrations are not cancellable.
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, createMigrationsTable); err != nil {
 		return fmt.Errorf("creating migrations table: %w", err)
 	}
 	for _, m := range migrations {
 		var count int
-		if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, m.version).Scan(&count); err != nil {
+		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, m.version).Scan(&count); err != nil {
 			return fmt.Errorf("checking migration %d: %w", m.version, err)
 		}
 		if count > 0 {
@@ -120,21 +124,21 @@ func applyMigrations(db *sql.DB) error {
 		if already, err := migrationAlreadyApplied(db, m.version); err != nil {
 			return fmt.Errorf("pre-checking migration %d: %w", m.version, err)
 		} else if already {
-			if _, err := db.Exec(`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
+			if _, err := db.ExecContext(ctx, `INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
 				m.version, time.Now().UTC().Format(time.RFC3339)); err != nil {
 				return fmt.Errorf("recording migration %d: %w", m.version, err)
 			}
 			continue
 		}
-		if _, err := db.Exec(m.sql); err != nil {
+		if _, err := db.ExecContext(ctx, m.sql); err != nil {
 			return fmt.Errorf("applying migration %d: %w", m.version, err)
 		}
 		if m.populateSQL != "" {
-			if _, err := db.Exec(m.populateSQL); err != nil {
+			if _, err := db.ExecContext(ctx, m.populateSQL); err != nil {
 				return fmt.Errorf("populating migration %d: %w", m.version, err)
 			}
 		}
-		if _, err := db.Exec(`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
+		if _, err := db.ExecContext(ctx, `INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
 			m.version, time.Now().UTC().Format(time.RFC3339)); err != nil {
 			return fmt.Errorf("recording migration %d: %w", m.version, err)
 		}
@@ -162,7 +166,7 @@ func migrationAlreadyApplied(db *sql.DB, version int) (bool, error) {
 // tableExists reports whether a table (or virtual table) exists in the database.
 func tableExists(db *sql.DB, table string) (bool, error) {
 	var count int
-	err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name = ?`, table).Scan(&count)
+	err := db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM sqlite_master WHERE name = ?`, table).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -172,7 +176,7 @@ func tableExists(db *sql.DB, table string) (bool, error) {
 // columnExists reports whether the named column is present in the given table.
 func columnExists(db *sql.DB, table, column string) (bool, error) {
 	var count int
-	err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?", table, column).Scan(&count)
+	err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?", table, column).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -191,13 +195,14 @@ func Open(path string, retentionDays int, sourceURL string, imageCache *images.C
 		return nil, fmt.Errorf("opening database: %w", err)
 	}
 
+	startupCtx := context.Background()
 	for _, pragma := range []string{
 		"PRAGMA journal_mode=WAL",
 		"PRAGMA foreign_keys=ON",
 		"PRAGMA synchronous=NORMAL",
 		"PRAGMA temp_store=MEMORY", // scratch image has no /tmp; keep all temp data in RAM
 	} {
-		if _, err := db.Exec(pragma); err != nil {
+		if _, err := db.ExecContext(startupCtx, pragma); err != nil {
 			if closeErr := db.Close(); closeErr != nil {
 				log.Printf("closing database after pragma error: %v", closeErr)
 			}
@@ -205,7 +210,7 @@ func Open(path string, retentionDays int, sourceURL string, imageCache *images.C
 		}
 	}
 
-	if _, err := db.Exec(schema); err != nil {
+	if _, err := db.ExecContext(startupCtx, schema); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			log.Printf("closing database after schema error: %v", closeErr)
 		}
@@ -249,9 +254,9 @@ func (d *DB) GetStatus() model.Status {
 }
 
 // HasData reports whether the database contains any channels.
-func (d *DB) HasData() bool {
+func (d *DB) HasData(ctx context.Context) bool {
 	var count int
-	d.db.QueryRow(`SELECT COUNT(*) FROM channels`).Scan(&count) //nolint:errcheck // zero count on error is the safe default
+	d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM channels`).Scan(&count) //nolint:errcheck,gosec // zero count on error is the safe default
 	return count > 0
 }
 

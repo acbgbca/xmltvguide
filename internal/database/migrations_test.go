@@ -1,6 +1,7 @@
 package database_test
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"path/filepath"
@@ -55,22 +56,23 @@ CREATE INDEX IF NOT EXISTS idx_airings_stop   ON airings(stop_time);
 // database prior to migrations 3 and 4 being applied.
 func createPreMigrationDB(t *testing.T, path string, channelID string, categories string) {
 	t.Helper()
+	ctx := context.Background()
 	rawDB, err := sql.Open("sqlite", path)
 	if err != nil {
 		t.Fatalf("createPreMigrationDB: open: %v", err)
 	}
 	defer rawDB.Close()
 
-	if _, err := rawDB.Exec(preMigrationSchema); err != nil {
+	if _, err := rawDB.ExecContext(ctx, preMigrationSchema); err != nil {
 		t.Fatalf("createPreMigrationDB: schema: %v", err)
 	}
-	if _, err := rawDB.Exec(
+	if _, err := rawDB.ExecContext(ctx,
 		`INSERT INTO channels (id, display_name, sort_order) VALUES (?, ?, 1)`,
 		channelID, "Test Channel",
 	); err != nil {
 		t.Fatalf("createPreMigrationDB: insert channel: %v", err)
 	}
-	if _, err := rawDB.Exec(`
+	if _, err := rawDB.ExecContext(ctx, `
 		INSERT INTO airings (channel_id, start_time, stop_time, title, categories)
 		VALUES (?, '2025-01-01T10:00:00Z', '2025-01-01T11:00:00Z', 'Test Show', ?)`,
 		channelID, categories,
@@ -106,7 +108,7 @@ func TestMigration_PopulateSQL_RunsOnNewMigration(t *testing.T) {
 	db := openDBAt(t, dbPath)
 
 	// categories should be populated from the existing airing.
-	cats, err := db.GetCategories()
+	cats, err := db.GetCategories(context.Background())
 	if err != nil {
 		t.Fatalf("GetCategories: %v", err)
 	}
@@ -125,7 +127,7 @@ func TestMigration_PopulateSQL_RunsOnNewMigration(t *testing.T) {
 	}
 
 	// airings_fts should be populated — searching with includePast=true should find the airing.
-	results, err := db.SearchAdvanced("Test Show", nil, true, true, false)
+	results, err := db.SearchAdvanced(context.Background(), "Test Show", nil, true, true, false)
 	if err != nil {
 		t.Fatalf("SearchAdvanced: %v", err)
 	}
@@ -160,13 +162,14 @@ func TestMigration_PopulateSQL_SkipsAlreadyApplied(t *testing.T) {
 	if err != nil {
 		t.Fatalf("raw open: %v", err)
 	}
-	if _, err := rawDB.Exec(
+	ctx := context.Background()
+	if _, err := rawDB.ExecContext(ctx,
 		`INSERT INTO channels (id, display_name, sort_order) VALUES ('ch1', 'Test Channel', 1)`,
 	); err != nil {
 		rawDB.Close()
 		t.Fatalf("insert channel: %v", err)
 	}
-	if _, err := rawDB.Exec(`
+	if _, err := rawDB.ExecContext(ctx, `
 		INSERT INTO airings (channel_id, start_time, stop_time, title, categories)
 		VALUES ('ch1', '2025-01-01T10:00:00Z', '2025-01-01T11:00:00Z', 'Test Show', '["Sports"]')`,
 	); err != nil {
@@ -183,7 +186,7 @@ func TestMigration_PopulateSQL_SkipsAlreadyApplied(t *testing.T) {
 	}
 	defer db2.Close()
 
-	cats, err := db2.GetCategories()
+	cats, err := db2.GetCategories(context.Background())
 	if err != nil {
 		t.Fatalf("GetCategories: %v", err)
 	}
@@ -191,7 +194,7 @@ func TestMigration_PopulateSQL_SkipsAlreadyApplied(t *testing.T) {
 		t.Errorf("expected categories to be empty (populateSQL should not re-run), got %v", cats)
 	}
 
-	results, err := db2.SearchAdvanced("Test Show", nil, true, true, false)
+	results, err := db2.SearchAdvanced(context.Background(), "Test Show", nil, true, true, false)
 	if err != nil {
 		t.Fatalf("SearchAdvanced: %v", err)
 	}

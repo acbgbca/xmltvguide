@@ -18,7 +18,7 @@ func (h *Handler) getGuide(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	airings, err := h.db.GetAirings(date)
+	airings, err := h.db.GetAirings(r.Context(), date)
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return

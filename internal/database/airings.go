@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,11 +14,11 @@ import (
 
 // GetAirings returns all airings that overlap with the given calendar date,
 // interpreted in the server's local timezone.
-func (d *DB) GetAirings(date time.Time) ([]model.Airing, error) {
+func (d *DB) GetAirings(ctx context.Context, date time.Time) ([]model.Airing, error) {
 	dayStart := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.Local).UTC()
 	dayEnd := dayStart.Add(24 * time.Hour)
 
-	rows, err := d.db.Query(`
+	rows, err := d.db.QueryContext(ctx, `
 		SELECT
 			channel_id,
 			start_time,

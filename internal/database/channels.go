@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -11,8 +12,8 @@ import (
 // GetChannels returns all channels ordered by their source sort order.
 // The Icon field contains the proxy URL (/images/channel/{id}) for channels
 // that have an icon; it is empty for channels without one.
-func (d *DB) GetChannels() ([]model.Channel, error) {
-	rows, err := d.db.Query(`
+func (d *DB) GetChannels(ctx context.Context) ([]model.Channel, error) {
+	rows, err := d.db.QueryContext(ctx, `
 		SELECT id, display_name, COALESCE(icon_url, ''), lcn
 		FROM channels
 		ORDER BY sort_order

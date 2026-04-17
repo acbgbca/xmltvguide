@@ -91,7 +91,7 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 	}
 
 	// Phase 3: Write everything to the database in a single transaction.
-	tx, err := d.db.Begin()
+	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
@@ -108,18 +108,18 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 		deleteArgs := make([]any, 0, len(idArgs)+len(lcnArgs))
 		deleteArgs = append(deleteArgs, idArgs...)
 		deleteArgs = append(deleteArgs, lcnArgs...)
-		if _, err := tx.Exec(
+		if _, err := tx.ExecContext(ctx, //nolint:gosec // filterSQL contains only ? placeholders, no user values
 			`DELETE FROM airings WHERE channel_id IN (SELECT id FROM channels WHERE `+filterSQL+`)`,
 			deleteArgs...,
 		); err != nil {
 			return fmt.Errorf("deleting airings for hidden channels: %w", err)
 		}
-		if _, err := tx.Exec(`DELETE FROM channels WHERE `+filterSQL, deleteArgs...); err != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM channels WHERE `+filterSQL, deleteArgs...); err != nil { //nolint:gosec // filterSQL contains only ? placeholders, no user values
 			return fmt.Errorf("deleting hidden channels: %w", err)
 		}
 	}
 
-	chStmt, err := tx.Prepare(`
+	chStmt, err := tx.PrepareContext(ctx, `
 		INSERT OR REPLACE INTO channels (id, display_name, icon, sort_order, lcn, icon_url)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`)
@@ -157,7 +157,7 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 				lcn = n
 			}
 		}
-		if _, err := chStmt.Exec(ch.ID, name, icon, i, lcn, iconURL); err != nil {
+		if _, err := chStmt.ExecContext(ctx, ch.ID, name, icon, i, lcn, iconURL); err != nil {
 			return fmt.Errorf("upserting channel %s: %w", ch.ID, err)
 		}
 	}
@@ -166,7 +166,7 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 	// time range overlaps the incoming airing but has a different start_time.
 	// This handles schedule shifts where a show's start time changes slightly —
 	// the old record would otherwise remain alongside the new one.
-	deleteOverlapStmt, err := tx.Prepare(`
+	deleteOverlapStmt, err := tx.PrepareContext(ctx, `
 		DELETE FROM airings
 		WHERE channel_id = ?
 		AND start_time != ?
@@ -182,7 +182,7 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 		}
 	}()
 
-	airStmt, err := tx.Prepare(`
+	airStmt, err := tx.PrepareContext(ctx, `
 		INSERT OR REPLACE INTO airings (
 			channel_id, start_time, stop_time,
 			title, sub_title, description, categories,
@@ -209,7 +209,7 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 		startStr := a.Start.UTC().Format(time.RFC3339)
 		stopStr := a.Stop.UTC().Format(time.RFC3339)
 
-		if _, err := deleteOverlapStmt.Exec(a.ChannelID, startStr, stopStr, startStr); err != nil {
+		if _, err := deleteOverlapStmt.ExecContext(ctx, a.ChannelID, startStr, stopStr, startStr); err != nil {
 			return fmt.Errorf("deleting overlapping airings: %w", err)
 		}
 
@@ -219,7 +219,7 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 		}
 		catsJSON, _ := json.Marshal(cats)
 
-		if _, err := airStmt.Exec(
+		if _, err := airStmt.ExecContext(ctx,
 			a.ChannelID,
 			startStr,
 			stopStr,
@@ -243,15 +243,15 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 	}
 
 	cutoff := d.clock.Now().AddDate(0, 0, -d.retentionDays).UTC().Format(time.RFC3339)
-	if _, err := tx.Exec(`DELETE FROM airings WHERE stop_time < ?`, cutoff); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM airings WHERE stop_time < ?`, cutoff); err != nil {
 		return fmt.Errorf("pruning airings: %w", err)
 	}
 
 	// Rebuild FTS index: clear and repopulate from airings table.
-	if _, err := tx.Exec(`DELETE FROM airings_fts`); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM airings_fts`); err != nil {
 		return fmt.Errorf("clearing FTS index: %w", err)
 	}
-	if _, err := tx.Exec(`
+	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO airings_fts (channel_id, start_time, title, sub_title, description)
 		SELECT channel_id, start_time, title, COALESCE(sub_title, ''), COALESCE(description, '')
 		FROM airings
@@ -260,10 +260,10 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 	}
 
 	// Rebuild categories table from distinct values in airings.categories JSON arrays.
-	if _, err := tx.Exec(`DELETE FROM categories`); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM categories`); err != nil {
 		return fmt.Errorf("clearing categories: %w", err)
 	}
-	if _, err := tx.Exec(`
+	if _, err := tx.ExecContext(ctx, `
 		INSERT OR IGNORE INTO categories (name)
 		SELECT DISTINCT value FROM airings, json_each(airings.categories)
 		WHERE value IS NOT NULL AND value != ''

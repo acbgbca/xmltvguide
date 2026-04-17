@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -13,14 +14,14 @@ import (
 
 // ExecRaw executes a raw SQL statement against the database.
 // Exposed for testing (e.g. verifying FTS5 availability).
-func (d *DB) ExecRaw(query string) (sql.Result, error) {
-	return d.db.Exec(query)
+func (d *DB) ExecRaw(ctx context.Context, query string) (sql.Result, error) {
+	return d.db.ExecContext(ctx, query)
 }
 
 // SearchSimple performs an FTS5 search on the title column only.
 // Returns future airings ordered by relevance then start time.
 // If includeRepeats is false, repeats are excluded.
-func (d *DB) SearchSimple(query string, includeRepeats bool, today bool) ([]model.SearchResult, error) {
+func (d *DB) SearchSimple(ctx context.Context, query string, includeRepeats bool, today bool) ([]model.SearchResult, error) {
 	now := d.clock.Now().UTC().Format(time.RFC3339)
 	q := `
 		SELECT
@@ -50,14 +51,14 @@ func (d *DB) SearchSimple(query string, includeRepeats bool, today bool) ([]mode
 	}
 	q += ` ORDER BY f.rank, a.start_time`
 
-	return d.scanSearchResults(q, args...)
+	return d.scanSearchResults(ctx, q, args...)
 }
 
 // SearchAdvanced performs an FTS5 search on title, sub_title, and description.
 // If categories is non-empty, only airings with at least one matching category are returned.
 // If includePast is false, only future airings are returned.
 // If includeRepeats is false, repeats are excluded.
-func (d *DB) SearchAdvanced(query string, categories []string, includePast bool, includeRepeats bool, today bool) ([]model.SearchResult, error) {
+func (d *DB) SearchAdvanced(ctx context.Context, query string, categories []string, includePast bool, includeRepeats bool, today bool) ([]model.SearchResult, error) {
 	q := `
 		SELECT
 			a.channel_id, a.start_time, a.stop_time,
@@ -98,13 +99,13 @@ func (d *DB) SearchAdvanced(query string, categories []string, includePast bool,
 	}
 	q += ` ORDER BY f.rank, a.start_time`
 
-	return d.scanSearchResults(q, args...)
+	return d.scanSearchResults(ctx, q, args...)
 }
 
 // SearchBrowse queries the airings table directly (bypassing FTS) using plain SQL filters.
 // Used when q is empty and browse filters (isPremiere, categories) are provided.
 // Results are sorted by start_time ASC; Rank is set to 0 for all results.
-func (d *DB) SearchBrowse(categories []string, isPremiere bool, includePast bool, includeRepeats bool, today bool) ([]model.SearchResult, error) {
+func (d *DB) SearchBrowse(ctx context.Context, categories []string, isPremiere bool, includePast bool, includeRepeats bool, today bool) ([]model.SearchResult, error) {
 	q := `
 		SELECT
 			a.channel_id, a.start_time, a.stop_time,
@@ -147,7 +148,7 @@ func (d *DB) SearchBrowse(categories []string, isPremiere bool, includePast bool
 	}
 	q += ` ORDER BY a.start_time`
 
-	return d.scanSearchResults(q, args...)
+	return d.scanSearchResults(ctx, q, args...)
 }
 
 // endOfToday returns midnight tonight in the server's local timezone, formatted as RFC3339 in UTC.
@@ -157,8 +158,8 @@ func (d *DB) endOfToday() string {
 }
 
 // GetCategories returns all distinct categories sorted alphabetically.
-func (d *DB) GetCategories() ([]string, error) {
-	rows, err := d.db.Query(`SELECT name FROM categories ORDER BY name`)
+func (d *DB) GetCategories(ctx context.Context) ([]string, error) {
+	rows, err := d.db.QueryContext(ctx, `SELECT name FROM categories ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("querying categories: %w", err)
 	}
@@ -181,8 +182,8 @@ func (d *DB) GetCategories() ([]string, error) {
 
 // scanSearchResults executes a query and scans results into SearchResult slices.
 // The query must select the standard airing columns plus display_name and rank.
-func (d *DB) scanSearchResults(query string, args ...any) ([]model.SearchResult, error) {
-	rows, err := d.db.Query(query, args...)
+func (d *DB) scanSearchResults(ctx context.Context, query string, args ...any) ([]model.SearchResult, error) {
+	rows, err := d.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("querying search results: %w", err)
 	}

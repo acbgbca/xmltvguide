@@ -134,7 +134,7 @@ func newSeededServerWithIcons(t *testing.T, iconSrv *httptest.Server) (*httptest
 
 func TestGetChannels_Count(t *testing.T) {
 	srv := newSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/channels")
+	resp, err := httpGet(t, srv.URL+"/api/channels")
 	if err != nil {
 		t.Fatalf("GET /api/channels: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestGetChannels_Count(t *testing.T) {
 
 func TestGetChannels_Order(t *testing.T) {
 	srv := newSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/channels")
+	resp, err := httpGet(t, srv.URL+"/api/channels")
 	if err != nil {
 		t.Fatalf("GET /api/channels: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestGetChannels_Order(t *testing.T) {
 
 func TestGetChannels_LCN(t *testing.T) {
 	srv := newSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/channels")
+	resp, err := httpGet(t, srv.URL+"/api/channels")
 	if err != nil {
 		t.Fatalf("GET /api/channels: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestGetChannels_LCN(t *testing.T) {
 
 func TestGetChannels_ContentType(t *testing.T) {
 	srv := newSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/channels")
+	resp, err := httpGet(t, srv.URL+"/api/channels")
 	if err != nil {
 		t.Fatalf("GET /api/channels: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestGetChannels_ContentType(t *testing.T) {
 func TestGetGuide_Date(t *testing.T) {
 	srv := newSeededServer(t)
 	today := time.Now().UTC().Format("2006-01-02")
-	resp, err := http.Get(srv.URL + "/api/guide?date=" + today)
+	resp, err := httpGet(t, srv.URL+"/api/guide?date="+today)
 	if err != nil {
 		t.Fatalf("GET /api/guide: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestGetGuide_Date(t *testing.T) {
 
 func TestGetGuide_NoDate(t *testing.T) {
 	srv := newSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/guide")
+	resp, err := httpGet(t, srv.URL+"/api/guide")
 	if err != nil {
 		t.Fatalf("GET /api/guide: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestGetGuide_NoDate(t *testing.T) {
 func TestGetGuide_EmptyDate_ReturnsEmptyArray(t *testing.T) {
 	srv := newSeededServer(t)
 	// Use a date far in the future with no airings
-	resp, err := http.Get(srv.URL + "/api/guide?date=2099-01-01")
+	resp, err := httpGet(t, srv.URL+"/api/guide?date=2099-01-01")
 	if err != nil {
 		t.Fatalf("GET /api/guide: %v", err)
 	}
@@ -289,7 +289,7 @@ func TestGetGuide_EmptyDate_ReturnsEmptyArray(t *testing.T) {
 
 func TestGetGuide_InvalidDate(t *testing.T) {
 	srv := newSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/guide?date=notadate")
+	resp, err := httpGet(t, srv.URL+"/api/guide?date=notadate")
 	if err != nil {
 		t.Fatalf("GET /api/guide: %v", err)
 	}
@@ -302,7 +302,7 @@ func TestGetGuide_InvalidDate(t *testing.T) {
 
 func TestGetStatus_SourceURL(t *testing.T) {
 	srv := newSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/status")
+	resp, err := httpGet(t, srv.URL+"/api/status")
 	if err != nil {
 		t.Fatalf("GET /api/status: %v", err)
 	}
@@ -321,7 +321,7 @@ func TestGetStatus_SourceURL(t *testing.T) {
 
 func TestGetStatus_ContentType(t *testing.T) {
 	srv := newSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/status")
+	resp, err := httpGet(t, srv.URL+"/api/status")
 	if err != nil {
 		t.Fatalf("GET /api/status: %v", err)
 	}
@@ -339,7 +339,7 @@ func TestGetChannelIcon_ServesFile(t *testing.T) {
 	iconSrv := startFakeIconServer(t)
 	srv, _ := newSeededServerWithIcons(t, iconSrv)
 
-	resp, err := http.Get(srv.URL + "/images/channel/ch1")
+	resp, err := httpGet(t, srv.URL+"/images/channel/ch1")
 	if err != nil {
 		t.Fatalf("GET /images/channel/ch1: %v", err)
 	}
@@ -360,7 +360,7 @@ func TestGetChannelIcon_ReturnsNotFoundForNoIcon(t *testing.T) {
 	iconSrv := startFakeIconServer(t)
 	srv, _ := newSeededServerWithIcons(t, iconSrv)
 
-	resp, err := http.Get(srv.URL + "/images/channel/ch2")
+	resp, err := httpGet(t, srv.URL+"/images/channel/ch2")
 	if err != nil {
 		t.Fatalf("GET /images/channel/ch2: %v", err)
 	}
@@ -376,7 +376,7 @@ func TestGetChannelIcon_ReturnsNotFoundForNoIcon(t *testing.T) {
 func TestGetChannelIcon_ReturnsNotFoundForUnknownChannel(t *testing.T) {
 	srv := newSeededServer(t)
 
-	resp, err := http.Get(srv.URL + "/images/channel/doesnotexist")
+	resp, err := httpGet(t, srv.URL+"/images/channel/doesnotexist")
 	if err != nil {
 		t.Fatalf("GET /images/channel/doesnotexist: %v", err)
 	}
@@ -394,7 +394,7 @@ func TestGetChannelIcon_RedownloadsIfMissing(t *testing.T) {
 	srv, db := newSeededServerWithIcons(t, iconSrv)
 
 	// Get the icon once to populate the cache.
-	resp, err := http.Get(srv.URL + "/images/channel/ch1")
+	resp, err := httpGet(t, srv.URL+"/images/channel/ch1")
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("initial icon request: status=%d err=%v", resp.StatusCode, err)
 	}
@@ -408,7 +408,7 @@ func TestGetChannelIcon_RedownloadsIfMissing(t *testing.T) {
 	os.Remove(localPath)
 
 	// The handler should re-download and still return 200.
-	resp2, err := http.Get(srv.URL + "/images/channel/ch1")
+	resp2, err := httpGet(t, srv.URL+"/images/channel/ch1")
 	if err != nil {
 		t.Fatalf("GET after cache delete: %v", err)
 	}
@@ -511,7 +511,7 @@ func TestSearch_MissingQuery_Returns400(t *testing.T) {
 	srv := newSearchSeededServer(t)
 
 	// No q parameter
-	resp, err := http.Get(srv.URL + "/api/search")
+	resp, err := httpGet(t, srv.URL+"/api/search")
 	if err != nil {
 		t.Fatalf("GET /api/search: %v", err)
 	}
@@ -521,7 +521,7 @@ func TestSearch_MissingQuery_Returns400(t *testing.T) {
 	}
 
 	// Empty q parameter
-	resp2, err := http.Get(srv.URL + "/api/search?q=")
+	resp2, err := httpGet(t, srv.URL+"/api/search?q=")
 	if err != nil {
 		t.Fatalf("GET /api/search?q=: %v", err)
 	}
@@ -533,7 +533,7 @@ func TestSearch_MissingQuery_Returns400(t *testing.T) {
 
 func TestSearch_SimpleMode_ReturnsTitleMatches(t *testing.T) {
 	srv := newSearchSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/search?q=News")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News")
 	if err != nil {
 		t.Fatalf("GET /api/search: %v", err)
 	}
@@ -572,7 +572,7 @@ func TestSearch_SimpleMode_ReturnsTitleMatches(t *testing.T) {
 
 func TestSearch_SimpleMode_GroupsByTitle(t *testing.T) {
 	srv := newSearchSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/search?q=News")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News")
 	if err != nil {
 		t.Fatalf("GET /api/search: %v", err)
 	}
@@ -609,7 +609,7 @@ func TestSearch_SimpleMode_GroupsByTitle(t *testing.T) {
 
 func TestSearch_SimpleMode_ChannelNamePopulated(t *testing.T) {
 	srv := newSearchSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/search?q=News")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News")
 	if err != nil {
 		t.Fatalf("GET /api/search: %v", err)
 	}
@@ -636,7 +636,7 @@ func TestSearch_SimpleMode_ChannelNamePopulated(t *testing.T) {
 
 func TestSearch_SimpleMode_ExcludesRepeats(t *testing.T) {
 	srv := newSearchSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/search?q=News&include_repeats=false")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News&include_repeats=false")
 	if err != nil {
 		t.Fatalf("GET /api/search: %v", err)
 	}
@@ -662,7 +662,7 @@ func TestSearch_SimpleMode_ExcludesRepeats(t *testing.T) {
 
 func TestSearch_AdvancedMode_MatchesDescription(t *testing.T) {
 	srv := newSearchSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/search?q=news&mode=advanced")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=news&mode=advanced")
 	if err != nil {
 		t.Fatalf("GET /api/search: %v", err)
 	}
@@ -686,7 +686,7 @@ func TestSearch_AdvancedMode_MatchesDescription(t *testing.T) {
 
 func TestSearch_AdvancedMode_CategoryFilter(t *testing.T) {
 	srv := newSearchSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/search?q=news&mode=advanced&categories=Documentary")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=news&mode=advanced&categories=Documentary")
 	if err != nil {
 		t.Fatalf("GET /api/search: %v", err)
 	}
@@ -715,7 +715,7 @@ func TestSearch_AdvancedMode_CategoryFilter(t *testing.T) {
 
 func TestSearch_AdvancedMode_IncludePast(t *testing.T) {
 	srv := newSearchSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/search?q=News&mode=advanced&include_past=true")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News&mode=advanced&include_past=true")
 	if err != nil {
 		t.Fatalf("GET /api/search: %v", err)
 	}
@@ -739,7 +739,7 @@ func TestSearch_AdvancedMode_IncludePast(t *testing.T) {
 
 func TestSearch_ContentType(t *testing.T) {
 	srv := newSearchSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/search?q=News")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News")
 	if err != nil {
 		t.Fatalf("GET /api/search: %v", err)
 	}
@@ -755,7 +755,7 @@ func TestSearch_ContentType(t *testing.T) {
 
 func TestCategories_ReturnsSortedList(t *testing.T) {
 	srv := newSearchSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/categories")
+	resp, err := httpGet(t, srv.URL+"/api/categories")
 	if err != nil {
 		t.Fatalf("GET /api/categories: %v", err)
 	}
@@ -798,7 +798,7 @@ func TestCategories_EmptyWhenNoData(t *testing.T) {
 		db.Close()
 	})
 
-	resp, err := http.Get(srv.URL + "/api/categories")
+	resp, err := httpGet(t, srv.URL+"/api/categories")
 	if err != nil {
 		t.Fatalf("GET /api/categories: %v", err)
 	}
@@ -873,7 +873,7 @@ func TestSearch_AiringsOrderedByStartTime(t *testing.T) {
 		db.Close()
 	})
 
-	resp, err := http.Get(srv.URL + "/api/search?q=cricket&mode=advanced")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=cricket&mode=advanced")
 	if err != nil {
 		t.Fatalf("GET /api/search: %v", err)
 	}
@@ -970,7 +970,7 @@ func TestSearch_TodayFilter_ExcludesTomorrow(t *testing.T) {
 	})
 
 	// With today=true, only today's airing should be returned
-	resp, err := http.Get(srv.URL + "/api/search?q=Show&today=true")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=Show&today=true")
 	if err != nil {
 		t.Fatalf("GET /api/search: %v", err)
 	}
@@ -998,7 +998,7 @@ func TestSearch_TodayFilter_ExcludesTomorrow(t *testing.T) {
 	}
 
 	// Without today filter, both should be returned
-	resp2, err := http.Get(srv.URL + "/api/search?q=Show")
+	resp2, err := httpGet(t, srv.URL+"/api/search?q=Show")
 	if err != nil {
 		t.Fatalf("GET /api/search: %v", err)
 	}
@@ -1070,7 +1070,7 @@ func TestSearch_TodayFilter_AdvancedMode(t *testing.T) {
 		db.Close()
 	})
 
-	resp, err := http.Get(srv.URL + "/api/search?q=Match&mode=advanced&today=true")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=Match&mode=advanced&today=true")
 	if err != nil {
 		t.Fatalf("GET /api/search: %v", err)
 	}
@@ -1088,7 +1088,7 @@ func TestSearch_TodayFilter_AdvancedMode(t *testing.T) {
 
 func TestCategories_ContentType(t *testing.T) {
 	srv := newSearchSeededServer(t)
-	resp, err := http.Get(srv.URL + "/api/categories")
+	resp, err := httpGet(t, srv.URL+"/api/categories")
 	if err != nil {
 		t.Fatalf("GET /api/categories: %v", err)
 	}
@@ -1104,7 +1104,7 @@ func TestGetChannels_IconIsProxyURL(t *testing.T) {
 	iconSrv := startFakeIconServer(t)
 	srv, _ := newSeededServerWithIcons(t, iconSrv)
 
-	resp, err := http.Get(srv.URL + "/api/channels")
+	resp, err := httpGet(t, srv.URL+"/api/channels")
 	if err != nil {
 		t.Fatalf("GET /api/channels: %v", err)
 	}
@@ -1212,7 +1212,7 @@ func TestSearch_EmptyQ_NoFilters_Returns400(t *testing.T) {
 	srv := newBrowseSeededServer(t)
 
 	// No q and no browse filters
-	resp, err := http.Get(srv.URL + "/api/search")
+	resp, err := httpGet(t, srv.URL+"/api/search")
 	if err != nil {
 		t.Fatalf("GET /api/search: %v", err)
 	}
@@ -1229,7 +1229,7 @@ func TestSearch_EmptyQ_NoFilters_Returns400(t *testing.T) {
 func TestSearch_Browse_IsPremiere_Returns200(t *testing.T) {
 	srv := newBrowseSeededServer(t)
 
-	resp, err := http.Get(srv.URL + "/api/search?is_premiere=true")
+	resp, err := httpGet(t, srv.URL+"/api/search?is_premiere=true")
 	if err != nil {
 		t.Fatalf("GET /api/search?is_premiere=true: %v", err)
 	}
@@ -1243,7 +1243,7 @@ func TestSearch_Browse_IsPremiere_Returns200(t *testing.T) {
 func TestSearch_Browse_IsPremiere_ReturnsOnlyPremieres(t *testing.T) {
 	srv := newBrowseSeededServer(t)
 
-	resp, err := http.Get(srv.URL + "/api/search?is_premiere=true")
+	resp, err := httpGet(t, srv.URL+"/api/search?is_premiere=true")
 	if err != nil {
 		t.Fatalf("GET /api/search?is_premiere=true: %v", err)
 	}
@@ -1290,7 +1290,7 @@ func TestSearch_Browse_IsPremiere_ReturnsOnlyPremieres(t *testing.T) {
 func TestSearch_Browse_Categories_Returns200(t *testing.T) {
 	srv := newBrowseSeededServer(t)
 
-	resp, err := http.Get(srv.URL + "/api/search?categories=Sport")
+	resp, err := httpGet(t, srv.URL+"/api/search?categories=Sport")
 	if err != nil {
 		t.Fatalf("GET /api/search?categories=Sport: %v", err)
 	}
@@ -1304,7 +1304,7 @@ func TestSearch_Browse_Categories_Returns200(t *testing.T) {
 func TestSearch_Browse_Categories_ReturnsMatchingAirings(t *testing.T) {
 	srv := newBrowseSeededServer(t)
 
-	resp, err := http.Get(srv.URL + "/api/search?categories=Sport")
+	resp, err := httpGet(t, srv.URL+"/api/search?categories=Sport")
 	if err != nil {
 		t.Fatalf("GET /api/search?categories=Sport: %v", err)
 	}
@@ -1351,7 +1351,7 @@ func TestSearch_Browse_Categories_ReturnsMatchingAirings(t *testing.T) {
 func TestSearch_Browse_NonEmptyQ_StillWorksAsSimpleSearch(t *testing.T) {
 	srv := newBrowseSeededServer(t)
 
-	resp, err := http.Get(srv.URL + "/api/search?q=Drama")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=Drama")
 	if err != nil {
 		t.Fatalf("GET /api/search?q=Drama: %v", err)
 	}
@@ -1434,9 +1434,9 @@ func newRSSSeededServer(t *testing.T, rssTTL int) *httptest.Server {
 		},
 		Programmes: []xmltv.Programme{
 			{
-				Start:           xmltv.XmltvTime{Time: now.Add(1 * time.Hour)},
-				Stop:            xmltv.XmltvTime{Time: now.Add(2 * time.Hour)},
-				Channel:         "ch1",
+				Start:       xmltv.XmltvTime{Time: now.Add(1 * time.Hour)},
+				Stop:        xmltv.XmltvTime{Time: now.Add(2 * time.Hour)},
+				Channel:     "ch1",
 				Titles:      []xmltv.Name{{Value: "Morning News"}},
 				SubTitles:   []xmltv.Name{{Value: "Early Edition"}},
 				Descs:       []xmltv.Name{{Value: "Start your day with the latest headlines."}},
@@ -1495,7 +1495,7 @@ func parseRSS(t *testing.T, body []byte) rssRoot {
 
 func TestSearchRSS_ContentType(t *testing.T) {
 	srv := newRSSSeededServer(t, 0)
-	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News&format=rss")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1512,7 +1512,7 @@ func TestSearchRSS_ContentType(t *testing.T) {
 
 func TestSearchRSS_ValidXML(t *testing.T) {
 	srv := newRSSSeededServer(t, 0)
-	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News&format=rss")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1531,7 +1531,7 @@ func TestSearchRSS_ValidXML(t *testing.T) {
 
 func TestSearchRSS_ItemsNotGrouped(t *testing.T) {
 	srv := newRSSSeededServer(t, 0)
-	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News&format=rss")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1548,7 +1548,7 @@ func TestSearchRSS_ItemsNotGrouped(t *testing.T) {
 
 func TestSearchRSS_SortedByStartTime(t *testing.T) {
 	srv := newRSSSeededServer(t, 0)
-	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News&format=rss")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1569,7 +1569,7 @@ func TestSearchRSS_SortedByStartTime(t *testing.T) {
 
 func TestSearchRSS_ItemFields(t *testing.T) {
 	srv := newRSSSeededServer(t, 0)
-	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News&format=rss")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1636,7 +1636,7 @@ func TestSearchRSS_ItemFields(t *testing.T) {
 
 func TestSearchRSS_DescriptionHTML(t *testing.T) {
 	srv := newRSSSeededServer(t, 0)
-	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News&format=rss")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1680,7 +1680,7 @@ func TestSearchRSS_DescriptionHTML(t *testing.T) {
 
 func TestSearchRSS_DescriptionOmitsEmptyFields(t *testing.T) {
 	srv := newRSSSeededServer(t, 0)
-	resp, err := http.Get(srv.URL + "/api/search?q=Sports&format=rss")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=Sports&format=rss")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1712,7 +1712,7 @@ func TestSearchRSS_DescriptionOmitsEmptyFields(t *testing.T) {
 
 func TestSearchRSS_RepeatFlag(t *testing.T) {
 	srv := newRSSSeededServer(t, 0)
-	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News&format=rss")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1735,7 +1735,7 @@ func TestSearchRSS_RepeatFlag(t *testing.T) {
 
 func TestSearchRSS_NoEnclosureWithoutIcon(t *testing.T) {
 	srv := newRSSSeededServer(t, 0)
-	resp, err := http.Get(srv.URL + "/api/search?q=Sports&format=rss")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=Sports&format=rss")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1757,7 +1757,7 @@ func TestSearchRSS_NoEnclosureWithoutIcon(t *testing.T) {
 
 func TestSearchRSS_DefaultTTL(t *testing.T) {
 	srv := newRSSSeededServer(t, 0)
-	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News&format=rss")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1773,7 +1773,7 @@ func TestSearchRSS_DefaultTTL(t *testing.T) {
 
 func TestSearchRSS_EnvVarTTL(t *testing.T) {
 	srv := newRSSSeededServer(t, 120)
-	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News&format=rss")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1789,7 +1789,7 @@ func TestSearchRSS_EnvVarTTL(t *testing.T) {
 
 func TestSearchRSS_QueryParamTTL(t *testing.T) {
 	srv := newRSSSeededServer(t, 120)
-	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss&ttl=30")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News&format=rss&ttl=30")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1805,7 +1805,7 @@ func TestSearchRSS_QueryParamTTL(t *testing.T) {
 
 func TestSearchRSS_InvalidQueryParamTTL_FallsBackToEnvVar(t *testing.T) {
 	srv := newRSSSeededServer(t, 120)
-	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss&ttl=notanumber")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News&format=rss&ttl=notanumber")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1821,7 +1821,7 @@ func TestSearchRSS_InvalidQueryParamTTL_FallsBackToEnvVar(t *testing.T) {
 
 func TestSearchRSS_ZeroQueryParamTTL_FallsBack(t *testing.T) {
 	srv := newRSSSeededServer(t, 120)
-	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss&ttl=0")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News&format=rss&ttl=0")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1837,7 +1837,7 @@ func TestSearchRSS_ZeroQueryParamTTL_FallsBack(t *testing.T) {
 
 func TestSearchRSS_NegativeQueryParamTTL_FallsBack(t *testing.T) {
 	srv := newRSSSeededServer(t, 120)
-	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss&ttl=-5")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News&format=rss&ttl=-5")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1855,7 +1855,7 @@ func TestSearchRSS_NegativeQueryParamTTL_FallsBack(t *testing.T) {
 
 func TestSearchRSS_JSONUnchangedWithoutFormat(t *testing.T) {
 	srv := newRSSSeededServer(t, 0)
-	resp, err := http.Get(srv.URL + "/api/search?q=News")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1886,7 +1886,7 @@ func TestSearchRSS_JSONUnchangedWithoutFormat(t *testing.T) {
 func TestSearchRSS_WorksWithAllSearchParams(t *testing.T) {
 	srv := newRSSSeededServer(t, 0)
 	// Test format=rss with advanced mode and categories
-	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss&mode=advanced&categories=News")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News&format=rss&mode=advanced&categories=News")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1923,7 +1923,7 @@ func TestSearchRSS_ChannelDescription(t *testing.T) {
 	srv := newRSSSeededServer(t, 0)
 
 	// Simple mode
-	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News&format=rss")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1937,7 +1937,7 @@ func TestSearchRSS_ChannelDescription(t *testing.T) {
 	}
 
 	// Advanced mode with categories
-	resp2, err := http.Get(srv.URL + "/api/search?q=News&format=rss&mode=advanced&categories=News,Sport")
+	resp2, err := httpGet(t, srv.URL+"/api/search?q=News&format=rss&mode=advanced&categories=News,Sport")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -1954,7 +1954,7 @@ func TestSearchRSS_ChannelDescription(t *testing.T) {
 func TestSearchRSS_LastBuildDate(t *testing.T) {
 	srv := newRSSSeededServer(t, 0)
 	before := time.Now()
-	resp, err := http.Get(srv.URL + "/api/search?q=News&format=rss")
+	resp, err := httpGet(t, srv.URL+"/api/search?q=News&format=rss")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -2037,7 +2037,7 @@ func newNowNextServer(t *testing.T) (*httptest.Server, time.Time) {
 
 func TestGetNowNext_API_StatusOK(t *testing.T) {
 	srv, _ := newNowNextServer(t)
-	resp, err := http.Get(srv.URL + "/api/explore/now-next")
+	resp, err := httpGet(t, srv.URL+"/api/explore/now-next")
 	if err != nil {
 		t.Fatalf("GET /api/explore/now-next: %v", err)
 	}
@@ -2049,7 +2049,7 @@ func TestGetNowNext_API_StatusOK(t *testing.T) {
 
 func TestGetNowNext_API_ResponseShape(t *testing.T) {
 	srv, fixedNow := newNowNextServer(t)
-	resp, err := http.Get(srv.URL + "/api/explore/now-next")
+	resp, err := httpGet(t, srv.URL+"/api/explore/now-next")
 	if err != nil {
 		t.Fatalf("GET /api/explore/now-next: %v", err)
 	}

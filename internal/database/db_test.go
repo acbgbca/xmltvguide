@@ -196,7 +196,7 @@ func sampleTV() *xmltv.TV {
 
 func TestOpen_EmptyDB(t *testing.T) {
 	db := openTestDB(t)
-	channels, err := db.GetChannels()
+	channels, err := db.GetChannels(context.Background())
 	if err != nil {
 		t.Fatalf("GetChannels: %v", err)
 	}
@@ -213,7 +213,7 @@ func TestRefresh_ChannelCount(t *testing.T) {
 	if err := db.Refresh(context.Background(), sampleTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	channels, err := db.GetChannels()
+	channels, err := db.GetChannels(context.Background())
 	if err != nil {
 		t.Fatalf("GetChannels: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestRefresh_ChannelOrder(t *testing.T) {
 	if err := db.Refresh(context.Background(), sampleTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	channels, err := db.GetChannels()
+	channels, err := db.GetChannels(context.Background())
 	if err != nil {
 		t.Fatalf("GetChannels: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestRefresh_ChannelFields(t *testing.T) {
 	if err := db.Refresh(context.Background(), sampleTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	channels, err := db.GetChannels()
+	channels, err := db.GetChannels(context.Background())
 	if err != nil {
 		t.Fatalf("GetChannels: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestRefresh_ChannelLCN(t *testing.T) {
 	if err := db.Refresh(context.Background(), sampleTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	channels, err := db.GetChannels()
+	channels, err := db.GetChannels(context.Background())
 	if err != nil {
 		t.Fatalf("GetChannels: %v", err)
 	}
@@ -307,7 +307,7 @@ func TestRefresh_IconDownloaded(t *testing.T) {
 	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	channels, err := db.GetChannels()
+	channels, err := db.GetChannels(context.Background())
 	if err != nil {
 		t.Fatalf("GetChannels: %v", err)
 	}
@@ -428,7 +428,7 @@ func TestRefresh_FTSRebuildSucceedsOnSubsequentRefresh(t *testing.T) {
 	// FTS search must return results after the rebuild.
 	// Use SearchAdvanced with includePast=true so the result is not
 	// dependent on what time of day the test runs.
-	results, err := db.SearchAdvanced("Morning News", nil, true, true, false)
+	results, err := db.SearchAdvanced(context.Background(), "Morning News", nil, true, true, false)
 	if err != nil {
 		t.Fatalf("SearchAdvanced after second refresh: %v", err)
 	}
@@ -558,7 +558,7 @@ func TestGetAirings_SxxExxEpisodeMapping(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 	date := testBaseDate()
-	airings, err := db.GetAirings(date)
+	airings, err := db.GetAirings(context.Background(), date)
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
 	}
@@ -586,7 +586,7 @@ func TestGetAirings_OverlapDate(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 	date := testBaseDate()
-	airings, err := db.GetAirings(date)
+	airings, err := db.GetAirings(context.Background(), date)
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
 	}
@@ -601,7 +601,7 @@ func TestGetAirings_ExcludesOtherDate(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 	date := testBaseDate().AddDate(0, 0, -2)
-	airings, err := db.GetAirings(date)
+	airings, err := db.GetAirings(context.Background(), date)
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
 	}
@@ -616,7 +616,7 @@ func TestGetAirings_FieldMapping(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 	date := testBaseDate()
-	airings, err := db.GetAirings(date)
+	airings, err := db.GetAirings(context.Background(), date)
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
 	}
@@ -653,7 +653,7 @@ func TestGetAirings_PremiereFlagAndCategories(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 	date := testBaseDate()
-	airings, err := db.GetAirings(date)
+	airings, err := db.GetAirings(context.Background(), date)
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
 	}
@@ -697,11 +697,11 @@ func TestGetAirings_PremiereFlagAndCategories(t *testing.T) {
 func TestFTS5_Available(t *testing.T) {
 	db := openTestDB(t)
 	// Attempt to create a simple FTS5 table. If this fails, FTS5 is not compiled in.
-	_, err := db.ExecRaw(`CREATE VIRTUAL TABLE IF NOT EXISTS fts5_test USING fts5(content)`)
+	_, err := db.ExecRaw(context.Background(), `CREATE VIRTUAL TABLE IF NOT EXISTS fts5_test USING fts5(content)`)
 	if err != nil {
 		t.Fatalf("FTS5 not available in modernc.org/sqlite: %v", err)
 	}
-	_, err = db.ExecRaw(`DROP TABLE fts5_test`)
+	_, err = db.ExecRaw(context.Background(), `DROP TABLE fts5_test`)
 	if err != nil {
 		t.Fatalf("dropping FTS5 test table: %v", err)
 	}
@@ -781,7 +781,7 @@ func TestSearchSimple_MatchesTitle(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchSimple("News", true, false)
+	results, err := db.SearchSimple(context.Background(), "News", true, false)
 	if err != nil {
 		t.Fatalf("SearchSimple: %v", err)
 	}
@@ -807,7 +807,7 @@ func TestSearchSimple_ExcludesDescriptionOnlyMatches(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchSimple("News", true, false)
+	results, err := db.SearchSimple(context.Background(), "News", true, false)
 	if err != nil {
 		t.Fatalf("SearchSimple: %v", err)
 	}
@@ -823,7 +823,7 @@ func TestSearchSimple_ExcludesFinishedAirings(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchSimple("News", true, false)
+	results, err := db.SearchSimple(context.Background(), "News", true, false)
 	if err != nil {
 		t.Fatalf("SearchSimple: %v", err)
 	}
@@ -839,7 +839,7 @@ func TestSearchSimple_ExcludesRepeats(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchSimple("News", false, false)
+	results, err := db.SearchSimple(context.Background(), "News", false, false)
 	if err != nil {
 		t.Fatalf("SearchSimple: %v", err)
 	}
@@ -855,7 +855,7 @@ func TestSearchSimple_IncludesRepeats(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchSimple("News", true, false)
+	results, err := db.SearchSimple(context.Background(), "News", true, false)
 	if err != nil {
 		t.Fatalf("SearchSimple: %v", err)
 	}
@@ -876,7 +876,7 @@ func TestSearchAdvanced_MatchesTitleSubtitleDescription(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 	// "news" should match in title (Morning News, Evening News) AND subtitle/description (Documentary Special)
-	results, err := db.SearchAdvanced("news", nil, false, true, false)
+	results, err := db.SearchAdvanced(context.Background(), "news", nil, false, true, false)
 	if err != nil {
 		t.Fatalf("SearchAdvanced: %v", err)
 	}
@@ -898,7 +898,7 @@ func TestSearchAdvanced_FiltersByCategory(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 	// Search for "news" but filter to "Documentary" category only
-	results, err := db.SearchAdvanced("news", []string{"Documentary"}, false, true, false)
+	results, err := db.SearchAdvanced(context.Background(), "news", []string{"Documentary"}, false, true, false)
 	if err != nil {
 		t.Fatalf("SearchAdvanced: %v", err)
 	}
@@ -923,7 +923,7 @@ func TestSearchAdvanced_IncludesPastAirings(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchAdvanced("News", nil, true, true, false)
+	results, err := db.SearchAdvanced(context.Background(), "News", nil, true, true, false)
 	if err != nil {
 		t.Fatalf("SearchAdvanced: %v", err)
 	}
@@ -943,7 +943,7 @@ func TestSearchAdvanced_ExcludesFinishedAirings(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchAdvanced("News", nil, false, true, false)
+	results, err := db.SearchAdvanced(context.Background(), "News", nil, false, true, false)
 	if err != nil {
 		t.Fatalf("SearchAdvanced: %v", err)
 	}
@@ -959,7 +959,7 @@ func TestSearchAdvanced_ExcludesRepeats(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchAdvanced("News", nil, false, false, false)
+	results, err := db.SearchAdvanced(context.Background(), "News", nil, false, false, false)
 	if err != nil {
 		t.Fatalf("SearchAdvanced: %v", err)
 	}
@@ -976,7 +976,7 @@ func TestSearchAdvanced_CombinesCategoryAndText(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 	// Search for "sport" filtered to "Entertainment" category
-	results, err := db.SearchAdvanced("sport", []string{"Entertainment"}, false, true, false)
+	results, err := db.SearchAdvanced(context.Background(), "sport", []string{"Entertainment"}, false, true, false)
 	if err != nil {
 		t.Fatalf("SearchAdvanced: %v", err)
 	}
@@ -995,7 +995,7 @@ func TestSearchSimple_IncludesCurrentlyAiring(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchSimple("News", true, false)
+	results, err := db.SearchSimple(context.Background(), "News", true, false)
 	if err != nil {
 		t.Fatalf("SearchSimple: %v", err)
 	}
@@ -1015,7 +1015,7 @@ func TestSearchAdvanced_IncludesCurrentlyAiring(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchAdvanced("News", nil, false, true, false)
+	results, err := db.SearchAdvanced(context.Background(), "News", nil, false, true, false)
 	if err != nil {
 		t.Fatalf("SearchAdvanced: %v", err)
 	}
@@ -1051,7 +1051,7 @@ func TestSearchSimple_TodayFilter_ExcludesTomorrow(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTVWithTomorrow(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchSimple("News", true, true)
+	results, err := db.SearchSimple(context.Background(), "News", true, true)
 	if err != nil {
 		t.Fatalf("SearchSimple: %v", err)
 	}
@@ -1071,7 +1071,7 @@ func TestSearchSimple_TodayFilter_IncludesToday(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 	// Without today filter, tomorrow's airing should be included
-	results, err := db.SearchSimple("News", true, false)
+	results, err := db.SearchSimple(context.Background(), "News", true, false)
 	if err != nil {
 		t.Fatalf("SearchSimple: %v", err)
 	}
@@ -1091,7 +1091,7 @@ func TestSearchAdvanced_TodayFilter_ExcludesTomorrow(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTVWithTomorrow(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchAdvanced("News", nil, false, true, true)
+	results, err := db.SearchAdvanced(context.Background(), "News", nil, false, true, true)
 	if err != nil {
 		t.Fatalf("SearchAdvanced: %v", err)
 	}
@@ -1110,7 +1110,7 @@ func TestSearchAdvanced_TodayFilter_IncludesToday(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTVWithTomorrow(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchAdvanced("News", nil, false, true, false)
+	results, err := db.SearchAdvanced(context.Background(), "News", nil, false, true, false)
 	if err != nil {
 		t.Fatalf("SearchAdvanced: %v", err)
 	}
@@ -1130,7 +1130,7 @@ func TestGetCategories_ReturnsSorted(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	cats, err := db.GetCategories()
+	cats, err := db.GetCategories(context.Background())
 	if err != nil {
 		t.Fatalf("GetCategories: %v", err)
 	}
@@ -1147,7 +1147,7 @@ func TestGetCategories_ReturnsSorted(t *testing.T) {
 
 func TestGetCategories_EmptyWhenNoData(t *testing.T) {
 	db := openTestDB(t)
-	cats, err := db.GetCategories()
+	cats, err := db.GetCategories(context.Background())
 	if err != nil {
 		t.Fatalf("GetCategories: %v", err)
 	}
@@ -1166,7 +1166,7 @@ func TestRefresh_PopulatesFTSAndCategories(t *testing.T) {
 	}
 
 	// FTS should be populated — simple search should work
-	results, err := db.SearchSimple("Morning", true, false)
+	results, err := db.SearchSimple(context.Background(), "Morning", true, false)
 	if err != nil {
 		t.Fatalf("SearchSimple after Refresh: %v", err)
 	}
@@ -1175,7 +1175,7 @@ func TestRefresh_PopulatesFTSAndCategories(t *testing.T) {
 	}
 
 	// Categories should be populated
-	cats, err := db.GetCategories()
+	cats, err := db.GetCategories(context.Background())
 	if err != nil {
 		t.Fatalf("GetCategories after Refresh: %v", err)
 	}
@@ -1194,7 +1194,7 @@ func TestRefresh_Upsert_NoDuplicates(t *testing.T) {
 		t.Fatalf("second Refresh: %v", err)
 	}
 	date := testBaseDate()
-	airings, err := db.GetAirings(date)
+	airings, err := db.GetAirings(context.Background(), date)
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
 	}
@@ -1247,7 +1247,7 @@ func TestGetNowNext_CurrentAndNext(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 
-	entries, err := db.GetNowNext()
+	entries, err := db.GetNowNext(context.Background())
 	if err != nil {
 		t.Fatalf("GetNowNext: %v", err)
 	}
@@ -1285,7 +1285,7 @@ func TestGetNowNext_NullCurrent(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 
-	entries, err := db.GetNowNext()
+	entries, err := db.GetNowNext(context.Background())
 	if err != nil {
 		t.Fatalf("GetNowNext: %v", err)
 	}
@@ -1317,7 +1317,7 @@ func TestGetNowNext_BothNull(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 
-	entries, err := db.GetNowNext()
+	entries, err := db.GetNowNext(context.Background())
 	if err != nil {
 		t.Fatalf("GetNowNext: %v", err)
 	}
@@ -1361,7 +1361,7 @@ func TestSearchBrowse_IsPremiere_ReturnsOnlyPremieres(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTVWithPremiere(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchBrowse(nil, true, false, true, false)
+	results, err := db.SearchBrowse(context.Background(), nil, true, false, true, false)
 	if err != nil {
 		t.Fatalf("SearchBrowse: %v", err)
 	}
@@ -1389,7 +1389,7 @@ func TestSearchBrowse_Categories_ReturnsMatchingCategory(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchBrowse([]string{"Sport"}, false, false, true, false)
+	results, err := db.SearchBrowse(context.Background(), []string{"Sport"}, false, false, true, false)
 	if err != nil {
 		t.Fatalf("SearchBrowse: %v", err)
 	}
@@ -1415,7 +1415,7 @@ func TestSearchBrowse_ExcludesPastAirings(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTVWithPremiere(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchBrowse(nil, true, false, true, false)
+	results, err := db.SearchBrowse(context.Background(), nil, true, false, true, false)
 	if err != nil {
 		t.Fatalf("SearchBrowse: %v", err)
 	}
@@ -1431,7 +1431,7 @@ func TestSearchBrowse_SortedByStartTime(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchBrowse([]string{"News"}, false, false, true, false)
+	results, err := db.SearchBrowse(context.Background(), []string{"News"}, false, false, true, false)
 	if err != nil {
 		t.Fatalf("SearchBrowse: %v", err)
 	}
@@ -1449,7 +1449,7 @@ func TestSearchBrowse_ExcludesRepeats(t *testing.T) {
 	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
-	results, err := db.SearchBrowse([]string{"News"}, false, false, false, false)
+	results, err := db.SearchBrowse(context.Background(), []string{"News"}, false, false, false, false)
 	if err != nil {
 		t.Fatalf("SearchBrowse: %v", err)
 	}
@@ -1468,7 +1468,7 @@ func TestGetNowNext_SortOrder(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 
-	entries, err := db.GetNowNext()
+	entries, err := db.GetNowNext(context.Background())
 	if err != nil {
 		t.Fatalf("GetNowNext: %v", err)
 	}
@@ -1483,6 +1483,128 @@ func TestGetNowNext_SortOrder(t *testing.T) {
 		if id != want[i] {
 			t.Errorf("entries[%d].ChannelID = %q, want %q", i, id, want[i])
 		}
+	}
+}
+
+// --- Context propagation tests ---
+// These tests verify that all public DB methods accept a context.Context parameter.
+// They fail to compile until the method signatures are updated (TDD step 1).
+
+func TestGetChannels_AcceptsContext(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	channels, err := db.GetChannels(ctx)
+	if err != nil {
+		t.Fatalf("GetChannels(ctx): %v", err)
+	}
+	if channels == nil {
+		t.Fatal("expected non-nil slice")
+	}
+}
+
+func TestGetAirings_AcceptsContext(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), sampleTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	ctx := context.Background()
+	airings, err := db.GetAirings(ctx, testBaseDate())
+	if err != nil {
+		t.Fatalf("GetAirings(ctx, date): %v", err)
+	}
+	if airings == nil {
+		t.Fatal("expected non-nil slice")
+	}
+}
+
+func TestGetNowNext_AcceptsContext(t *testing.T) {
+	db := openTestDB(t)
+	tv, now := nowNextTV()
+	db.SetClock(database.FixedClock(now))
+	if err := db.Refresh(context.Background(), tv, now.Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	ctx := context.Background()
+	entries, err := db.GetNowNext(ctx)
+	if err != nil {
+		t.Fatalf("GetNowNext(ctx): %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("expected at least 1 entry")
+	}
+}
+
+func TestSearchSimple_AcceptsContext(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	ctx := context.Background()
+	results, err := db.SearchSimple(ctx, "News", true, false)
+	if err != nil {
+		t.Fatalf("SearchSimple(ctx, ...): %v", err)
+	}
+	if results == nil {
+		t.Fatal("expected non-nil slice")
+	}
+}
+
+func TestSearchAdvanced_AcceptsContext(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	ctx := context.Background()
+	results, err := db.SearchAdvanced(ctx, "news", nil, false, true, false)
+	if err != nil {
+		t.Fatalf("SearchAdvanced(ctx, ...): %v", err)
+	}
+	if results == nil {
+		t.Fatal("expected non-nil slice")
+	}
+}
+
+func TestSearchBrowse_AcceptsContext(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	ctx := context.Background()
+	results, err := db.SearchBrowse(ctx, []string{"News"}, false, false, true, false)
+	if err != nil {
+		t.Fatalf("SearchBrowse(ctx, ...): %v", err)
+	}
+	if results == nil {
+		t.Fatal("expected non-nil slice")
+	}
+}
+
+func TestGetCategories_AcceptsContext(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.Refresh(context.Background(), searchTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	ctx := context.Background()
+	cats, err := db.GetCategories(ctx)
+	if err != nil {
+		t.Fatalf("GetCategories(ctx): %v", err)
+	}
+	if cats == nil {
+		t.Fatal("expected non-nil slice")
+	}
+}
+
+func TestHasData_AcceptsContext(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	if db.HasData(ctx) {
+		t.Error("expected HasData to return false on empty database")
+	}
+	if err := db.Refresh(context.Background(), sampleTV(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if !db.HasData(ctx) {
+		t.Error("expected HasData to return true after Refresh")
 	}
 }
 
@@ -1547,7 +1669,7 @@ func TestRefresh_OverlappingAiringIsReplaced(t *testing.T) {
 		t.Fatalf("updated Refresh: %v", err)
 	}
 
-	airings, err := db.GetAirings(testBaseDate())
+	airings, err := db.GetAirings(context.Background(), testBaseDate())
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
 	}
