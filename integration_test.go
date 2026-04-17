@@ -57,7 +57,7 @@ func startMockXMLTVServer(t *testing.T, xmlContent string) *countingServer {
 		w.Header().Set("Content-Type", "text/xml")
 		fmt.Fprint(w, xmlContent)
 	}))
-	t.Cleanup(cs.Server.Close)
+	t.Cleanup(cs.Close)
 	return cs
 }
 
