@@ -108,13 +108,13 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 		deleteArgs := make([]any, 0, len(idArgs)+len(lcnArgs))
 		deleteArgs = append(deleteArgs, idArgs...)
 		deleteArgs = append(deleteArgs, lcnArgs...)
-		if _, err := tx.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx, //nolint:gosec // filterSQL contains only ? placeholders, no user values
 			`DELETE FROM airings WHERE channel_id IN (SELECT id FROM channels WHERE `+filterSQL+`)`,
 			deleteArgs...,
 		); err != nil {
 			return fmt.Errorf("deleting airings for hidden channels: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM channels WHERE `+filterSQL, deleteArgs...); err != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM channels WHERE `+filterSQL, deleteArgs...); err != nil { //nolint:gosec // filterSQL contains only ? placeholders, no user values
 			return fmt.Errorf("deleting hidden channels: %w", err)
 		}
 	}

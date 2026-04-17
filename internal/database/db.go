@@ -256,7 +256,7 @@ func (d *DB) GetStatus() model.Status {
 // HasData reports whether the database contains any channels.
 func (d *DB) HasData(ctx context.Context) bool {
 	var count int
-	d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM channels`).Scan(&count) //nolint:errcheck // zero count on error is the safe default
+	d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM channels`).Scan(&count) //nolint:errcheck,gosec // zero count on error is the safe default
 	return count > 0
 }
 
