@@ -29,7 +29,9 @@ func (h *Handler) serveChannelIcon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := os.ReadFile(localPath)
+	// localPath is retrieved from the database, not constructed from user input,
+	// so this is not a path traversal risk.
+	data, err := os.ReadFile(localPath) //nolint:gosec // G304: path comes from DB, not user input
 	if err != nil {
 		http.Error(w, "failed to read icon", http.StatusInternalServerError)
 		return
