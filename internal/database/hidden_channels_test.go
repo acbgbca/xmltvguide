@@ -39,7 +39,7 @@ func TestHiddenChannels_Empty(t *testing.T) {
 	db := openTestDBHidden(t, nil, nil)
 	refreshHiddenTestData(t, db)
 
-	channels, err := db.GetChannels()
+	channels, err := db.GetChannels(context.Background())
 	if err != nil {
 		t.Fatalf("GetChannels: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestHiddenChannels_ByID_GetChannels(t *testing.T) {
 	db := openTestDBHidden(t, []string{"ch1"}, nil)
 	refreshHiddenTestData(t, db)
 
-	channels, err := db.GetChannels()
+	channels, err := db.GetChannels(context.Background())
 	if err != nil {
 		t.Fatalf("GetChannels: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestHiddenChannels_ByID_GetAirings(t *testing.T) {
 	db := openTestDBHidden(t, []string{"ch1"}, nil)
 	refreshHiddenTestData(t, db)
 
-	airings, err := db.GetAirings(testBaseDate())
+	airings, err := db.GetAirings(context.Background(), testBaseDate())
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestHiddenChannels_ByLCN_GetChannels(t *testing.T) {
 	db := openTestDBHidden(t, nil, []int{2})
 	refreshHiddenTestData(t, db)
 
-	channels, err := db.GetChannels()
+	channels, err := db.GetChannels(context.Background())
 	if err != nil {
 		t.Fatalf("GetChannels: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestHiddenChannels_ByLCN_GetAirings(t *testing.T) {
 	db := openTestDBHidden(t, nil, []int{2})
 	refreshHiddenTestData(t, db)
 
-	airings, err := db.GetAirings(testBaseDate())
+	airings, err := db.GetAirings(context.Background(), testBaseDate())
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestHiddenChannels_Mixed(t *testing.T) {
 	db := openTestDBHidden(t, []string{"ch2"}, []int{2})
 	refreshHiddenTestData(t, db)
 
-	channels, err := db.GetChannels()
+	channels, err := db.GetChannels(context.Background())
 	if err != nil {
 		t.Fatalf("GetChannels: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestHiddenChannels_Mixed(t *testing.T) {
 		t.Errorf("expected 0 channels with both ch1 (LCN 2) and ch2 (ID) hidden, got %d", len(channels))
 	}
 
-	airings, err := db.GetAirings(testBaseDate())
+	airings, err := db.GetAirings(context.Background(), testBaseDate())
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestHiddenChannels_ByID_GetNowNext(t *testing.T) {
 	db := openTestDBHidden(t, []string{"ch1"}, nil)
 	refreshHiddenTestData(t, db)
 
-	entries, err := db.GetNowNext()
+	entries, err := db.GetNowNext(context.Background())
 	if err != nil {
 		t.Fatalf("GetNowNext: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestHiddenChannels_ByID_Search(t *testing.T) {
 	refreshHiddenTestData(t, db)
 
 	t.Run("SearchSimple", func(t *testing.T) {
-		results, err := db.SearchSimple("Morning News", true, false)
+		results, err := db.SearchSimple(context.Background(), "Morning News", true, false)
 		if err != nil {
 			t.Fatalf("SearchSimple: %v", err)
 		}
@@ -179,7 +179,7 @@ func TestHiddenChannels_ByID_Search(t *testing.T) {
 	})
 
 	t.Run("SearchAdvanced", func(t *testing.T) {
-		results, err := db.SearchAdvanced("Morning", nil, true, true, false)
+		results, err := db.SearchAdvanced(context.Background(), "Morning", nil, true, true, false)
 		if err != nil {
 			t.Fatalf("SearchAdvanced: %v", err)
 		}
@@ -191,7 +191,7 @@ func TestHiddenChannels_ByID_Search(t *testing.T) {
 	})
 
 	t.Run("SearchBrowse", func(t *testing.T) {
-		results, err := db.SearchBrowse(nil, false, true, true, false)
+		results, err := db.SearchBrowse(context.Background(), nil, false, true, true, false)
 		if err != nil {
 			t.Fatalf("SearchBrowse: %v", err)
 		}

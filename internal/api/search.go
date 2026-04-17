@@ -55,12 +55,12 @@ func (h *Handler) getSearch(w http.ResponseWriter, r *http.Request) {
 	case q == "":
 		// Browse mode: bypass FTS, query airings table directly.
 		includePast := r.URL.Query().Get("include_past") == "true"
-		results, err = h.db.SearchBrowse(categories, isPremiere, includePast, includeRepeats, today)
+		results, err = h.db.SearchBrowse(r.Context(), categories, isPremiere, includePast, includeRepeats, today)
 	case mode == "advanced":
 		includePast := r.URL.Query().Get("include_past") == "true"
-		results, err = h.db.SearchAdvanced(q, categories, includePast, includeRepeats, today)
+		results, err = h.db.SearchAdvanced(r.Context(), q, categories, includePast, includeRepeats, today)
 	default:
-		results, err = h.db.SearchSimple(q, includeRepeats, today)
+		results, err = h.db.SearchSimple(r.Context(), q, includeRepeats, today)
 	}
 
 	if err != nil {

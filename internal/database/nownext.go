@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -13,17 +14,17 @@ import (
 // GetNowNext returns the current and next airing for every channel, ordered
 // by the same sort order as GetChannels (sort_order, which respects lcn).
 // Either field may be nil if no matching airing exists.
-func (d *DB) GetNowNext() ([]model.NowNextEntry, error) {
+func (d *DB) GetNowNext(ctx context.Context) ([]model.NowNextEntry, error) {
 	now := d.clock.Now().UTC().Format(time.RFC3339)
 
 	// Fetch channels in sort order.
-	channels, err := d.GetChannels()
+	channels, err := d.GetChannels(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting channels: %w", err)
 	}
 
 	// Fetch all currently-airing programmes (start_time <= now < stop_time).
-	currentRows, err := d.db.Query(`
+	currentRows, err := d.db.QueryContext(ctx, `
 		SELECT
 			channel_id, start_time, stop_time, title,
 			COALESCE(sub_title, ''), COALESCE(description, ''),
@@ -58,7 +59,7 @@ func (d *DB) GetNowNext() ([]model.NowNextEntry, error) {
 	}
 
 	// Fetch the next upcoming airing per channel using a window function.
-	nextRows, err := d.db.Query(`
+	nextRows, err := d.db.QueryContext(ctx, `
 		SELECT
 			channel_id, start_time, stop_time, title,
 			COALESCE(sub_title, ''), COALESCE(description, ''),

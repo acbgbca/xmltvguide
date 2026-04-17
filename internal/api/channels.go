@@ -8,7 +8,7 @@ import (
 )
 
 func (h *Handler) getChannels(w http.ResponseWriter, r *http.Request) {
-	channels, err := h.db.GetChannels()
+	channels, err := h.db.GetChannels(r.Context())
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return

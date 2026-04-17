@@ -96,6 +96,17 @@ func newIntegrationServer(t *testing.T, xmltvURL string) *httptest.Server {
 	return srv
 }
 
+// httpGet performs a GET request with a background context.
+// It is a context-aware replacement for http.Get in tests.
+func httpGet(t *testing.T, url string) (*http.Response, error) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return http.DefaultClient.Do(req)
+}
+
 func TestIntegration_StaticFiles(t *testing.T) {
 	xmlBytes, err := os.ReadFile("testdata/sample.xml")
 	if err != nil {
@@ -106,7 +117,7 @@ func TestIntegration_StaticFiles(t *testing.T) {
 	srv := newIntegrationServer(t, mockSrv.URL)
 
 	t.Run("index_html", func(t *testing.T) {
-		resp, err := http.Get(srv.URL + "/")
+		resp, err := httpGet(t, srv.URL + "/")
 		if err != nil {
 			t.Fatalf("GET /: %v", err)
 		}
@@ -127,7 +138,7 @@ func TestIntegration_StaticFiles(t *testing.T) {
 	})
 
 	t.Run("app_js_removed", func(t *testing.T) {
-		resp, err := http.Get(srv.URL + "/app.js")
+		resp, err := httpGet(t, srv.URL + "/app.js")
 		if err != nil {
 			t.Fatalf("GET /app.js: %v", err)
 		}
@@ -141,7 +152,7 @@ func TestIntegration_StaticFiles(t *testing.T) {
 	})
 
 	t.Run("main_js", func(t *testing.T) {
-		resp, err := http.Get(srv.URL + "/js/main.js")
+		resp, err := httpGet(t, srv.URL + "/js/main.js")
 		if err != nil {
 			t.Fatalf("GET /js/main.js: %v", err)
 		}
@@ -156,7 +167,7 @@ func TestIntegration_StaticFiles(t *testing.T) {
 	})
 
 	t.Run("index_uses_module_script", func(t *testing.T) {
-		resp, err := http.Get(srv.URL + "/")
+		resp, err := httpGet(t, srv.URL + "/")
 		if err != nil {
 			t.Fatalf("GET /: %v", err)
 		}
@@ -176,7 +187,7 @@ func TestIntegration_StaticFiles(t *testing.T) {
 	})
 
 	t.Run("sw_caches_main_js", func(t *testing.T) {
-		resp, err := http.Get(srv.URL + "/sw.js")
+		resp, err := httpGet(t, srv.URL + "/sw.js")
 		if err != nil {
 			t.Fatalf("GET /sw.js: %v", err)
 		}
@@ -193,7 +204,7 @@ func TestIntegration_StaticFiles(t *testing.T) {
 	})
 
 	t.Run("manifest_json", func(t *testing.T) {
-		resp, err := http.Get(srv.URL + "/manifest.json")
+		resp, err := httpGet(t, srv.URL + "/manifest.json")
 		if err != nil {
 			t.Fatalf("GET /manifest.json: %v", err)
 		}
@@ -204,7 +215,7 @@ func TestIntegration_StaticFiles(t *testing.T) {
 	})
 
 	t.Run("manifest_includes_png_icons", func(t *testing.T) {
-		resp, err := http.Get(srv.URL + "/manifest.json")
+		resp, err := httpGet(t, srv.URL + "/manifest.json")
 		if err != nil {
 			t.Fatalf("GET /manifest.json: %v", err)
 		}
@@ -234,7 +245,7 @@ func TestIntegration_StaticFiles(t *testing.T) {
 	})
 
 	t.Run("apple_touch_icon", func(t *testing.T) {
-		resp, err := http.Get(srv.URL + "/apple-touch-icon.png")
+		resp, err := httpGet(t, srv.URL + "/apple-touch-icon.png")
 		if err != nil {
 			t.Fatalf("GET /apple-touch-icon.png: %v", err)
 		}
@@ -249,7 +260,7 @@ func TestIntegration_StaticFiles(t *testing.T) {
 	})
 
 	t.Run("index_has_apple_touch_icon_link", func(t *testing.T) {
-		resp, err := http.Get(srv.URL + "/")
+		resp, err := httpGet(t, srv.URL + "/")
 		if err != nil {
 			t.Fatalf("GET /: %v", err)
 		}
@@ -263,7 +274,7 @@ func TestIntegration_StaticFiles(t *testing.T) {
 	})
 
 	t.Run("sw_caches_icon_files", func(t *testing.T) {
-		resp, err := http.Get(srv.URL + "/sw.js")
+		resp, err := httpGet(t, srv.URL + "/sw.js")
 		if err != nil {
 			t.Fatalf("GET /sw.js: %v", err)
 		}
@@ -288,7 +299,7 @@ func TestIntegration_Channels(t *testing.T) {
 
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/api/channels")
+	resp, err := httpGet(t, srv.URL + "/api/channels")
 	if err != nil {
 		t.Fatalf("GET /api/channels: %v", err)
 	}
@@ -374,7 +385,7 @@ func TestIntegration_Guide(t *testing.T) {
 	srv := newIntegrationServer(t, mockSrv.URL)
 
 	dateStr := base.Format("2006-01-02")
-	resp, err := http.Get(srv.URL + "/api/guide?date=" + dateStr)
+	resp, err := httpGet(t, srv.URL + "/api/guide?date=" + dateStr)
 	if err != nil {
 		t.Fatalf("GET /api/guide: %v", err)
 	}
@@ -412,7 +423,7 @@ func TestStartup_FreshInstall_AlwaysFetches(t *testing.T) {
 	if count := mockSrv.requestCount(); count != 1 {
 		t.Errorf("expected 1 XMLTV request on fresh install, got %d", count)
 	}
-	if !db.HasData() {
+	if !db.HasData(context.Background()) {
 		t.Error("expected database to contain data after initial fetch")
 	}
 }
@@ -493,7 +504,7 @@ func TestIntegration_Status(t *testing.T) {
 
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/api/status")
+	resp, err := httpGet(t, srv.URL + "/api/status")
 	if err != nil {
 		t.Fatalf("GET /api/status: %v", err)
 	}
@@ -524,7 +535,7 @@ func TestIntegration_Navigation_ButtonsEnabled(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/")
+	resp, err := httpGet(t, srv.URL + "/")
 	if err != nil {
 		t.Fatalf("GET /: %v", err)
 	}
@@ -553,7 +564,7 @@ func TestIntegration_Navigation_JSFunctions(t *testing.T) {
 	srv := newIntegrationServer(t, mockSrv.URL)
 
 	// Check main.js references the guide-related functions (via imports)
-	resp, err := http.Get(srv.URL + "/js/main.js")
+	resp, err := httpGet(t, srv.URL + "/js/main.js")
 	if err != nil {
 		t.Fatalf("GET /js/main.js: %v", err)
 	}
@@ -570,7 +581,7 @@ func TestIntegration_Navigation_JSFunctions(t *testing.T) {
 	}
 
 	// Check pages/guide.js defines the guide-specific URL and navigation functions
-	resp2, err := http.Get(srv.URL + "/js/pages/guide.js")
+	resp2, err := httpGet(t, srv.URL + "/js/pages/guide.js")
 	if err != nil {
 		t.Fatalf("GET /js/pages/guide.js: %v", err)
 	}
@@ -598,7 +609,7 @@ func TestIntegration_Search_JSFunctions(t *testing.T) {
 	srv := newIntegrationServer(t, mockSrv.URL)
 
 	// Check pages/search.js is served and defines the expected functions
-	resp, err := http.Get(srv.URL + "/js/pages/search.js")
+	resp, err := httpGet(t, srv.URL + "/js/pages/search.js")
 	if err != nil {
 		t.Fatalf("GET /js/pages/search.js: %v", err)
 	}
@@ -618,7 +629,7 @@ func TestIntegration_Search_JSFunctions(t *testing.T) {
 	}
 
 	// Check main.js imports from search.js and no longer defines these functions directly
-	resp2, err := http.Get(srv.URL + "/js/main.js")
+	resp2, err := httpGet(t, srv.URL + "/js/main.js")
 	if err != nil {
 		t.Fatalf("GET /js/main.js: %v", err)
 	}
@@ -633,7 +644,7 @@ func TestIntegration_Search_JSFunctions(t *testing.T) {
 	}
 
 	// Check that search.js is listed in the service worker cache
-	resp3, err := http.Get(srv.URL + "/sw.js")
+	resp3, err := httpGet(t, srv.URL + "/sw.js")
 	if err != nil {
 		t.Fatalf("GET /sw.js: %v", err)
 	}
@@ -706,7 +717,7 @@ func TestIntegration_ChannelIconProxy(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	// /api/channels must return proxy URL for ch1, empty icon for ch2.
-	resp, err := http.Get(srv.URL + "/api/channels")
+	resp, err := httpGet(t, srv.URL + "/api/channels")
 	if err != nil {
 		t.Fatalf("GET /api/channels: %v", err)
 	}
@@ -737,7 +748,7 @@ func TestIntegration_ChannelIconProxy(t *testing.T) {
 	}
 
 	// GET /images/channel/ch1 must serve the cached PNG.
-	iconResp, err := http.Get(srv.URL + "/images/channel/ch1")
+	iconResp, err := httpGet(t, srv.URL + "/images/channel/ch1")
 	if err != nil {
 		t.Fatalf("GET /images/channel/ch1: %v", err)
 	}
@@ -752,7 +763,7 @@ func TestIntegration_ChannelIconProxy(t *testing.T) {
 	}
 
 	// GET /images/channel/ch2 must return 404 (no icon).
-	noIconResp, err := http.Get(srv.URL + "/images/channel/ch2")
+	noIconResp, err := httpGet(t, srv.URL + "/images/channel/ch2")
 	if err != nil {
 		t.Fatalf("GET /images/channel/ch2: %v", err)
 	}
@@ -770,7 +781,7 @@ func TestIntegration_Search(t *testing.T) {
 	srv := newIntegrationServer(t, mockSrv.URL)
 
 	// Search for "News" — sample.xml has "Morning News" and "World News"
-	resp, err := http.Get(srv.URL + "/api/search?q=News&mode=advanced&include_past=true")
+	resp, err := httpGet(t, srv.URL + "/api/search?q=News&mode=advanced&include_past=true")
 	if err != nil {
 		t.Fatalf("GET /api/search: %v", err)
 	}
@@ -817,7 +828,7 @@ func TestIntegration_Categories(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, sampleXMLTVForDate(base))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/api/categories")
+	resp, err := httpGet(t, srv.URL + "/api/categories")
 	if err != nil {
 		t.Fatalf("GET /api/categories: %v", err)
 	}
@@ -854,7 +865,7 @@ func TestIntegration_Search_MissingQuery(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/api/search")
+	resp, err := httpGet(t, srv.URL + "/api/search")
 	if err != nil {
 		t.Fatalf("GET /api/search: %v", err)
 	}
@@ -875,7 +886,7 @@ func TestIntegration_SPAFallback_SearchReturnsHTML(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/search")
+	resp, err := httpGet(t, srv.URL + "/search")
 	if err != nil {
 		t.Fatalf("GET /search: %v", err)
 	}
@@ -905,7 +916,7 @@ func TestIntegration_SPAFallback_FavouritesReturnsHTML(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/favourites")
+	resp, err := httpGet(t, srv.URL + "/favourites")
 	if err != nil {
 		t.Fatalf("GET /favourites: %v", err)
 	}
@@ -935,7 +946,7 @@ func TestIntegration_SPAFallback_SettingsReturnsHTML(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/settings")
+	resp, err := httpGet(t, srv.URL + "/settings")
 	if err != nil {
 		t.Fatalf("GET /settings: %v", err)
 	}
@@ -960,7 +971,7 @@ func TestIntegration_SearchPage_HTMLElements(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/search")
+	resp, err := httpGet(t, srv.URL + "/search")
 	if err != nil {
 		t.Fatalf("GET /search: %v", err)
 	}
@@ -1032,7 +1043,7 @@ func TestIntegration_SearchPage_JSFunctions(t *testing.T) {
 
 	fetchBody := func(path string) string {
 		t.Helper()
-		resp, err := http.Get(srv.URL + path)
+		resp, err := httpGet(t, srv.URL + path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)
 		}
@@ -1081,7 +1092,7 @@ func TestIntegration_SPAFallback_APINotCaught(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/api/channels")
+	resp, err := httpGet(t, srv.URL + "/api/channels")
 	if err != nil {
 		t.Fatalf("GET /api/channels: %v", err)
 	}
@@ -1103,7 +1114,7 @@ func TestIntegration_SPAFallback_StaticFileNotCaught(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/style/base.css")
+	resp, err := httpGet(t, srv.URL + "/style/base.css")
 	if err != nil {
 		t.Fatalf("GET /style/base.css: %v", err)
 	}
@@ -1128,7 +1139,7 @@ func TestIntegration_FavouritesPage_HTMLElements(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/favourites")
+	resp, err := httpGet(t, srv.URL + "/favourites")
 	if err != nil {
 		t.Fatalf("GET /favourites: %v", err)
 	}
@@ -1175,7 +1186,7 @@ func TestIntegration_FavouritesPage_JSFunctions(t *testing.T) {
 	srv := newIntegrationServer(t, mockSrv.URL)
 
 	fetchBody := func(path string) string {
-		resp, err := http.Get(srv.URL + path)
+		resp, err := httpGet(t, srv.URL + path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)
 		}
@@ -1254,7 +1265,7 @@ func TestIntegration_FavouritesPage_Module(t *testing.T) {
 
 	fetchBody := func(path string) string {
 		t.Helper()
-		resp, err := http.Get(srv.URL + path)
+		resp, err := httpGet(t, srv.URL + path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)
 		}
@@ -1294,7 +1305,7 @@ func TestIntegration_ErrorLogging_JSFunctions(t *testing.T) {
 
 	fetchBody := func(path string) string {
 		t.Helper()
-		resp, err := http.Get(srv.URL + path)
+		resp, err := httpGet(t, srv.URL + path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)
 		}
@@ -1362,7 +1373,7 @@ func TestIntegration_CSSModularization_FilesServed(t *testing.T) {
 		"/style/settings.css",
 	}
 	for _, path := range cssFiles {
-		resp, err := http.Get(srv.URL + path)
+		resp, err := httpGet(t, srv.URL + path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)
 		}
@@ -1387,7 +1398,7 @@ func TestIntegration_CSSModularization_IndexLoadsModularCSS(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/")
+	resp, err := httpGet(t, srv.URL + "/")
 	if err != nil {
 		t.Fatalf("GET /: %v", err)
 	}
@@ -1426,7 +1437,7 @@ func TestIntegration_CSSModularization_ServiceWorkerCachesAll(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/sw.js")
+	resp, err := httpGet(t, srv.URL + "/sw.js")
 	if err != nil {
 		t.Fatalf("GET /sw.js: %v", err)
 	}
@@ -1465,7 +1476,7 @@ func TestIntegration_CSSModularization_BaseHasCSSVariables(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/style/base.css")
+	resp, err := httpGet(t, srv.URL + "/style/base.css")
 	if err != nil {
 		t.Fatalf("GET /style/base.css: %v", err)
 	}
@@ -1495,7 +1506,7 @@ func TestIntegration_AuthRedirectHandling(t *testing.T) {
 	srv := newIntegrationServer(t, mockSrv.URL)
 
 	t.Run("api_js_uses_redirect_manual", func(t *testing.T) {
-		resp, err := http.Get(srv.URL + "/js/api.js")
+		resp, err := httpGet(t, srv.URL + "/js/api.js")
 		if err != nil {
 			t.Fatalf("GET /js/api.js: %v", err)
 		}
@@ -1509,7 +1520,7 @@ func TestIntegration_AuthRedirectHandling(t *testing.T) {
 	})
 
 	t.Run("api_js_handles_opaqueredirect", func(t *testing.T) {
-		resp, err := http.Get(srv.URL + "/js/api.js")
+		resp, err := httpGet(t, srv.URL + "/js/api.js")
 		if err != nil {
 			t.Fatalf("GET /js/api.js: %v", err)
 		}
@@ -1526,7 +1537,7 @@ func TestIntegration_AuthRedirectHandling(t *testing.T) {
 	})
 
 	t.Run("sw_js_rethrows_on_api_fetch_failure", func(t *testing.T) {
-		resp, err := http.Get(srv.URL + "/sw.js")
+		resp, err := httpGet(t, srv.URL + "/sw.js")
 		if err != nil {
 			t.Fatalf("GET /sw.js: %v", err)
 		}
@@ -1553,7 +1564,7 @@ func TestIntegration_SPAFallback_GuidePathReturnsHTML(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	resp, err := http.Get(srv.URL + "/guide?date=2026-04-01")
+	resp, err := httpGet(t, srv.URL + "/guide?date=2026-04-01")
 	if err != nil {
 		t.Fatalf("GET /guide: %v", err)
 	}

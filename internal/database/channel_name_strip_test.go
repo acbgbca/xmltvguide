@@ -64,7 +64,7 @@ func TestRefresh_ChannelNameStrip(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 
-	channels, err := db.GetChannels()
+	channels, err := db.GetChannels(context.Background())
 	if err != nil {
 		t.Fatalf("GetChannels: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestRefresh_ChannelNameStrip_CaseInsensitive(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 
-	channels, err := db.GetChannels()
+	channels, err := db.GetChannels(context.Background())
 	if err != nil {
 		t.Fatalf("GetChannels: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestRefresh_ChannelNameStrip_TrimSpace(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 
-	channels, err := db.GetChannels()
+	channels, err := db.GetChannels(context.Background())
 	if err != nil {
 		t.Fatalf("GetChannels: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestRefresh_ChannelNameStrip_Empty(t *testing.T) {
 		t.Fatalf("Refresh: %v", err)
 	}
 
-	channels, err := db.GetChannels()
+	channels, err := db.GetChannels(context.Background())
 	if err != nil {
 		t.Fatalf("GetChannels: %v", err)
 	}

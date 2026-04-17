@@ -152,7 +152,7 @@ func runInitialRefresh(db *database.DB, client *http.Client, xmltvURL string, po
 	// Perform initial data fetch only when explicitly requested or when the
 	// database is empty (fresh install). Otherwise schedule the first refresh
 	// at the normal poll interval so restarts don't hammer the XMLTV source.
-	if refreshOnStart || !db.HasData() {
+	if refreshOnStart || !db.HasData(context.Background()) {
 		if err := refresh(db, client, xmltvURL, pollInterval); err != nil {
 			log.Printf("warning: initial fetch failed: %v", err)
 		}
