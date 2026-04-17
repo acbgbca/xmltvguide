@@ -35,7 +35,7 @@ func main() {
 	if v := os.Getenv("POLL_INTERVAL"); v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil {
-			log.Fatalf("invalid POLL_INTERVAL %q: %v", v, err)
+			log.Fatalf("invalid POLL_INTERVAL %q: %v", v, err) //nolint:gosec // G706: value is from admin-configured env var, not user input
 		}
 		pollInterval = d
 	}
@@ -44,7 +44,7 @@ func main() {
 	if v := os.Getenv("RETENTION_DAYS"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 1 {
-			log.Fatalf("invalid RETENTION_DAYS %q: must be a positive integer", v)
+			log.Fatalf("invalid RETENTION_DAYS %q: must be a positive integer", v) //nolint:gosec // G706: value is from admin-configured env var, not user input
 		}
 		retentionDays = n
 	}
@@ -69,12 +69,12 @@ func main() {
 
 	// Ensure the database directory exists (relevant when running outside Docker).
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0750); err != nil {
-		log.Fatalf("creating database directory %s: %v", filepath.Dir(dbPath), err)
+		log.Fatalf("creating database directory %s: %v", filepath.Dir(dbPath), err) //nolint:gosec // G706: value is from admin-configured env var, not user input
 	}
 
 	// Ensure the image cache directory exists.
 	if err := os.MkdirAll(filepath.Join(imageCacheDir, "channels"), 0750); err != nil {
-		log.Fatalf("creating image cache directory %s: %v", imageCacheDir, err)
+		log.Fatalf("creating image cache directory %s: %v", imageCacheDir, err) //nolint:gosec // G706: value is from admin-configured env var, not user input
 	}
 
 	httpClient := &http.Client{Timeout: 5 * time.Minute}
@@ -130,7 +130,7 @@ func main() {
 		}
 	}()
 
-	log.Printf("TV Guide starting on :%s (poll: %s, retention: %d days, db: %s)",
+	log.Printf("TV Guide starting on :%s (poll: %s, retention: %d days, db: %s)", //nolint:gosec // G706: values are from admin-configured env vars, not user input
 		port, pollInterval, retentionDays, dbPath)
 
 	quit := make(chan os.Signal, 1)
@@ -158,7 +158,7 @@ func runInitialRefresh(db *database.DB, client *http.Client, xmltvURL string, po
 		}
 	} else {
 		db.SetNextRefresh(time.Now().Add(pollInterval))
-		log.Printf("skipping initial fetch, data already present (next refresh in %s)", pollInterval)
+		log.Printf("skipping initial fetch, data already present (next refresh in %s)", pollInterval) //nolint:gosec // G706: value is derived from admin-configured env var, not user input
 	}
 }
 
@@ -230,7 +230,7 @@ func parseHiddenChannels(raw string) (ids []string, lcns []int) {
 }
 
 func refresh(db *database.DB, client *http.Client, url string, interval time.Duration) error {
-	log.Printf("fetching XMLTV from %s", url)
+	log.Printf("fetching XMLTV from %s", url) //nolint:gosec // G706: value is from admin-configured env var, not user input
 	tv, err := xmltv.Fetch(context.Background(), client, url)
 	if err != nil {
 		return fmt.Errorf("fetch: %w", err)
@@ -238,6 +238,6 @@ func refresh(db *database.DB, client *http.Client, url string, interval time.Dur
 	if err := db.Refresh(context.Background(), tv, time.Now().Add(interval)); err != nil {
 		return fmt.Errorf("storing data: %w", err)
 	}
-	log.Printf("loaded %d channels, %d programmes", len(tv.Channels), len(tv.Programmes))
+	log.Printf("loaded %d channels, %d programmes", len(tv.Channels), len(tv.Programmes)) //nolint:gosec // G706: values are integer counts from parsed XMLTV, not user input
 	return nil
 }
