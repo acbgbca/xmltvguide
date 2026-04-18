@@ -490,7 +490,9 @@ func TestEnsureChannelIcon_RedownloadsIfMissing(t *testing.T) {
 	if err != nil || localPath == "" {
 		t.Fatalf("initial EnsureChannelIcon: path=%q err=%v", localPath, err)
 	}
-	os.Remove(localPath)
+	if err := os.Remove(localPath); err != nil {
+		t.Fatalf("failed to delete cached icon: %v", err)
+	}
 
 	// EnsureChannelIcon should re-download and return a valid path.
 	newPath, err := db.EnsureChannelIcon(context.Background(), "ch1")
