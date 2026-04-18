@@ -42,5 +42,6 @@ func (h *Handler) serveChannelIcon(w http.ResponseWriter, r *http.Request) {
 		contentType = http.DetectContentType(data)
 	}
 	w.Header().Set("Content-Type", contentType)
-	w.Write(data) //nolint:errcheck,gosec // nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter
+	// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter
+	w.Write(data) //nolint:errcheck,gosec
 }
