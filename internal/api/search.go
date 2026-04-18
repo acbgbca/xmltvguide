@@ -30,7 +30,7 @@ type searchResultGroup struct {
 	Airings []searchResultAiring `json:"airings"`
 }
 
-func (h *Handler) getSearch(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) getSearch(w http.ResponseWriter, r *http.Request) { //nolint:cyclop
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	isPremiere := r.URL.Query().Get("is_premiere") == "true"
 
