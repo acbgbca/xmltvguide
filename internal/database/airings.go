@@ -77,7 +77,10 @@ func (d *DB) GetAirings(ctx context.Context, date time.Time) ([]model.Airing, er
 	return airings, rows.Err()
 }
 
-// airingFromXMLTV maps an xmltv.Programme to an Airing.
+// airingFromXMLTV maps an xmltv.Programme to a model.Airing.
+// Complexity comes from the number of optional XMLTV fields — not reducible without obfuscating the mapping.
+//
+//nolint:cyclop
 func airingFromXMLTV(p xmltv.Programme) model.Airing {
 	a := model.Airing{
 		ChannelID:  p.Channel,
