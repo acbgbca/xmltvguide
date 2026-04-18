@@ -101,14 +101,7 @@ func newIntegrationServer(t *testing.T, xmltvURL string) *httptest.Server {
 		t.Fatalf("Open: %v", err)
 	}
 
-	tv, err := xmltv.Fetch(context.Background(), &http.Client{}, xmltvURL+"/xmltv")
-	if err != nil {
-		t.Fatalf("Fetch: %v", err)
-	}
-
-	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
-		t.Fatalf("Refresh: %v", err)
-	}
+	populateDB(t, db, &http.Client{}, xmltvURL+"/xmltv")
 
 	mux := http.NewServeMux()
 	handler := api.New(db, 0)
