@@ -45,9 +45,8 @@ func (d *DB) SearchSimple(ctx context.Context, query string, includeRepeats bool
 		q += ` AND a.is_repeat = 0`
 	}
 	if today {
-		endOfDay := d.endOfToday()
 		q += ` AND a.start_time < ?`
-		args = append(args, endOfDay)
+		args = append(args, d.clock.EndOfToday().UTC().Format(time.RFC3339))
 	}
 	q += ` ORDER BY f.rank, a.start_time`
 
@@ -93,9 +92,8 @@ func (d *DB) SearchAdvanced(ctx context.Context, query string, categories []stri
 		q += ` AND EXISTS (SELECT 1 FROM json_each(a.categories) WHERE value IN (` + strings.Join(placeholders, ",") + `))`
 	}
 	if today {
-		endOfDay := d.endOfToday()
 		q += ` AND a.start_time < ?`
-		args = append(args, endOfDay)
+		args = append(args, d.clock.EndOfToday().UTC().Format(time.RFC3339))
 	}
 	q += ` ORDER BY f.rank, a.start_time`
 
@@ -142,20 +140,14 @@ func (d *DB) SearchBrowse(ctx context.Context, categories []string, isPremiere b
 		q += ` AND EXISTS (SELECT 1 FROM json_each(a.categories) WHERE value IN (` + strings.Join(placeholders, ",") + `))`
 	}
 	if today {
-		endOfDay := d.endOfToday()
 		q += ` AND a.start_time < ?`
-		args = append(args, endOfDay)
+		args = append(args, d.clock.EndOfToday().UTC().Format(time.RFC3339))
 	}
 	q += ` ORDER BY a.start_time`
 
 	return d.scanSearchResults(ctx, q, args...)
 }
 
-// endOfToday returns midnight tonight in the server's local timezone, formatted as RFC3339 in UTC.
-func (d *DB) endOfToday() string {
-	now := d.clock.Now()
-	return time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, time.Local).UTC().Format(time.RFC3339)
-}
 
 // GetCategories returns all distinct categories sorted alphabetically.
 func (d *DB) GetCategories(ctx context.Context) ([]string, error) {
