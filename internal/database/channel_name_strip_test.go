@@ -44,6 +44,10 @@ func stripSampleTV() *xmltv.TV {
 				ID:           "ch3",
 				DisplayNames: []xmltv.Name{{Value: "Seven"}},
 			},
+			{
+				ID:           "ch4",
+				DisplayNames: []xmltv.Name{{Value: "Viceland"}},
+			},
 		},
 		Programmes: []xmltv.Programme{
 			{
@@ -122,6 +126,28 @@ func TestRefresh_ChannelNameStrip_TrimSpace(t *testing.T) {
 		if ch.ID == "ch2" {
 			if ch.DisplayName != "Nine" {
 				t.Errorf("expected trimmed name %q, got %q", "Nine", ch.DisplayName)
+			}
+		}
+	}
+}
+
+// TestRefresh_ChannelNameStrip_WholeWord verifies that strip words match whole words only, not substrings.
+func TestRefresh_ChannelNameStrip_WholeWord(t *testing.T) {
+	db := openTestDBWithStripWords(t, []string{"Vic"})
+	tv := stripSampleTV()
+	if err := db.Refresh(context.Background(), tv, testBaseDate()); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	channels, err := db.GetChannels(context.Background())
+	if err != nil {
+		t.Fatalf("GetChannels: %v", err)
+	}
+
+	for _, ch := range channels {
+		if ch.ID == "ch4" {
+			if ch.DisplayName != "Viceland" {
+				t.Errorf("expected name %q (should not strip partial word), got %q", "Viceland", ch.DisplayName)
 			}
 		}
 	}

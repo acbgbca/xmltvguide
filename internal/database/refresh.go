@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -351,26 +352,13 @@ func (d *DB) rebuildCategories(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
-// stripWordCaseInsensitive removes all occurrences of word from s, case-insensitively.
-// Both s and word are lowercased for comparison; the original casing of non-matched
-// characters in s is preserved. The word must be non-empty.
+// stripWordCaseInsensitive removes all whole-word occurrences of word from s,
+// case-insensitively. Word boundaries are enforced so partial matches within
+// longer words (e.g. "Vic" inside "Viceland") are not removed.
 func stripWordCaseInsensitive(s, word string) string {
 	if word == "" {
 		return s
 	}
-	sLower := strings.ToLower(s)
-	wLower := strings.ToLower(word)
-	wLen := len(wLower)
-	var result strings.Builder
-	for {
-		idx := strings.Index(sLower, wLower)
-		if idx < 0 {
-			result.WriteString(s)
-			break
-		}
-		result.WriteString(s[:idx])
-		s = s[idx+wLen:]
-		sLower = sLower[idx+wLen:]
-	}
-	return result.String()
+	re := regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(word) + `\b`)
+	return re.ReplaceAllString(s, "")
 }
