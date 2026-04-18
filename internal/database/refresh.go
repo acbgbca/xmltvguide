@@ -14,6 +14,10 @@ import (
 	"github.com/acbgbca/xmltvguide/internal/xmltv"
 )
 
+// iconState holds icon metadata for a channel — both the stored state queried
+// from the database and the resolved state after icon downloading.
+type iconState struct{ localPath, iconURL string }
+
 // Refresh atomically loads a parsed XMLTV document into the database,
 // then prunes airings older than the configured retention period.
 // Existing airings with the same (channel_id, start_time) are replaced
@@ -21,23 +25,7 @@ import (
 // Icons are downloaded when the URL has changed or the local file is missing.
 func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) error {
 	// Phase 1: Query current channel icon state so we can detect URL changes.
-	type iconState struct{ localPath, iconURL string }
-	currentIcons := map[string]iconState{}
-	if rows, err := d.db.QueryContext(ctx,
-		`SELECT id, COALESCE(icon, ''), COALESCE(icon_url, '') FROM channels`,
-	); err == nil {
-		defer func() {
-			if err := rows.Close(); err != nil {
-				log.Printf("closing channel rows: %v", err)
-			}
-		}()
-		for rows.Next() {
-			var id, localPath, iconURL string
-			if rows.Scan(&id, &localPath, &iconURL) == nil {
-				currentIcons[id] = iconState{localPath, iconURL}
-			}
-		}
-	}
+	currentIcons := d.queryCurrentIcons(ctx)
 
 	// Build the set of hidden channel IDs (combining ID-based and LCN-based rules)
 	// so airings can be filtered by ID alone without needing per-airing LCN lookups.
@@ -48,16 +36,103 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 		}
 	}
 
-	// Phase 2: Resolve icons — download when URL changed or file is absent.
-	// Hidden channels are skipped entirely.
-	type resolvedIcon struct{ localPath, iconURL string }
-	resolved := map[string]resolvedIcon{}
-
-	for _, ch := range tv.Channels {
-		if hiddenChannelIDs[ch.ID] {
-			continue
+	// Phase 2: Write everything to the database in a single transaction.
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			log.Printf("rollback error: %v", rbErr)
 		}
-		if len(ch.Icons) == 0 {
+	}()
+
+	if err := d.deleteHiddenChannels(ctx, tx); err != nil {
+		return err
+	}
+	if err := d.upsertChannels(ctx, tx, tv.Channels, hiddenChannelIDs, currentIcons); err != nil {
+		return err
+	}
+	if err := d.upsertAirings(ctx, tx, tv.Programmes, hiddenChannelIDs); err != nil {
+		return err
+	}
+
+	cutoff := d.clock.Now().AddDate(0, 0, -d.retentionDays).UTC().Format(time.RFC3339)
+	if _, err := tx.ExecContext(ctx, `DELETE FROM airings WHERE stop_time < ?`, cutoff); err != nil {
+		return fmt.Errorf("pruning airings: %w", err)
+	}
+
+	if err := d.rebuildFTS(ctx, tx); err != nil {
+		return err
+	}
+	if err := d.rebuildCategories(ctx, tx); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing transaction: %w", err)
+	}
+
+	d.mu.Lock()
+	d.lastRefresh = time.Now()
+	d.nextRefresh = nextRefresh
+	d.mu.Unlock()
+
+	return nil
+}
+
+// queryCurrentIcons returns the stored icon state for all channels.
+func (d *DB) queryCurrentIcons(ctx context.Context) map[string]iconState {
+	result := map[string]iconState{}
+	rows, err := d.db.QueryContext(ctx,
+		`SELECT id, COALESCE(icon, ''), COALESCE(icon_url, '') FROM channels`,
+	)
+	if err != nil {
+		return result
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("closing channel rows: %v", err)
+		}
+	}()
+	for rows.Next() {
+		var id, localPath, iconURL string
+		if rows.Scan(&id, &localPath, &iconURL) == nil {
+			result[id] = iconState{localPath, iconURL}
+		}
+	}
+	return result
+}
+
+// deleteHiddenChannels removes airings and channel rows for channels that are
+// currently configured as hidden. Airings are deleted before channels to satisfy
+// the foreign key constraint.
+func (d *DB) deleteHiddenChannels(ctx context.Context, tx *sql.Tx) error {
+	if len(d.hiddenIDs) == 0 && len(d.hiddenLCNs) == 0 {
+		return nil
+	}
+	idArgs, lcnArgs, filterSQL := buildHiddenFilter(d.hiddenIDs, d.hiddenLCNs)
+	deleteArgs := make([]any, 0, len(idArgs)+len(lcnArgs))
+	deleteArgs = append(deleteArgs, idArgs...)
+	deleteArgs = append(deleteArgs, lcnArgs...)
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM airings WHERE channel_id IN (SELECT id FROM channels WHERE `+filterSQL+`)`, //nolint:gosec // filterSQL contains only ? placeholders, no user values
+		deleteArgs...,
+	); err != nil {
+		return fmt.Errorf("deleting airings for hidden channels: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM channels WHERE `+filterSQL, deleteArgs...); err != nil { //nolint:gosec // filterSQL contains only ? placeholders, no user values
+		return fmt.Errorf("deleting hidden channels: %w", err)
+	}
+	return nil
+}
+
+// resolveChannelIcons downloads icons for visible channels, re-downloading only
+// when the URL has changed or the local file is missing.
+func (d *DB) resolveChannelIcons(ctx context.Context, channels []xmltv.Channel, hiddenIDs map[string]bool, currentIcons map[string]iconState) map[string]iconState {
+	resolved := map[string]iconState{}
+	for _, ch := range channels {
+		if hiddenIDs[ch.ID] || len(ch.Icons) == 0 {
 			continue
 		}
 		incomingURL := ch.Icons[0].Src
@@ -65,7 +140,7 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 
 		if d.imageCache == nil {
 			// Cache not configured: store the URL for future use, no local file.
-			resolved[ch.ID] = resolvedIcon{"", incomingURL}
+			resolved[ch.ID] = iconState{"", incomingURL}
 			continue
 		}
 
@@ -84,40 +159,54 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 			log.Printf("warning: failed to cache icon for channel %s: %v", ch.ID, err)
 			// Store icon_url even if download failed so the handler can
 			// re-download on demand.
-			resolved[ch.ID] = resolvedIcon{"", incomingURL}
+			resolved[ch.ID] = iconState{"", incomingURL}
 			continue
 		}
-		resolved[ch.ID] = resolvedIcon{localPath, incomingURL}
+		resolved[ch.ID] = iconState{localPath, incomingURL}
 	}
+	return resolved
+}
 
-	// Phase 3: Write everything to the database in a single transaction.
-	tx, err := d.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("beginning transaction: %w", err)
+// channelDisplayName returns the display name for a channel, with configured
+// strip words removed and surrounding whitespace trimmed.
+func (d *DB) channelDisplayName(ch xmltv.Channel) string {
+	name := ch.ID
+	if len(ch.DisplayNames) > 0 && ch.DisplayNames[0].Value != "" {
+		name = ch.DisplayNames[0].Value
 	}
-	defer func() {
-		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
-			log.Printf("rollback error: %v", rbErr)
-		}
-	}()
+	for _, w := range d.stripWords {
+		name = stripWordCaseInsensitive(name, w)
+	}
+	return strings.TrimSpace(name)
+}
 
-	// Delete any previously stored data for channels that are now hidden.
-	// Airings must be deleted before channels due to the foreign key constraint.
-	if len(d.hiddenIDs) > 0 || len(d.hiddenLCNs) > 0 {
-		idArgs, lcnArgs, filterSQL := buildHiddenFilter(d.hiddenIDs, d.hiddenLCNs)
-		deleteArgs := make([]any, 0, len(idArgs)+len(lcnArgs))
-		deleteArgs = append(deleteArgs, idArgs...)
-		deleteArgs = append(deleteArgs, lcnArgs...)
-		if _, err := tx.ExecContext(ctx, //nolint:gosec // filterSQL contains only ? placeholders, no user values
-			`DELETE FROM airings WHERE channel_id IN (SELECT id FROM channels WHERE `+filterSQL+`)`,
-			deleteArgs...,
-		); err != nil {
-			return fmt.Errorf("deleting airings for hidden channels: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM channels WHERE `+filterSQL, deleteArgs...); err != nil { //nolint:gosec // filterSQL contains only ? placeholders, no user values
-			return fmt.Errorf("deleting hidden channels: %w", err)
+// channelLCN parses the raw LCN string and returns it as an integer any value,
+// or nil if the string is empty or not a valid integer.
+func channelLCN(ch xmltv.Channel) any {
+	if ch.LCN != "" {
+		if n, err := strconv.Atoi(ch.LCN); err == nil {
+			return n
 		}
 	}
+	return nil
+}
+
+// iconStateArgs returns the SQL icon and icon_url argument values for a
+// channel from the resolved icon map. Both are nil when the channel has no icon.
+func iconStateArgs(resolved map[string]iconState, channelID string) (icon, iconURL any) {
+	if ri, ok := resolved[channelID]; ok {
+		if ri.localPath != "" {
+			icon = ri.localPath
+		}
+		iconURL = ri.iconURL
+	}
+	return
+}
+
+// upsertChannels inserts or replaces channel rows. Icon downloads are handled
+// first via resolveChannelIcons. Hidden channels are skipped.
+func (d *DB) upsertChannels(ctx context.Context, tx *sql.Tx, channels []xmltv.Channel, hiddenIDs map[string]bool, currentIcons map[string]iconState) error {
+	resolved := d.resolveChannelIcons(ctx, channels, hiddenIDs, currentIcons)
 
 	chStmt, err := tx.PrepareContext(ctx, `
 		INSERT OR REPLACE INTO channels (id, display_name, icon, sort_order, lcn, icon_url)
@@ -132,36 +221,22 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 		}
 	}()
 
-	for i, ch := range tv.Channels {
-		if hiddenChannelIDs[ch.ID] {
+	for i, ch := range channels {
+		if hiddenIDs[ch.ID] {
 			continue
 		}
-		name := ch.ID
-		if len(ch.DisplayNames) > 0 && ch.DisplayNames[0].Value != "" {
-			name = ch.DisplayNames[0].Value
-		}
-		for _, w := range d.stripWords {
-			name = stripWordCaseInsensitive(name, w)
-		}
-		name = strings.TrimSpace(name)
-		var icon, iconURL any
-		if ri, ok := resolved[ch.ID]; ok {
-			if ri.localPath != "" {
-				icon = ri.localPath
-			}
-			iconURL = ri.iconURL
-		}
-		var lcn any
-		if ch.LCN != "" {
-			if n, err := strconv.Atoi(ch.LCN); err == nil {
-				lcn = n
-			}
-		}
-		if _, err := chStmt.ExecContext(ctx, ch.ID, name, icon, i, lcn, iconURL); err != nil {
+		icon, iconURL := iconStateArgs(resolved, ch.ID)
+		if _, err := chStmt.ExecContext(ctx, ch.ID, d.channelDisplayName(ch), icon, i, channelLCN(ch), iconURL); err != nil {
 			return fmt.Errorf("upserting channel %s: %w", ch.ID, err)
 		}
 	}
+	return nil
+}
 
+// upsertAirings inserts or replaces airing rows, skipping airings for hidden
+// channels. Existing airings whose time range overlaps the incoming airing but
+// with a different start_time are deleted first to handle schedule shifts.
+func (d *DB) upsertAirings(ctx context.Context, tx *sql.Tx, airings []xmltv.Programme, hiddenIDs map[string]bool) error {
 	// deleteOverlapStmt removes any existing airing for the same channel whose
 	// time range overlaps the incoming airing but has a different start_time.
 	// This handles schedule shifts where a show's start time changes slightly —
@@ -200,8 +275,8 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 		}
 	}()
 
-	for _, p := range tv.Programmes {
-		if hiddenChannelIDs[p.Channel] {
+	for _, p := range airings {
+		if hiddenIDs[p.Channel] {
 			continue
 		}
 		a := airingFromXMLTV(p)
@@ -241,13 +316,12 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 			return fmt.Errorf("upserting airing: %w", err)
 		}
 	}
+	return nil
+}
 
-	cutoff := d.clock.Now().AddDate(0, 0, -d.retentionDays).UTC().Format(time.RFC3339)
-	if _, err := tx.ExecContext(ctx, `DELETE FROM airings WHERE stop_time < ?`, cutoff); err != nil {
-		return fmt.Errorf("pruning airings: %w", err)
-	}
-
-	// Rebuild FTS index: clear and repopulate from airings table.
+// rebuildFTS clears and repopulates the airings_fts full-text search index
+// from the current contents of the airings table.
+func (d *DB) rebuildFTS(ctx context.Context, tx *sql.Tx) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM airings_fts`); err != nil {
 		return fmt.Errorf("clearing FTS index: %w", err)
 	}
@@ -258,8 +332,12 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 	`); err != nil {
 		return fmt.Errorf("populating FTS index: %w", err)
 	}
+	return nil
+}
 
-	// Rebuild categories table from distinct values in airings.categories JSON arrays.
+// rebuildCategories clears and repopulates the categories table from distinct
+// values in the airings.categories JSON arrays.
+func (d *DB) rebuildCategories(ctx context.Context, tx *sql.Tx) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM categories`); err != nil {
 		return fmt.Errorf("clearing categories: %w", err)
 	}
@@ -270,16 +348,6 @@ func (d *DB) Refresh(ctx context.Context, tv *xmltv.TV, nextRefresh time.Time) e
 	`); err != nil {
 		return fmt.Errorf("populating categories: %w", err)
 	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("committing transaction: %w", err)
-	}
-
-	d.mu.Lock()
-	d.lastRefresh = time.Now()
-	d.nextRefresh = nextRefresh
-	d.mu.Unlock()
-
 	return nil
 }
 
