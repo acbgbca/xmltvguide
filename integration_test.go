@@ -61,6 +61,38 @@ func startMockXMLTVServer(t *testing.T, xmlContent string) *countingServer {
 	return cs
 }
 
+func populateDB(t *testing.T, db *database.DB, client *http.Client, xmltvURL string) {
+	t.Helper()
+	tv, err := xmltv.Fetch(context.Background(), client, xmltvURL)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+}
+
+func setupStartupTest(t *testing.T) (*countingServer, *database.DB, string) {
+	t.Helper()
+	xmlBytes, err := os.ReadFile("testdata/sample.xml")
+	if err != nil {
+		t.Fatalf("read sample.xml: %v", err)
+	}
+	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
+
+	dir := t.TempDir()
+	db, err := database.Open(filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv", images.NewCache(&http.Client{}, filepath.Join(dir, "images")), nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	populateDB(t, db, &http.Client{}, mockSrv.URL+"/xmltv")
+	mockSrv.resetRequests()
+
+	return mockSrv, db, mockSrv.URL + "/xmltv"
+}
+
 func newIntegrationServer(t *testing.T, xmltvURL string) *httptest.Server {
 	t.Helper()
 	dir := t.TempDir()
@@ -444,33 +476,10 @@ func TestStartup_FreshInstall_AlwaysFetches(t *testing.T) {
 }
 
 func TestStartup_ExistingData_SkipsFetch(t *testing.T) {
-	xmlBytes, err := os.ReadFile("testdata/sample.xml")
-	if err != nil {
-		t.Fatalf("read sample.xml: %v", err)
-	}
-	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
-
-	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv", images.NewCache(&http.Client{}, filepath.Join(dir, "images")), nil, nil, nil)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	defer db.Close()
-
-	// Pre-populate the database to simulate a prior successful run.
-	tv, err := xmltv.Fetch(context.Background(), &http.Client{}, mockSrv.URL+"/xmltv")
-	if err != nil {
-		t.Fatalf("Fetch: %v", err)
-	}
-	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
-		t.Fatalf("Refresh: %v", err)
-	}
-
-	// Reset the counter so we only count requests made by runInitialRefresh.
-	mockSrv.resetRequests()
+	mockSrv, db, xmltvURL := setupStartupTest(t)
 
 	// Simulate a restart with data present and refreshOnStart=false (the default).
-	runInitialRefresh(db, &http.Client{}, mockSrv.URL+"/xmltv", time.Hour, false)
+	runInitialRefresh(db, &http.Client{}, xmltvURL, time.Hour, false)
 
 	if count := mockSrv.requestCount(); count != 0 {
 		t.Errorf("expected 0 XMLTV requests when data exists and REFRESH_ON_START=false, got %d", count)
@@ -478,32 +487,10 @@ func TestStartup_ExistingData_SkipsFetch(t *testing.T) {
 }
 
 func TestStartup_RefreshOnStart_FetchesEvenWithData(t *testing.T) {
-	xmlBytes, err := os.ReadFile("testdata/sample.xml")
-	if err != nil {
-		t.Fatalf("read sample.xml: %v", err)
-	}
-	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
-
-	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "test.db"), 7, mockSrv.URL+"/xmltv", images.NewCache(&http.Client{}, filepath.Join(dir, "images")), nil, nil, nil)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	defer db.Close()
-
-	// Pre-populate the database.
-	tv, err := xmltv.Fetch(context.Background(), &http.Client{}, mockSrv.URL+"/xmltv")
-	if err != nil {
-		t.Fatalf("Fetch: %v", err)
-	}
-	if err := db.Refresh(context.Background(), tv, time.Now().Add(time.Hour)); err != nil {
-		t.Fatalf("Refresh: %v", err)
-	}
-
-	mockSrv.resetRequests()
+	mockSrv, db, xmltvURL := setupStartupTest(t)
 
 	// REFRESH_ON_START=true must always fetch, even when data is already present.
-	runInitialRefresh(db, &http.Client{}, mockSrv.URL+"/xmltv", time.Hour, true)
+	runInitialRefresh(db, &http.Client{}, xmltvURL, time.Hour, true)
 
 	if count := mockSrv.requestCount(); count != 1 {
 		t.Errorf("expected 1 XMLTV request with REFRESH_ON_START=true, got %d", count)
