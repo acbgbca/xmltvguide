@@ -68,7 +68,7 @@ func (d *DB) GetAirings(ctx context.Context, date time.Time) ([]model.Airing, er
 
 		a.Start, _ = time.Parse(time.RFC3339, startStr)
 		a.Stop, _ = time.Parse(time.RFC3339, stopStr)
-		json.Unmarshal([]byte(catsJSON), &a.Categories) //nolint:errcheck // malformed JSON yields nil slice, which is acceptable
+		json.Unmarshal([]byte(catsJSON), &a.Categories) //nolint:errcheck,gosec // malformed JSON yields nil slice, which is acceptable
 		a.IsRepeat = isRepeat == 1
 		a.IsPremiere = isPremiere == 1
 

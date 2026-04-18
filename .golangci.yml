@@ -70,6 +70,18 @@ linters:
           - errcheck
         text: "Error return value of `(.*\\.Close|fmt\\.Fprint|fmt\\.Fprintf|.*\\.Write)` is not checked"
 
+      # Suppress G104 (gosec "errors unhandled") in test files for the same
+      # idiomatic patterns already excluded for errcheck:
+      # - .Close() in test teardown
+      # - w.Write() in fake test HTTP handlers
+      # - io.Copy() / resp.Body.Close() when reading test responses
+      # G104 messages do not include the function name, so a path filter is
+      # the correct scope here.
+      - path: "_test\\.go"
+        linters:
+          - gosec
+        text: "G104"
+
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
