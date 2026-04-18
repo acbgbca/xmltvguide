@@ -25,17 +25,31 @@ import (
 //go:embed web
 var webFS embed.FS
 
-func main() {
+type config struct {
+	xmltvURL       string
+	pollInterval   time.Duration
+	retentionDays  int
+	dbPath         string
+	imageCacheDir  string
+	port           string
+	hiddenIDs      []string
+	hiddenLCNs     []int
+	stripWords     []string
+	rssTTL         int
+	refreshOnStart bool
+}
+
+func parseConfig() (config, error) {
 	xmltvURL := os.Getenv("XMLTV_URL")
 	if xmltvURL == "" {
-		log.Fatal("XMLTV_URL environment variable is required")
+		return config{}, fmt.Errorf("XMLTV_URL environment variable is required")
 	}
 
 	pollInterval := 12 * time.Hour
 	if v := os.Getenv("POLL_INTERVAL"); v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil {
-			log.Fatalf("invalid POLL_INTERVAL %q: %v", v, err) //nolint:gosec // G706: value is from admin-configured env var, not user input
+			return config{}, fmt.Errorf("invalid POLL_INTERVAL %q: %w", v, err)
 		}
 		pollInterval = d
 	}
@@ -44,7 +58,7 @@ func main() {
 	if v := os.Getenv("RETENTION_DAYS"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 1 {
-			log.Fatalf("invalid RETENTION_DAYS %q: must be a positive integer", v) //nolint:gosec // G706: value is from admin-configured env var, not user input
+			return config{}, fmt.Errorf("invalid RETENTION_DAYS %q: must be a positive integer", v)
 		}
 		retentionDays = n
 	}
@@ -67,41 +81,6 @@ func main() {
 	hiddenIDs, hiddenLCNs := parseHiddenChannels(os.Getenv("HIDDEN_CHANNELS"))
 	stripWords := parseStripWords(os.Getenv("CHANNEL_NAME_STRIP"))
 
-	// Ensure the database directory exists (relevant when running outside Docker).
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0750); err != nil {
-		log.Fatalf("creating database directory %s: %v", filepath.Dir(dbPath), err) //nolint:gosec // G706: value is from admin-configured env var, not user input
-	}
-
-	// Ensure the image cache directory exists.
-	if err := os.MkdirAll(filepath.Join(imageCacheDir, "channels"), 0750); err != nil {
-		log.Fatalf("creating image cache directory %s: %v", imageCacheDir, err) //nolint:gosec // G706: value is from admin-configured env var, not user input
-	}
-
-	httpClient := &http.Client{Timeout: 5 * time.Minute}
-
-	imageCache := images.NewCache(httpClient, imageCacheDir)
-
-	db, err := database.Open(dbPath, retentionDays, xmltvURL, imageCache, hiddenIDs, hiddenLCNs, stripWords)
-	if err != nil {
-		log.Fatalf("opening database: %v", err)
-	}
-
-	refreshOnStart := os.Getenv("REFRESH_ON_START") == "true"
-	runInitialRefresh(db, httpClient, xmltvURL, pollInterval, refreshOnStart)
-
-	// Background refresh goroutine.
-	ticker := time.NewTicker(pollInterval)
-	go func() {
-		defer ticker.Stop()
-		for range ticker.C {
-			if err := refresh(db, httpClient, xmltvURL, pollInterval); err != nil {
-				log.Printf("refresh error: %v", err)
-			}
-		}
-	}()
-
-	mux := http.NewServeMux()
-
 	rssTTL := 0
 	if v := os.Getenv("RSS_TTL"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -109,17 +88,69 @@ func main() {
 		}
 	}
 
-	apiHandler := api.New(db, rssTTL)
+	refreshOnStart := os.Getenv("REFRESH_ON_START") == "true"
+
+	return config{
+		xmltvURL:       xmltvURL,
+		pollInterval:   pollInterval,
+		retentionDays:  retentionDays,
+		dbPath:         dbPath,
+		imageCacheDir:  imageCacheDir,
+		port:           port,
+		hiddenIDs:      hiddenIDs,
+		hiddenLCNs:     hiddenLCNs,
+		stripWords:     stripWords,
+		rssTTL:         rssTTL,
+		refreshOnStart: refreshOnStart,
+	}, nil
+}
+
+func run(cfg config) error {
+	// Ensure the database directory exists (relevant when running outside Docker).
+	if err := os.MkdirAll(filepath.Dir(cfg.dbPath), 0750); err != nil {
+		return fmt.Errorf("creating database directory %s: %w", filepath.Dir(cfg.dbPath), err)
+	}
+
+	// Ensure the image cache directory exists.
+	if err := os.MkdirAll(filepath.Join(cfg.imageCacheDir, "channels"), 0750); err != nil {
+		return fmt.Errorf("creating image cache directory %s: %w", cfg.imageCacheDir, err)
+	}
+
+	httpClient := &http.Client{Timeout: 5 * time.Minute}
+
+	imageCache := images.NewCache(httpClient, cfg.imageCacheDir)
+
+	db, err := database.Open(cfg.dbPath, cfg.retentionDays, cfg.xmltvURL, imageCache, cfg.hiddenIDs, cfg.hiddenLCNs, cfg.stripWords)
+	if err != nil {
+		return fmt.Errorf("opening database: %w", err)
+	}
+
+	runInitialRefresh(db, httpClient, cfg.xmltvURL, cfg.pollInterval, cfg.refreshOnStart)
+
+	// Background refresh goroutine.
+	ticker := time.NewTicker(cfg.pollInterval)
+	go func() {
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := refresh(db, httpClient, cfg.xmltvURL, cfg.pollInterval); err != nil {
+				log.Printf("refresh error: %v", err)
+			}
+		}
+	}()
+
+	mux := http.NewServeMux()
+
+	apiHandler := api.New(db, cfg.rssTTL)
 	apiHandler.RegisterRoutes(mux)
 
 	webContent, err := fs.Sub(webFS, "web")
 	if err != nil {
-		log.Fatalf("embedding web files: %v", err)
+		return fmt.Errorf("embedding web files: %w", err)
 	}
 	mux.Handle("/", spaHandler(http.FS(webContent)))
 
 	srv := &http.Server{
-		Addr:              ":" + port,
+		Addr:              ":" + cfg.port,
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
@@ -131,7 +162,7 @@ func main() {
 	}()
 
 	log.Printf("TV Guide starting on :%s (poll: %s, retention: %d days, db: %s)", //nolint:gosec // G706: values are from admin-configured env vars, not user input
-		port, pollInterval, retentionDays, dbPath)
+		cfg.port, cfg.pollInterval, cfg.retentionDays, cfg.dbPath)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -146,6 +177,17 @@ func main() {
 		log.Printf("forced shutdown: %v", err)
 	}
 	_ = db.Close()
+	return nil
+}
+
+func main() {
+	cfg, err := parseConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := run(cfg); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func runInitialRefresh(db *database.DB, client *http.Client, xmltvURL string, pollInterval time.Duration, refreshOnStart bool) {
