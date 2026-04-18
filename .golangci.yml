@@ -82,6 +82,15 @@ linters:
           - gosec
         text: "G104"
 
+      # Suppress G104 for w.Write() calls to http.ResponseWriter in production
+      # API handlers. Once headers are sent the error cannot be recovered, so
+      # silently ignoring the return value is the correct pattern here.
+      - path: "internal/api/"
+        source: "w\\.Write"
+        linters:
+          - gosec
+        text: "G104"
+
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
