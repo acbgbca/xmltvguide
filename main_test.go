@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"testing"
 	"time"
 )
@@ -172,13 +171,12 @@ func TestParseConfig_NegativeRssTTLIsIgnored(t *testing.T) {
 	t.Setenv("RETENTION_DAYS", "")
 	t.Setenv("RSS_TTL", "-5")
 
-	// Ensure no leftover env vars from other tests.
-	os.Unsetenv("DB_PATH")
-	os.Unsetenv("IMAGE_CACHE_DIR")
-	os.Unsetenv("PORT")
-	os.Unsetenv("HIDDEN_CHANNELS")
-	os.Unsetenv("CHANNEL_NAME_STRIP")
-	os.Unsetenv("REFRESH_ON_START")
+	t.Setenv("DB_PATH", "")
+	t.Setenv("IMAGE_CACHE_DIR", "")
+	t.Setenv("PORT", "")
+	t.Setenv("HIDDEN_CHANNELS", "")
+	t.Setenv("CHANNEL_NAME_STRIP", "")
+	t.Setenv("REFRESH_ON_START", "")
 
 	cfg, err := parseConfig()
 	if err != nil {
