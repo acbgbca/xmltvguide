@@ -82,14 +82,14 @@ linters:
           - gosec
         text: "G104"
 
-      # Suppress G104 for w.Write() calls to http.ResponseWriter in production
-      # API handlers. Once headers are sent the error cannot be recovered, so
-      # silently ignoring the return value is the correct pattern here.
+      # Suppress gosec findings on w.Write() calls to http.ResponseWriter in
+      # production API handlers. G104 (errors unhandled) and G705 (XSS taint)
+      # are both false positives: the data is either a constant or loaded from
+      # the local database, and errors after headers are sent cannot be recovered.
       - path: "internal/api/"
         source: "w\\.Write"
         linters:
           - gosec
-        text: "G104"
 
 issues:
   max-issues-per-linter: 0
