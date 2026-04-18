@@ -12,7 +12,7 @@ type Clock interface {
 
 type realClock struct{ loc *time.Location }
 
-func (c realClock) Now() time.Time         { return time.Now() }
+func (c realClock) Now() time.Time           { return time.Now() }
 func (c realClock) Location() *time.Location { return c.loc }
 func (c realClock) EndOfToday() time.Time {
 	now := c.Now().In(c.loc)
@@ -24,7 +24,7 @@ type fixedClock struct {
 	loc *time.Location
 }
 
-func (c fixedClock) Now() time.Time         { return c.t }
+func (c fixedClock) Now() time.Time           { return c.t }
 func (c fixedClock) Location() *time.Location { return c.loc }
 func (c fixedClock) EndOfToday() time.Time {
 	now := c.t.In(c.loc)
