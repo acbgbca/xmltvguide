@@ -1,0 +1,51 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_input.path // empty' | { read -r f; echo \"$f\" | grep -q '\\.go$' && golangci-lint run --fix \"$(dirname \"$f\")\" 2>/dev/null || true; }",
+            "statusMessage": "Running golangci-lint --fix..."
+          }
+        ]
+      }
+    ]
+  },
+  "model": "sonnet",
+  "env": {
+    "MAX_THINKING_TOKENS": "10000",
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "50",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "haiku"
+  },
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(go get:*)",
+      "Bash(go mod:*)",
+      "Bash(where go:*)",
+      "Read(//usr/local/go/bin/**)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(gh issue:*)",
+      "Read(//usr/local/bin/**)",
+      "Bash(go build:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker context:*)",
+      "Bash(docker info:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr:*)",
+      "Bash(go test:*)",
+      "Bash(go version:*)",
+      "Bash(gh repo:*)",
+      "Bash(python3 -c \":*)"
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash .claude/statusline.sh"
+  }
+}
