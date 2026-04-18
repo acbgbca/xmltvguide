@@ -921,7 +921,12 @@ func TestSearch_AiringsOrderedByStartTime(t *testing.T) {
 // search queries deterministic regardless of when the test runs.
 type fixedClock struct{ t time.Time }
 
-func (c fixedClock) Now() time.Time { return c.t }
+func (c fixedClock) Now() time.Time           { return c.t }
+func (c fixedClock) Location() *time.Location { return time.UTC }
+func (c fixedClock) EndOfToday() time.Time {
+	now := c.t.In(time.UTC)
+	return time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, time.UTC)
+}
 
 func TestSearch_TodayFilter_ExcludesTomorrow(t *testing.T) {
 	dir := t.TempDir()

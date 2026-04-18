@@ -407,9 +407,11 @@ func TestRefresh_IconRedownloadsIfURLChanged(t *testing.T) {
 
 // TestRefresh_FTSRebuildSucceedsOnSubsequentRefresh verifies that a second
 // Refresh correctly clears and rebuilds the FTS index when it already contains
-// data. Regression test for GitHub issue #87 where DELETE FROM airings_fts
-// failed in scratch Docker containers (no /tmp directory) on the second
-// refresh, because FTS5 segment operations require a writable temp directory.
+// data. Regression test for GitHub issues #87 and #231: FTS5 segment operations
+// require a writable temp directory (SQLITE_IOERR_GETTEMPPATH, error 6410). In
+// the scratch Docker image /tmp must exist AND be world-writable (1777); the
+// original #87 fix added /tmp but left it root:0755, which fails for the
+// non-root container user (UID 65534).
 func TestRefresh_FTSRebuildSucceedsOnSubsequentRefresh(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
@@ -1244,7 +1246,7 @@ func nowNextTV() (*xmltv.TV, time.Time) {
 func TestGetNowNext_CurrentAndNext(t *testing.T) {
 	db := openTestDB(t)
 	tv, now := nowNextTV()
-	db.SetClock(database.FixedClock(now))
+	db.SetClock(database.FixedClock(now, time.UTC))
 	if err := db.Refresh(context.Background(), tv, now.Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
@@ -1282,7 +1284,7 @@ func TestGetNowNext_CurrentAndNext(t *testing.T) {
 func TestGetNowNext_NullCurrent(t *testing.T) {
 	db := openTestDB(t)
 	tv, now := nowNextTV()
-	db.SetClock(database.FixedClock(now))
+	db.SetClock(database.FixedClock(now, time.UTC))
 	if err := db.Refresh(context.Background(), tv, now.Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
@@ -1314,7 +1316,7 @@ func TestGetNowNext_NullCurrent(t *testing.T) {
 func TestGetNowNext_BothNull(t *testing.T) {
 	db := openTestDB(t)
 	tv, now := nowNextTV()
-	db.SetClock(database.FixedClock(now))
+	db.SetClock(database.FixedClock(now, time.UTC))
 	if err := db.Refresh(context.Background(), tv, now.Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
@@ -1465,7 +1467,7 @@ func TestSearchBrowse_ExcludesRepeats(t *testing.T) {
 func TestGetNowNext_SortOrder(t *testing.T) {
 	db := openTestDB(t)
 	tv, now := nowNextTV()
-	db.SetClock(database.FixedClock(now))
+	db.SetClock(database.FixedClock(now, time.UTC))
 	if err := db.Refresh(context.Background(), tv, now.Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}
@@ -1522,7 +1524,7 @@ func TestGetAirings_AcceptsContext(t *testing.T) {
 func TestGetNowNext_AcceptsContext(t *testing.T) {
 	db := openTestDB(t)
 	tv, now := nowNextTV()
-	db.SetClock(database.FixedClock(now))
+	db.SetClock(database.FixedClock(now, time.UTC))
 	if err := db.Refresh(context.Background(), tv, now.Add(time.Hour)); err != nil {
 		t.Fatalf("Refresh: %v", err)
 	}

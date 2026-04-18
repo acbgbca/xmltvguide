@@ -244,7 +244,7 @@ func Open(path string, retentionDays int, sourceURL string, imageCache *images.C
 		retentionDays: retentionDays,
 		sourceURL:     sourceURL,
 		imageCache:    imageCache,
-		clock:         realClock{},
+		clock:         realClock{loc: time.Local},
 		hiddenIDs:     hiddenIDs,
 		hiddenLCNs:    hiddenLCNs,
 		stripWords:    stripWords,
