@@ -81,11 +81,70 @@ export function triggerSearch() {
     state.searchDebounce = setTimeout(performSearch, 300);
 }
 
+function buildGroupHeader() {
+    const header = document.createElement('div');
+    header.className = 'search-group-header';
+
+    const config = getCurrentSearchConfig();
+    const existingFav = findMatchingFavourite(config.query, config.mode, config.categories);
+
+    const starBtn = document.createElement('button');
+    starBtn.className = 'search-fav-btn';
+    starBtn.textContent = existingFav ? '\u2605' : '\u2606'; // ★ or ☆
+    starBtn.classList.toggle('active', !!existingFav);
+    starBtn.title = existingFav ? 'Remove from favourites' : 'Save as favourite';
+    starBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const cfg = getCurrentSearchConfig();
+        const match = findMatchingFavourite(cfg.query, cfg.mode, cfg.categories);
+        if (match) {
+            removeFavouriteSearch(match.id);
+            starBtn.textContent = '\u2606';
+            starBtn.classList.remove('active');
+            starBtn.title = 'Save as favourite';
+        } else {
+            addFavouriteSearch(cfg);
+            starBtn.textContent = '\u2605';
+            starBtn.classList.add('active');
+            starBtn.title = 'Remove from favourites';
+        }
+    });
+
+    return { header, starBtn };
+}
+
+function buildAiringRow(airing, title) {
+    const airingEl = document.createElement('div');
+    airingEl.className = 'search-airing';
+    airingEl.addEventListener('click', () => openSearchAiringModal(airing, title));
+
+    const channelEl = document.createElement('span');
+    channelEl.className = 'search-airing-channel';
+    channelEl.textContent = airing.channelName || airing.channelId;
+    airingEl.appendChild(channelEl);
+
+    const timeEl = document.createElement('span');
+    timeEl.className = 'search-airing-time';
+    timeEl.textContent = formatSearchDate(new Date(airing.startTime));
+    airingEl.appendChild(timeEl);
+
+    if (airing.episodeNumDisplay || airing.subTitle) {
+        const epEl = document.createElement('span');
+        epEl.className = 'search-airing-episode';
+        const parts = [];
+        if (airing.episodeNumDisplay) parts.push(airing.episodeNumDisplay);
+        if (airing.subTitle) parts.push(airing.subTitle);
+        epEl.textContent = parts.join(' - ');
+        airingEl.appendChild(epEl);
+    }
+
+    return airingEl;
+}
+
 function renderSearchResults() {
     const container = document.getElementById('searchResults');
     container.innerHTML = '';
 
-    // Filter out hidden channels
     const filtered = [];
     for (const group of state.searchResults) {
         const visibleAirings = group.airings.filter(a => !isHidden(a.channelId));
@@ -103,69 +162,17 @@ function renderSearchResults() {
         const groupEl = document.createElement('div');
         groupEl.className = 'search-group';
 
-        // Title heading with favourite star
-        const header = document.createElement('div');
-        header.className = 'search-group-header';
-
         const titleEl = document.createElement('h3');
         titleEl.className = 'search-group-title';
         titleEl.textContent = group.title;
+
+        const { header, starBtn } = buildGroupHeader();
         header.appendChild(titleEl);
-
-        const starBtn = document.createElement('button');
-        starBtn.className = 'search-fav-btn';
-        const config = getCurrentSearchConfig();
-        const existingFav = findMatchingFavourite(config.query, config.mode, config.categories);
-        starBtn.textContent = existingFav ? '\u2605' : '\u2606'; // ★ or ☆
-        starBtn.classList.toggle('active', !!existingFav);
-        starBtn.title = existingFav ? 'Remove from favourites' : 'Save as favourite';
-        starBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const cfg = getCurrentSearchConfig();
-            const match = findMatchingFavourite(cfg.query, cfg.mode, cfg.categories);
-            if (match) {
-                removeFavouriteSearch(match.id);
-                starBtn.textContent = '\u2606';
-                starBtn.classList.remove('active');
-                starBtn.title = 'Save as favourite';
-            } else {
-                addFavouriteSearch(cfg);
-                starBtn.textContent = '\u2605';
-                starBtn.classList.add('active');
-                starBtn.title = 'Remove from favourites';
-            }
-        });
         header.appendChild(starBtn);
-
         groupEl.appendChild(header);
 
-        // Airings list
         for (const airing of group.airings) {
-            const airingEl = document.createElement('div');
-            airingEl.className = 'search-airing';
-            airingEl.addEventListener('click', () => openSearchAiringModal(airing, group.title));
-
-            const channelEl = document.createElement('span');
-            channelEl.className = 'search-airing-channel';
-            channelEl.textContent = airing.channelName || airing.channelId;
-            airingEl.appendChild(channelEl);
-
-            const timeEl = document.createElement('span');
-            timeEl.className = 'search-airing-time';
-            timeEl.textContent = formatSearchDate(new Date(airing.startTime));
-            airingEl.appendChild(timeEl);
-
-            if (airing.episodeNumDisplay || airing.subTitle) {
-                const epEl = document.createElement('span');
-                epEl.className = 'search-airing-episode';
-                const parts = [];
-                if (airing.episodeNumDisplay) parts.push(airing.episodeNumDisplay);
-                if (airing.subTitle) parts.push(airing.subTitle);
-                epEl.textContent = parts.join(' - ');
-                airingEl.appendChild(epEl);
-            }
-
-            groupEl.appendChild(airingEl);
+            groupEl.appendChild(buildAiringRow(airing, group.title));
         }
 
         container.appendChild(groupEl);
