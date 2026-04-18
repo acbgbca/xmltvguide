@@ -38,9 +38,9 @@ function orderedVisibleChannels() {
     const favs    = visible.filter(ch =>  isFavourite(ch.id));
     const rest    = visible.filter(ch => !isFavourite(ch.id));
     rest.sort((a, b) => {
-        if (a.lcn != null && b.lcn != null) return a.lcn - b.lcn;
-        if (a.lcn != null) return -1;
-        if (b.lcn != null) return  1;
+        if (a.lcn !== null && b.lcn !== null) return a.lcn - b.lcn;
+        if (a.lcn !== null) return -1;
+        if (b.lcn !== null) return  1;
         return 0; // both absent — preserve source order
     });
     return [...favs, ...rest];
@@ -75,8 +75,7 @@ export function renderGuide() {
     inner.style.width  = CONFIG.TOTAL_WIDTH + 'px';
     inner.style.height = totalHeight + 'px';
 
-    for (let i = 0; i < channels.length; i++) {
-        const ch  = channels[i];
+    for (const [i, ch] of channels.entries()) {
         const top = i * CONFIG.ROW_HEIGHT;
 
         // Channel label
@@ -96,7 +95,7 @@ export function renderGuide() {
             img.onerror   = () => img.remove();
             topRow.appendChild(img);
         }
-        if (ch.lcn != null) {
+        if (ch.lcn !== null) {
             const lcnEl = document.createElement('span');
             lcnEl.className   = 'channel-lcn';
             lcnEl.textContent = ch.lcn;
