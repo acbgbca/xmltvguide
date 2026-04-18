@@ -25,7 +25,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o tvguide .
 # SQLite FTS5 segment operations require a writable temp directory even when
 # PRAGMA temp_store=MEMORY is set; without /tmp the second+ refresh fails
 # with SQLITE_IOERR_WRITE (6410). See GitHub issue #87.
-RUN mkdir /scratch_tmp
+RUN mkdir /scratch_tmp && chmod 1777 /scratch_tmp
 
 # ── Runtime stage ─────────────────────────────────────────────────
 # scratch: zero OS overhead (~0 MB vs ~8 MB for alpine).
