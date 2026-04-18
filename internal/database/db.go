@@ -74,6 +74,15 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     applied_at TEXT    NOT NULL
 );`
 
+// migration represents a single schema change to apply to the database.
+// populateSQL is optional: when non-empty it is executed immediately after sql
+// to back-fill derived/computed tables (e.g. FTS indexes, category caches).
+type migration struct {
+	version     int
+	sql         string
+	populateSQL string
+}
+
 // migrations is the ordered list of schema changes applied after the base schema.
 // Append new entries; never modify or remove existing ones.
 //
@@ -85,11 +94,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 //
 // Always include populateSQL for migrations that create derived tables; without
 // it those tables remain empty until the next scheduled XMLTV poll (up to 12 h).
-var migrations = []struct {
-	version     int
-	sql         string
-	populateSQL string
-}{
+var migrations = []migration{
 	{1, `ALTER TABLE channels ADD COLUMN lcn INTEGER`, ""},
 	{2, `ALTER TABLE channels ADD COLUMN icon_url TEXT`, ""},
 	{3, `CREATE VIRTUAL TABLE IF NOT EXISTS airings_fts USING fts5(
@@ -103,6 +108,44 @@ var migrations = []struct {
 		WHERE value IS NOT NULL AND value != ''`},
 }
 
+// applyMigration applies a single migration to the database. It checks whether
+// the migration has already been recorded, runs the DDL and optional populateSQL,
+// and records the applied version in schema_migrations.
+func applyMigration(ctx context.Context, db *sql.DB, m migration) error {
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, m.version).Scan(&count); err != nil {
+		return fmt.Errorf("checking migration %d: %w", m.version, err)
+	}
+	if count > 0 {
+		return nil
+	}
+	// Before running, check whether the effect is already present.
+	// This handles databases that were created with the column already in the
+	// base schema, or that ran the old silent ALTER TABLE approach.
+	if already, err := migrationAlreadyApplied(db, m.version); err != nil {
+		return fmt.Errorf("pre-checking migration %d: %w", m.version, err)
+	} else if already {
+		if _, err := db.ExecContext(ctx, `INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
+			m.version, time.Now().UTC().Format(time.RFC3339)); err != nil {
+			return fmt.Errorf("recording migration %d: %w", m.version, err)
+		}
+		return nil
+	}
+	if _, err := db.ExecContext(ctx, m.sql); err != nil {
+		return fmt.Errorf("applying migration %d: %w", m.version, err)
+	}
+	if m.populateSQL != "" {
+		if _, err := db.ExecContext(ctx, m.populateSQL); err != nil {
+			return fmt.Errorf("populating migration %d: %w", m.version, err)
+		}
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
+		m.version, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		return fmt.Errorf("recording migration %d: %w", m.version, err)
+	}
+	return nil
+}
+
 func applyMigrations(db *sql.DB) error {
 	// Migrations run at startup before the server accepts requests;
 	// context.Background() is appropriate — migrations are not cancellable.
@@ -111,36 +154,8 @@ func applyMigrations(db *sql.DB) error {
 		return fmt.Errorf("creating migrations table: %w", err)
 	}
 	for _, m := range migrations {
-		var count int
-		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, m.version).Scan(&count); err != nil {
-			return fmt.Errorf("checking migration %d: %w", m.version, err)
-		}
-		if count > 0 {
-			continue
-		}
-		// Before running, check whether the effect is already present.
-		// This handles databases that were created with the column already in the
-		// base schema, or that ran the old silent ALTER TABLE approach.
-		if already, err := migrationAlreadyApplied(db, m.version); err != nil {
-			return fmt.Errorf("pre-checking migration %d: %w", m.version, err)
-		} else if already {
-			if _, err := db.ExecContext(ctx, `INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
-				m.version, time.Now().UTC().Format(time.RFC3339)); err != nil {
-				return fmt.Errorf("recording migration %d: %w", m.version, err)
-			}
-			continue
-		}
-		if _, err := db.ExecContext(ctx, m.sql); err != nil {
-			return fmt.Errorf("applying migration %d: %w", m.version, err)
-		}
-		if m.populateSQL != "" {
-			if _, err := db.ExecContext(ctx, m.populateSQL); err != nil {
-				return fmt.Errorf("populating migration %d: %w", m.version, err)
-			}
-		}
-		if _, err := db.ExecContext(ctx, `INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
-			m.version, time.Now().UTC().Format(time.RFC3339)); err != nil {
-			return fmt.Errorf("recording migration %d: %w", m.version, err)
+		if err := applyMigration(ctx, db, m); err != nil {
+			return err
 		}
 	}
 	return nil
