@@ -3,6 +3,9 @@ import { fetchCategories, fetchChannels } from '../api.js';
 import { openSearchAiringModal } from '../components/modal.js';
 import { state } from '../state.js';
 
+const CLASS_LOADING = 'explore-loading';
+const CLASS_ERROR   = 'explore-error';
+
 const MODES = [
     { id: 'now-next',   label: 'Now/Next' },
     { id: 'categories', label: 'Categories' },
@@ -64,26 +67,22 @@ async function renderCategoriesMode(container) {
     const params = new URLSearchParams(window.location.search);
     const selectedCategory = params.get('category');
 
-    if (selectedCategory) {
-        await renderCategoryResults(container, selectedCategory);
-    } else {
-        await renderCategoryPicker(container);
-    }
+    await (selectedCategory ? renderCategoryResults(container, selectedCategory) : renderCategoryPicker(container));
 }
 
 async function renderCategoryPicker(container) {
     const loading = document.createElement('div');
-    loading.className = 'explore-loading';
+    loading.className = CLASS_LOADING;
     loading.textContent = 'Loading…';
     container.appendChild(loading);
 
     let categories;
     try {
         categories = await fetchCategories();
-    } catch (err) {
+    } catch {
         container.innerHTML = '';
         const error = document.createElement('div');
-        error.className = 'explore-error';
+        error.className = CLASS_ERROR;
         error.textContent = 'Failed to load categories. Please try again.';
         container.appendChild(error);
         return;
@@ -130,7 +129,7 @@ async function renderCategoryResults(container, category) {
 
     // Loading indicator
     const loading = document.createElement('div');
-    loading.className = 'explore-loading';
+    loading.className = CLASS_LOADING;
     loading.textContent = 'Loading…';
     container.appendChild(loading);
 
@@ -144,10 +143,10 @@ async function renderCategoryResults(container, category) {
         const res = await fetch('/api/search?' + searchParams);
         if (!res.ok) throw new Error(`/api/search returned ${res.status}`);
         results = await res.json();
-    } catch (err) {
+    } catch {
         loading.remove();
         const error = document.createElement('div');
-        error.className = 'explore-error';
+        error.className = CLASS_ERROR;
         error.textContent = 'Failed to load results. Please try again.';
         container.appendChild(error);
         return;
@@ -212,7 +211,7 @@ async function renderCategoryResults(container, category) {
 
 async function renderPremieresMode(container) {
     const loading = document.createElement('div');
-    loading.className = 'explore-loading';
+    loading.className = CLASS_LOADING;
     loading.textContent = 'Loading…';
     container.appendChild(loading);
 
@@ -221,10 +220,10 @@ async function renderPremieresMode(container) {
         const res = await fetch('/api/search?is_premiere=true&include_past=false');
         if (!res.ok) throw new Error(`/api/search returned ${res.status}`);
         results = await res.json();
-    } catch (err) {
+    } catch {
         container.innerHTML = '';
         const error = document.createElement('div');
-        error.className = 'explore-error';
+        error.className = CLASS_ERROR;
         error.textContent = 'Failed to load premieres. Please try again.';
         container.appendChild(error);
         return;
@@ -408,7 +407,7 @@ async function renderTimeSlotMode(container) {
 
         results.innerHTML = '';
         const loading = document.createElement('div');
-        loading.className = 'explore-loading';
+        loading.className = CLASS_LOADING;
         loading.textContent = 'Loading…';
         results.appendChild(loading);
 
@@ -423,10 +422,10 @@ async function renderTimeSlotMode(container) {
             ]);
             guideData = guideResult;
             if (needChannels) state.channels = channelData;
-        } catch (err) {
+        } catch {
             results.innerHTML = '';
             const error = document.createElement('div');
-            error.className = 'explore-error';
+            error.className = CLASS_ERROR;
             error.textContent = 'Failed to load guide data. Please try again.';
             results.appendChild(error);
             return;
@@ -449,7 +448,7 @@ async function renderTimeSlotMode(container) {
 
 async function renderNowNextMode(container) {
     const loading = document.createElement('div');
-    loading.className = 'explore-loading';
+    loading.className = CLASS_LOADING;
     loading.textContent = 'Loading…';
     container.appendChild(loading);
 
@@ -458,10 +457,10 @@ async function renderNowNextMode(container) {
         const res = await fetch('/api/explore/now-next');
         if (!res.ok) throw new Error(`/api/explore/now-next returned ${res.status}`);
         entries = await res.json();
-    } catch (err) {
+    } catch {
         container.innerHTML = '';
         const error = document.createElement('div');
-        error.className = 'explore-error';
+        error.className = CLASS_ERROR;
         error.textContent = 'Failed to load data. Please try again.';
         container.appendChild(error);
         return;
