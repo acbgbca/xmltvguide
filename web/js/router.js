@@ -10,32 +10,36 @@ import { getTodayString } from './utils/date.js';
 
 export const PAGES = ['guide', 'search', 'favourites', 'explore', 'settings'];
 
+const PAGE_INIT = {
+    settings: renderSettingsPanel,
+    search: loadSearchPageCategories,
+    favourites: renderFavouritesPage,
+    explore: loadExplorePage,
+};
+
 export function getPageFromPath() {
     const path = window.location.pathname.replace(/^\/+/, '').split('?')[0];
     if (PAGES.includes(path)) return path;
     return 'guide';
 }
 
+function buildURL(page) {
+    if (page === 'guide') {
+        const today = getTodayString();
+        const dateParam = state.currentDate && state.currentDate !== today
+            ? '?date=' + state.currentDate
+            : '';
+        return '/' + dateParam;
+    }
+    return '/' + page;
+}
+
 export function navigateToPage(page, { pushState = true } = {}) {
     if (!PAGES.includes(page)) page = 'guide';
     state.activePage = page;
 
-    // Update URL
     if (pushState) {
-        let url;
-        if (page === 'guide') {
-            // Restore the guide's current date parameter from state rather than
-            // relying on window.location.search, which may be empty when returning
-            // from another tab (e.g. /search has no query string).
-            const today = getTodayString();
-            const dateParam = state.currentDate && state.currentDate !== today
-                ? '?date=' + state.currentDate
-                : '';
-            url = '/' + dateParam;
-        } else {
-            url = '/' + page;
-        }
-        history.pushState({}, '', url);
+        history.pushState({}, '', buildURL(page));
     }
 
     // Show/hide pages
@@ -59,23 +63,6 @@ export function navigateToPage(page, { pushState = true } = {}) {
         stopNowLineTimer();
     }
 
-    // Render settings when switching to that page
-    if (page === 'settings') {
-        renderSettingsPanel();
-    }
-
-    // Load categories when entering search page
-    if (page === 'search') {
-        loadSearchPageCategories();
-    }
-
-    // Load favourites when entering favourites page
-    if (page === 'favourites') {
-        renderFavouritesPage();
-    }
-
-    // Load explore page when entering explore tab
-    if (page === 'explore') {
-        loadExplorePage();
-    }
+    // Run any per-page initialisation
+    PAGE_INIT[page]?.();
 }
