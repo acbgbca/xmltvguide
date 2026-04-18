@@ -107,6 +107,21 @@ func httpGet(t *testing.T, url string) (*http.Response, error) {
 	return http.DefaultClient.Do(req)
 }
 
+func fetchBody(t *testing.T, srv *httptest.Server, path string) string {
+	t.Helper()
+	resp, err := httpGet(t, srv.URL+path)
+	if err != nil {
+		t.Fatalf("GET %s: %v", path, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s: expected 200, got %d", path, resp.StatusCode)
+	}
+	var buf strings.Builder
+	io.Copy(&buf, resp.Body) //nolint:errcheck
+	return buf.String()
+}
+
 func TestIntegration_StaticFiles(t *testing.T) {
 	xmlBytes, err := os.ReadFile("testdata/sample.xml")
 	if err != nil {
@@ -1041,20 +1056,8 @@ func TestIntegration_SearchPage_JSFunctions(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	fetchBody := func(path string) string {
-		t.Helper()
-		resp, err := httpGet(t, srv.URL+path)
-		if err != nil {
-			t.Fatalf("GET %s: %v", path, err)
-		}
-		defer resp.Body.Close()
-		var buf strings.Builder
-		io.Copy(&buf, resp.Body) //nolint:errcheck
-		return buf.String()
-	}
-
-	searchJS := fetchBody("/js/pages/search.js")
-	mainJS := fetchBody("/js/main.js")
+	searchJS := fetchBody(t, srv, "/js/pages/search.js")
+	mainJS := fetchBody(t, srv, "/js/main.js")
 
 	// Search-specific functions live in pages/search.js
 	for _, fn := range []string{
@@ -1185,20 +1188,9 @@ func TestIntegration_FavouritesPage_JSFunctions(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	fetchBody := func(path string) string {
-		resp, err := httpGet(t, srv.URL+path)
-		if err != nil {
-			t.Fatalf("GET %s: %v", path, err)
-		}
-		defer resp.Body.Close()
-		var buf strings.Builder
-		io.Copy(&buf, resp.Body) //nolint:errcheck
-		return buf.String()
-	}
-
-	mainJS := fetchBody("/js/main.js")
-	favouritesJS := fetchBody("/js/pages/favourites.js")
-	storeJS := fetchBody("/js/store/favourites.js")
+	mainJS := fetchBody(t, srv, "/js/main.js")
+	favouritesJS := fetchBody(t, srv, "/js/pages/favourites.js")
+	storeJS := fetchBody(t, srv, "/js/store/favourites.js")
 
 	// Rendering and orchestration functions live in pages/favourites.js
 	for _, fn := range []string{
@@ -1215,7 +1207,7 @@ func TestIntegration_FavouritesPage_JSFunctions(t *testing.T) {
 	}
 
 	// editFavouriteSearch has moved to pages/search.js (alongside router import)
-	searchJS := fetchBody("/js/pages/search.js")
+	searchJS := fetchBody(t, srv, "/js/pages/search.js")
 	if !strings.Contains(searchJS, "editFavouriteSearch") {
 		t.Error("expected editFavouriteSearch to be defined in js/pages/search.js")
 	}
@@ -1224,7 +1216,7 @@ func TestIntegration_FavouritesPage_JSFunctions(t *testing.T) {
 	}
 
 	// router.js now imports renderFavouritesPage from pages/favourites.js
-	routerJS := fetchBody("/js/router.js")
+	routerJS := fetchBody(t, srv, "/js/router.js")
 	if !strings.Contains(routerJS, "pages/favourites.js") {
 		t.Error("expected js/router.js to import from pages/favourites.js")
 	}
@@ -1263,22 +1255,7 @@ func TestIntegration_FavouritesPage_Module(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	fetchBody := func(path string) string {
-		t.Helper()
-		resp, err := httpGet(t, srv.URL+path)
-		if err != nil {
-			t.Fatalf("GET %s: %v", path, err)
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("GET %s: expected 200, got %d", path, resp.StatusCode)
-		}
-		var buf strings.Builder
-		io.Copy(&buf, resp.Body) //nolint:errcheck
-		return buf.String()
-	}
-
-	favouritesJS := fetchBody("/js/pages/favourites.js")
+	favouritesJS := fetchBody(t, srv, "/js/pages/favourites.js")
 
 	// The module exports the page entry point
 	if !strings.Contains(favouritesJS, "renderFavouritesPage") {
@@ -1286,7 +1263,7 @@ func TestIntegration_FavouritesPage_Module(t *testing.T) {
 	}
 
 	// pages/favourites.js is in the service worker pre-cache list
-	swJS := fetchBody("/sw.js")
+	swJS := fetchBody(t, srv, "/sw.js")
 	if !strings.Contains(swJS, "pages/favourites.js") {
 		t.Error("expected sw.js to include js/pages/favourites.js in the cache list")
 	}
@@ -1303,20 +1280,8 @@ func TestIntegration_ErrorLogging_JSFunctions(t *testing.T) {
 	mockSrv := startMockXMLTVServer(t, string(xmlBytes))
 	srv := newIntegrationServer(t, mockSrv.URL)
 
-	fetchBody := func(path string) string {
-		t.Helper()
-		resp, err := httpGet(t, srv.URL+path)
-		if err != nil {
-			t.Fatalf("GET %s: %v", path, err)
-		}
-		defer resp.Body.Close()
-		var buf strings.Builder
-		io.Copy(&buf, resp.Body) //nolint:errcheck
-		return buf.String()
-	}
-
-	apiJS := fetchBody("/js/api.js")
-	mainJS := fetchBody("/js/main.js")
+	apiJS := fetchBody(t, srv, "/js/api.js")
+	mainJS := fetchBody(t, srv, "/js/main.js")
 
 	// api.js must export logError
 	if !strings.Contains(apiJS, "export function logError") {
@@ -1339,8 +1304,8 @@ func TestIntegration_ErrorLogging_JSFunctions(t *testing.T) {
 		t.Error("expected main.js to register unhandledrejection handler")
 	}
 
-	searchJS := fetchBody("/js/pages/search.js")
-	favouritesJS := fetchBody("/js/pages/favourites.js")
+	searchJS := fetchBody(t, srv, "/js/pages/search.js")
+	favouritesJS := fetchBody(t, srv, "/js/pages/favourites.js")
 
 	// All explicit catch sites must call logError with type: 'explicit'.
 	// guide load in main.js; search fetch + categories in search.js;
