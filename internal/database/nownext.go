@@ -128,7 +128,7 @@ func scanAiring(rows *sql.Rows) (*model.Airing, error) {
 
 	a.Start, _ = time.Parse(time.RFC3339, startStr)
 	a.Stop, _ = time.Parse(time.RFC3339, stopStr)
-	json.Unmarshal([]byte(catsJSON), &a.Categories) //nolint:errcheck
+	json.Unmarshal([]byte(catsJSON), &a.Categories) //nolint:errcheck,gosec
 	a.IsRepeat = isRepeat == 1
 	a.IsPremiere = isPremiere == 1
 	return &a, nil
