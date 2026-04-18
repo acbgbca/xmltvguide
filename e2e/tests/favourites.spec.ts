@@ -66,6 +66,21 @@ test.describe('Favourites tab — Single saved search', () => {
     await expect(fav.noResultsMessageInGroup('Evening News')).toContainText('No upcoming airings');
   });
 
+  test('shows error message when search API fails', async ({ page, seedLocalStorage }) => {
+    await seedLocalStorage('tvguide-favourites', SIMPLE_FAV_SEED);
+
+    await page.route('/api/search**', (route) => {
+      route.fulfill({ status: 500, body: 'Internal Server Error' });
+    });
+
+    const fav = new FavouritesPage(page);
+    await fav.goto();
+    await fav.waitForSearchesComplete();
+
+    await expect(fav.noResultsMessageInGroup('Evening News')).toBeVisible();
+    await expect(fav.noResultsMessageInGroup('Evening News')).toContainText('Search failed:');
+  });
+
   test('airing row shows channel name and time', async ({ page, seedLocalStorage }) => {
     await seedLocalStorage('tvguide-favourites', SIMPLE_FAV_SEED);
 
