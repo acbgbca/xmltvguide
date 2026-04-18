@@ -390,6 +390,50 @@ test.describe('Explore tab — Now/Next mode', () => {
 
     await expect(explore.errorMessage).toBeVisible();
   });
+
+  test('clicking a current show opens the programme modal', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto();
+
+    // ch1 current: "News at Noon"
+    const currentDiv = explore.nowNextRow('ch1').locator('.now-next-current');
+    await currentDiv.click();
+
+    await expect(explore.modal).toBeVisible();
+    await expect(explore.modalTitle).toHaveText('News at Noon');
+  });
+
+  test('clicking a next show opens the programme modal', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto();
+
+    // ch1 next: "Afternoon Show"
+    const nextDiv = explore.nowNextRow('ch1').locator('.now-next-next');
+    await nextDiv.click();
+
+    await expect(explore.modal).toBeVisible();
+    await expect(explore.modalTitle).toHaveText('Afternoon Show');
+  });
+
+  test('current show div has pointer cursor', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto();
+
+    const cursor = await explore.nowNextRow('ch1').locator('.now-next-current').evaluate(
+      (el) => (el as HTMLElement).style.cursor
+    );
+    expect(cursor).toBe('pointer');
+  });
+
+  test('next show div has pointer cursor', async ({ page }) => {
+    const explore = new ExplorePage(page);
+    await explore.goto();
+
+    const cursor = await explore.nowNextRow('ch1').locator('.now-next-next').evaluate(
+      (el) => (el as HTMLElement).style.cursor
+    );
+    expect(cursor).toBe('pointer');
+  });
 });
 
 test.describe('Explore tab — Premieres mode', () => {

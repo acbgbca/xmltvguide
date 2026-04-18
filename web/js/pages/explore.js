@@ -1,6 +1,6 @@
 import { formatTime, formatSearchDate, getTodayString } from '../utils/date.js';
 import { fetchCategories, fetchChannels } from '../api.js';
-import { openSearchAiringModal } from '../components/modal.js';
+import { openProgrammeModal, openSearchAiringModal } from '../components/modal.js';
 import { state } from '../state.js';
 
 const CLASS_LOADING = 'explore-loading';
@@ -510,6 +510,9 @@ async function renderNowNextMode(container) {
             remaining.className = 'now-next-remaining';
             remaining.textContent = `ends in ${minsRemaining} min`;
             currentDiv.appendChild(remaining);
+
+            currentDiv.style.cursor = 'pointer';
+            currentDiv.addEventListener('click', () => openProgrammeModal(entry.current));
         } else {
             currentDiv.textContent = 'Nothing airing';
         }
@@ -529,6 +532,9 @@ async function renderNowNextMode(container) {
             nextTime.className = 'now-next-time';
             nextTime.textContent = formatTime(new Date(entry.next.start));
             nextDiv.appendChild(nextTime);
+
+            nextDiv.style.cursor = 'pointer';
+            nextDiv.addEventListener('click', () => openProgrammeModal(entry.next));
 
             row.appendChild(nextDiv);
         }
