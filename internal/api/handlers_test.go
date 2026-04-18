@@ -19,6 +19,9 @@ import (
 	"github.com/acbgbca/xmltvguide/internal/xmltv"
 )
 
+// nowNextFixedNow is the anchor time used by newNowNextServer and its tests.
+var nowNextFixedNow = time.Date(2025, 6, 10, 14, 0, 0, 0, time.UTC)
+
 func TestMain(m *testing.M) {
 	time.Local = time.UTC
 	os.Exit(m.Run())
@@ -1979,9 +1982,9 @@ func TestSearchRSS_LastBuildDate(t *testing.T) {
 //   - ch1 (lcn=1): Show A airing now (13:30–14:30), Show B coming next (14:30–15:00)
 //   - ch2 (lcn=2): no current airing, Show C next (15:00–16:00)
 //   - ch3 (no lcn): no airings at all
-func newNowNextServer(t *testing.T) (*httptest.Server, time.Time) {
+func newNowNextServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	fixedNow := time.Date(2025, 6, 10, 14, 0, 0, 0, time.UTC)
+	fixedNow := nowNextFixedNow
 
 	dir := t.TempDir()
 	db, err := database.Open(
@@ -2034,11 +2037,11 @@ func newNowNextServer(t *testing.T) (*httptest.Server, time.Time) {
 		srv.Close()
 		db.Close()
 	})
-	return srv, fixedNow
+	return srv
 }
 
 func TestGetNowNext_API_StatusOK(t *testing.T) {
-	srv, _ := newNowNextServer(t)
+	srv := newNowNextServer(t)
 	resp, err := httpGet(t, srv.URL+"/api/explore/now-next")
 	if err != nil {
 		t.Fatalf("GET /api/explore/now-next: %v", err)
@@ -2050,7 +2053,8 @@ func TestGetNowNext_API_StatusOK(t *testing.T) {
 }
 
 func TestGetNowNext_API_ResponseShape(t *testing.T) {
-	srv, fixedNow := newNowNextServer(t)
+	srv := newNowNextServer(t)
+	fixedNow := nowNextFixedNow
 	resp, err := httpGet(t, srv.URL+"/api/explore/now-next")
 	if err != nil {
 		t.Fatalf("GET /api/explore/now-next: %v", err)

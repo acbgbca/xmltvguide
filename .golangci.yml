@@ -82,6 +82,21 @@ linters:
           - gosec
         text: "G104"
 
+      # Suppress G306 (gosec "file permissions too permissive") in test files.
+      # Test fixtures written with os.WriteFile(..., 0644) have no security
+      # implications — the files are temporary and scoped to t.TempDir().
+      - path: "_test\\.go"
+        linters:
+          - gosec
+        text: "G306"
+
+      # Allow high cognitive complexity in test functions. Tests legitimately
+      # accumulate complexity through subtests, assertion sequences, and
+      # error-check branches — the metric does not meaningfully apply here.
+      - path: "_test\\.go"
+        linters:
+          - gocognit
+
       # Suppress gosec findings on w.Write() calls to http.ResponseWriter in
       # production API handlers. G104 (errors unhandled) and G705 (XSS taint)
       # are both false positives: the data is either a constant or loaded from
