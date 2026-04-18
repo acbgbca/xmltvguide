@@ -405,7 +405,9 @@ func TestGetChannelIcon_RedownloadsIfMissing(t *testing.T) {
 	if err != nil || localPath == "" {
 		t.Fatalf("EnsureChannelIcon: path=%q err=%v", localPath, err)
 	}
-	os.Remove(localPath)
+	if err := os.Remove(localPath); err != nil {
+		t.Fatalf("failed to delete cached icon: %v", err)
+	}
 
 	// The handler should re-download and still return 200.
 	resp2, err := httpGet(t, srv.URL+"/images/channel/ch1")

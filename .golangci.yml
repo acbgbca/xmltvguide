@@ -61,6 +61,15 @@ linters:
           - cyclop
         text: "calculated cyclomatic complexity.*is (1[6-9]|20),"
 
+      # Suppress errcheck for idiomatic test teardown and test HTTP handler patterns:
+      # - defer resp.Body.Close() — unrecoverable after headers sent; irrelevant in tests
+      # - defer db.Close() / rawDB.Close() — temp-dir-scoped test database teardown
+      # - fmt.Fprint / fmt.Fprintf / w.Write to http.ResponseWriter in test handlers
+      - path: "_test\\.go"
+        linters:
+          - errcheck
+        text: "Error return value of `(.*\\.Close|fmt\\.Fprint|fmt\\.Fprintf|.*\\.Write)` is not checked"
+
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
