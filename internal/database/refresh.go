@@ -115,8 +115,8 @@ func (d *DB) deleteHiddenChannels(ctx context.Context, tx *sql.Tx) error {
 	deleteArgs := make([]any, 0, len(idArgs)+len(lcnArgs))
 	deleteArgs = append(deleteArgs, idArgs...)
 	deleteArgs = append(deleteArgs, lcnArgs...)
-	if _, err := tx.ExecContext(ctx, //nolint:gosec // filterSQL contains only ? placeholders, no user values
-		`DELETE FROM airings WHERE channel_id IN (SELECT id FROM channels WHERE `+filterSQL+`)`,
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM airings WHERE channel_id IN (SELECT id FROM channels WHERE `+filterSQL+`)`, //nolint:gosec // filterSQL contains only ? placeholders, no user values
 		deleteArgs...,
 	); err != nil {
 		return fmt.Errorf("deleting airings for hidden channels: %w", err)
