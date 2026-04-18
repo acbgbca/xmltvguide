@@ -14,9 +14,6 @@ vendor/
 .DS_Store
 Thumbs.db
 
-# Claude Code settings (local only)
-.claude/
-
 # Node / Playwright
 node_modules/
 playwright-report/
