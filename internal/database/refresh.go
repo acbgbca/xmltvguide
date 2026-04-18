@@ -14,11 +14,9 @@ import (
 	"github.com/acbgbca/xmltvguide/internal/xmltv"
 )
 
-// iconState holds the currently stored icon metadata for a channel.
+// iconState holds icon metadata for a channel — both the stored state queried
+// from the database and the resolved state after icon downloading.
 type iconState struct{ localPath, iconURL string }
-
-// resolvedIcon holds the outcome of icon resolution for a channel.
-type resolvedIcon struct{ localPath, iconURL string }
 
 // Refresh atomically loads a parsed XMLTV document into the database,
 // then prunes airings older than the configured retention period.
@@ -131,8 +129,8 @@ func (d *DB) deleteHiddenChannels(ctx context.Context, tx *sql.Tx) error {
 
 // resolveChannelIcons downloads icons for visible channels, re-downloading only
 // when the URL has changed or the local file is missing.
-func (d *DB) resolveChannelIcons(ctx context.Context, channels []xmltv.Channel, hiddenIDs map[string]bool, currentIcons map[string]iconState) map[string]resolvedIcon {
-	resolved := map[string]resolvedIcon{}
+func (d *DB) resolveChannelIcons(ctx context.Context, channels []xmltv.Channel, hiddenIDs map[string]bool, currentIcons map[string]iconState) map[string]iconState {
+	resolved := map[string]iconState{}
 	for _, ch := range channels {
 		if hiddenIDs[ch.ID] || len(ch.Icons) == 0 {
 			continue
@@ -142,7 +140,7 @@ func (d *DB) resolveChannelIcons(ctx context.Context, channels []xmltv.Channel, 
 
 		if d.imageCache == nil {
 			// Cache not configured: store the URL for future use, no local file.
-			resolved[ch.ID] = resolvedIcon{"", incomingURL}
+			resolved[ch.ID] = iconState{"", incomingURL}
 			continue
 		}
 
@@ -161,10 +159,10 @@ func (d *DB) resolveChannelIcons(ctx context.Context, channels []xmltv.Channel, 
 			log.Printf("warning: failed to cache icon for channel %s: %v", ch.ID, err)
 			// Store icon_url even if download failed so the handler can
 			// re-download on demand.
-			resolved[ch.ID] = resolvedIcon{"", incomingURL}
+			resolved[ch.ID] = iconState{"", incomingURL}
 			continue
 		}
-		resolved[ch.ID] = resolvedIcon{localPath, incomingURL}
+		resolved[ch.ID] = iconState{localPath, incomingURL}
 	}
 	return resolved
 }
@@ -193,9 +191,9 @@ func channelLCN(ch xmltv.Channel) any {
 	return nil
 }
 
-// resolvedIconArgs returns the SQL icon and icon_url argument values for a
+// iconStateArgs returns the SQL icon and icon_url argument values for a
 // channel from the resolved icon map. Both are nil when the channel has no icon.
-func resolvedIconArgs(resolved map[string]resolvedIcon, channelID string) (icon, iconURL any) {
+func iconStateArgs(resolved map[string]iconState, channelID string) (icon, iconURL any) {
 	if ri, ok := resolved[channelID]; ok {
 		if ri.localPath != "" {
 			icon = ri.localPath
@@ -227,7 +225,7 @@ func (d *DB) upsertChannels(ctx context.Context, tx *sql.Tx, channels []xmltv.Ch
 		if hiddenIDs[ch.ID] {
 			continue
 		}
-		icon, iconURL := resolvedIconArgs(resolved, ch.ID)
+		icon, iconURL := iconStateArgs(resolved, ch.ID)
 		if _, err := chStmt.ExecContext(ctx, ch.ID, d.channelDisplayName(ch), icon, i, channelLCN(ch), iconURL); err != nil {
 			return fmt.Errorf("upserting channel %s: %w", ch.ID, err)
 		}
