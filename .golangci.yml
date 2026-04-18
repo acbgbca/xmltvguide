@@ -51,6 +51,16 @@ linters:
       excludes:
         - G404   # use of weak random — acceptable for non-cryptographic use
 
+  exclusions:
+    rules:
+      # Allow cyclomatic complexity up to 20 in test files (threshold is 15 for
+      # production code). Tests with complexity 16–20 are acceptable due to
+      # table-driven checks and assertion sequences.
+      - path: "_test\\.go"
+        linters:
+          - cyclop
+        text: "calculated cyclomatic complexity.*is (1[6-9]|20),"
+
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
