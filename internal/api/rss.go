@@ -96,8 +96,7 @@ func (h *Handler) writeSearchRSS(w http.ResponseWriter, r *http.Request, query, 
 	}
 
 	w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
-	// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter
-	w.Write([]byte(xml.Header)) //nolint:errcheck,gosec
+	w.Write([]byte(xml.Header)) /* nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter */ //nolint:errcheck,gosec
 	if err := xml.NewEncoder(w).Encode(rss); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
