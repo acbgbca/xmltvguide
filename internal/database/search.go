@@ -148,7 +148,6 @@ func (d *DB) SearchBrowse(ctx context.Context, categories []string, isPremiere b
 	return d.scanSearchResults(ctx, q, args...)
 }
 
-
 // GetCategories returns all distinct categories sorted alphabetically.
 func (d *DB) GetCategories(ctx context.Context) ([]string, error) {
 	rows, err := d.db.QueryContext(ctx, `SELECT name FROM categories ORDER BY name`)

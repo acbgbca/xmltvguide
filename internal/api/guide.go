@@ -29,3 +29,22 @@ func (h *Handler) getGuide(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) getStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h.db.GetStatus())
 }
+
+func (h *Handler) postGuideRefresh(w http.ResponseWriter, r *http.Request) {
+	if h.refreshFn == nil {
+		http.Error(w, "refresh not configured", http.StatusNotImplemented)
+		return
+	}
+	if r.URL.Query().Get("sync") == "true" {
+		if err := h.refreshFn(); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			writeJSON(w, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]bool{"ok": true})
+		return
+	}
+	go h.refreshFn() //nolint:errcheck
+	w.WriteHeader(http.StatusAccepted)
+}
