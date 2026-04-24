@@ -206,18 +206,21 @@ func healthcheck() error {
 	if port == "" {
 		port = "8080"
 	}
+	if _, err := strconv.Atoi(port); err != nil {
+		return fmt.Errorf("invalid PORT %q: must be a number", port)
+	}
 	url := "http://localhost:" + port + "/api/health"
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil) //nolint:gosec // G704: host is hardcoded to localhost; port is validated as numeric above
 	if err != nil {
 		return err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // G704: see above
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
