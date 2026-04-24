@@ -283,6 +283,12 @@ func (d *DB) SetNextRefresh(t time.Time) {
 	d.mu.Unlock()
 }
 
+// Ping checks database connectivity and FTS availability by running a lightweight probe query.
+func (d *DB) Ping(ctx context.Context) error {
+	_, err := d.db.ExecContext(ctx, `SELECT 1 FROM airings_fts LIMIT 1`)
+	return err
+}
+
 // Close closes the underlying database connection.
 func (d *DB) Close() error {
 	return d.db.Close()

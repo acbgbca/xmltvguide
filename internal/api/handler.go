@@ -20,6 +20,7 @@ type store interface {
 	SearchBrowse(ctx context.Context, categories []string, isPremiere bool, includePast bool, includeRepeats bool, today bool) ([]model.SearchResult, error)
 	GetCategories(ctx context.Context) ([]string, error)
 	GetNowNext(ctx context.Context) ([]model.NowNextEntry, error)
+	Ping(ctx context.Context) error
 }
 
 // Handler holds the HTTP handler dependencies.
@@ -48,6 +49,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /images/channel/{id}", h.serveChannelIcon)
 	mux.HandleFunc("POST /api/debug/log", h.postDebugLog)
 	mux.HandleFunc("POST /api/guide/refresh", h.postGuideRefresh)
+	mux.HandleFunc("GET /api/health", h.getHealth)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

@@ -183,6 +183,14 @@ func run(cfg config) error {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--healthcheck" {
+		if err := healthcheck(); err != nil {
+			log.Printf("healthcheck failed: %v", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	cfg, err := parseConfig()
 	if err != nil {
 		log.Fatal(err)
@@ -190,6 +198,33 @@ func main() {
 	if err := run(cfg); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// healthcheck performs an HTTP GET to /api/health and returns nil on success.
+func healthcheck() error {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	if _, err := strconv.Atoi(port); err != nil {
+		return fmt.Errorf("invalid PORT %q: must be a number", port)
+	}
+	url := "http://localhost:" + port + "/api/health"
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil) //nolint:gosec // G704: host is hardcoded to localhost; port is validated as numeric above
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // G704: see above
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func runInitialRefresh(db *database.DB, client *http.Client, xmltvURL string, pollInterval time.Duration, refreshOnStart bool) {
