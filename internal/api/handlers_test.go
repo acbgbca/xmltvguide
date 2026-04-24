@@ -84,7 +84,7 @@ func newSeededServer(t *testing.T) *httptest.Server {
 	}
 
 	mux := http.NewServeMux()
-	handler := api.New(db, 0)
+	handler := api.New(db, 0, nil)
 	handler.RegisterRoutes(mux)
 
 	srv := httptest.NewServer(mux)
@@ -124,7 +124,7 @@ func newSeededServerWithIcons(t *testing.T, iconSrv *httptest.Server) (*httptest
 	}
 
 	mux := http.NewServeMux()
-	handler := api.New(db, 0)
+	handler := api.New(db, 0, nil)
 	handler.RegisterRoutes(mux)
 
 	srv := httptest.NewServer(mux)
@@ -499,7 +499,7 @@ func newSearchSeededServer(t *testing.T) *httptest.Server {
 	}
 
 	mux := http.NewServeMux()
-	handler := api.New(db, 0)
+	handler := api.New(db, 0, nil)
 	handler.RegisterRoutes(mux)
 
 	srv := httptest.NewServer(mux)
@@ -794,7 +794,7 @@ func TestCategories_EmptyWhenNoData(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	handler := api.New(db, 0)
+	handler := api.New(db, 0, nil)
 	handler.RegisterRoutes(mux)
 
 	srv := httptest.NewServer(mux)
@@ -869,7 +869,7 @@ func TestSearch_AiringsOrderedByStartTime(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	handler := api.New(db, 0)
+	handler := api.New(db, 0, nil)
 	handler.RegisterRoutes(mux)
 
 	srv := httptest.NewServer(mux)
@@ -970,7 +970,7 @@ func TestSearch_TodayFilter_ExcludesTomorrow(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	handler := api.New(db, 0)
+	handler := api.New(db, 0, nil)
 	handler.RegisterRoutes(mux)
 
 	srv := httptest.NewServer(mux)
@@ -1071,7 +1071,7 @@ func TestSearch_TodayFilter_AdvancedMode(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	handler := api.New(db, 0)
+	handler := api.New(db, 0, nil)
 	handler.RegisterRoutes(mux)
 
 	srv := httptest.NewServer(mux)
@@ -1207,7 +1207,7 @@ func newBrowseSeededServer(t *testing.T) *httptest.Server {
 	}
 
 	mux := http.NewServeMux()
-	handler := api.New(db, 0)
+	handler := api.New(db, 0, nil)
 	handler.RegisterRoutes(mux)
 
 	srv := httptest.NewServer(mux)
@@ -1483,7 +1483,7 @@ func newRSSSeededServer(t *testing.T, rssTTL int) *httptest.Server {
 	}
 
 	mux := http.NewServeMux()
-	handler := api.New(db, rssTTL)
+	handler := api.New(db, rssTTL, nil)
 	handler.RegisterRoutes(mux)
 
 	srv := httptest.NewServer(mux)
@@ -2034,7 +2034,7 @@ func newNowNextServer(t *testing.T) *httptest.Server {
 	}
 
 	mux := http.NewServeMux()
-	handler := api.New(db, 0)
+	handler := api.New(db, 0, nil)
 	handler.RegisterRoutes(mux)
 
 	srv := httptest.NewServer(mux)

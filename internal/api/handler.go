@@ -24,15 +24,17 @@ type store interface {
 
 // Handler holds the HTTP handler dependencies.
 type Handler struct {
-	db     store
-	rssTTL int // default RSS TTL in minutes; 0 means use hard-coded default (360)
+	db        store
+	rssTTL    int          // default RSS TTL in minutes; 0 means use hard-coded default (360)
+	refreshFn func() error // optional; nil means refresh endpoint returns 501
 }
 
 // New creates a new Handler backed by db. rssTTL is the server-wide default
 // RSS feed TTL in minutes (from the RSS_TTL env var); pass 0 to use the
-// hard-coded default of 360 minutes.
-func New(db store, rssTTL int) *Handler {
-	return &Handler{db: db, rssTTL: rssTTL}
+// hard-coded default of 360 minutes. refreshFn is called by POST /api/guide/refresh;
+// pass nil to disable the endpoint.
+func New(db store, rssTTL int, refreshFn func() error) *Handler {
+	return &Handler{db: db, rssTTL: rssTTL, refreshFn: refreshFn}
 }
 
 // RegisterRoutes adds all API routes to mux.
@@ -45,6 +47,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/explore/now-next", h.getNowNext)
 	mux.HandleFunc("GET /images/channel/{id}", h.serveChannelIcon)
 	mux.HandleFunc("POST /api/debug/log", h.postDebugLog)
+	mux.HandleFunc("POST /api/guide/refresh", h.postGuideRefresh)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

@@ -140,7 +140,9 @@ func run(cfg config) error {
 
 	mux := http.NewServeMux()
 
-	apiHandler := api.New(db, cfg.rssTTL)
+	apiHandler := api.New(db, cfg.rssTTL, func() error {
+		return refresh(db, httpClient, cfg.xmltvURL, cfg.pollInterval)
+	})
 	apiHandler.RegisterRoutes(mux)
 
 	webContent, err := fs.Sub(webFS, "web")
