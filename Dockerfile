@@ -39,6 +39,9 @@ COPY --from=builder /scratch_tmp /tmp
 
 EXPOSE 8080
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["/tvguide", "--healthcheck"]
+
 # Run as non-root (numeric UID required for scratch images which have no /etc/passwd).
 # UID 65534 is the conventional "nobody" user on Linux.
 USER 65534:65534

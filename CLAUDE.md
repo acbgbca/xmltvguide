@@ -30,6 +30,7 @@ tvguide/
 │       ├── categories.go        # GET /api/categories
 │       ├── explore.go           # GET /api/explore/now-next
 │       ├── rss.go               # RSS feed formatting
+│       ├── health.go            # GET /api/health
 │       └── debug.go             # Debug/status endpoints
 ├── web/                         # Frontend — embedded into binary via go:embed
 │   ├── index.html               # App shell (no JS framework)
@@ -76,6 +77,7 @@ tvguide/
 | `GET /images/channel/{channel-id}` | Cached channel logo. Re-downloads from upstream if the local file is missing. Returns 404 if the channel has no icon. |
 | `GET /api/explore/now-next` | For every channel, returns the currently-airing show (`current`) and the next upcoming show (`next`). Either field may be `null`. Ordered by channel sort order (lcn, then source order). |
 | `POST /api/guide/refresh` | Triggers a refresh of TV guide data. `sync=true`: waits for completion and returns `200 {"ok":true}` or `500 {"error":"..."}`. Default (async): returns `202 Accepted` immediately. |
+| `GET /api/health` | Healthcheck endpoint. Probes SQLite connectivity and FTS availability. Returns `200 {"status":"ok"}` when healthy or `500 {"error":"..."}` when unhealthy. Used by the Docker `HEALTHCHECK` instruction via the `--healthcheck` binary flag. |
 | `GET /` | Serves the embedded frontend (SPA shell) |
 | `GET /{any}` | SPA fallback — serves `index.html` for any path not matching API, images, or static files. Enables client-side routing via History API. |
 
