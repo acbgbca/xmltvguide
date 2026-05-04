@@ -64,15 +64,14 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
-        with:
-          go-version-file: go.mod
-
-      - name: Install osv-scanner
-        run: go install github.com/google/osv-scanner/v2/cmd/osv-scanner@latest
-
       - name: Run osv-scanner
-        run: osv-scanner scan --format sarif --output-file osv-scanner.sarif --lockfile go.mod --lockfile package-lock.json
+        uses: google/osv-scanner-action/osv-scanner-action@v2
+        with:
+          scan-args: |-
+            --format sarif
+            --output osv-scanner.sarif
+            --lockfile go.mod
+            --lockfile package-lock.json
         continue-on-error: true
 
       - name: Upload SARIF
