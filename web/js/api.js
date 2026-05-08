@@ -8,6 +8,8 @@ import { state } from './state.js';
 // which lets the browser follow the redirect chain to the login page and back.
 function handleRedirect(res) {
     if (res.type === 'opaqueredirect') {
+        const el = document.getElementById('loadingText');
+        if (el) el.textContent = 'Redirecting to authentication...';
         window.location.replace(window.location.href);
         return new Promise(() => {}); // never resolves — navigation is in progress
     }
