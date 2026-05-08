@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -320,9 +321,52 @@ func (d *DB) upsertAirings(ctx context.Context, tx *sql.Tx, airings []xmltv.Prog
 	return nil
 }
 
+// probeTempDir creates and immediately removes a temporary file to verify that
+// the OS temp directory is accessible and writable. SQLite FTS5 segment
+// operations require a writable temp directory even when PRAGMA
+// temp_store=MEMORY is set; this probe surfaces permission or missing-dir
+// problems before the FTS rebuild so they appear in the logs.
+func probeTempDir() (string, error) {
+	dir := os.TempDir()
+	f, err := os.CreateTemp(dir, "tvguide-probe-*")
+	if err != nil {
+		return dir, err
+	}
+	name := f.Name()
+	_ = f.Close()
+	_ = os.Remove(name)
+	return dir, nil
+}
+
 // rebuildFTS clears and repopulates the airings_fts full-text search index
 // from the current contents of the airings table.
 func (d *DB) rebuildFTS(ctx context.Context, tx *sql.Tx) error {
+	// Probe temp directory — SQLITE_IOERR_GETTEMPPATH (6410) means SQLite
+	// couldn't find a writable temp dir. Log the result every time so that
+	// if the DELETE fails we have a record of the temp dir state immediately
+	// before the failure.
+	if dir, err := probeTempDir(); err != nil {
+		log.Printf("diagnostic: temp dir probe FAILED (FTS rebuild may fail with disk I/O error): dir=%s err=%v", dir, err)
+	} else {
+		log.Printf("diagnostic: temp dir OK: %s", dir)
+	}
+
+	// Log DB connection stats to help detect concurrency issues — multiple
+	// open connections to the same SQLite WAL database can cause FTS5
+	// segment operations to fail.
+	stats := d.db.Stats()
+	log.Printf("diagnostic: DB connections before FTS rebuild: open=%d in-use=%d idle=%d wait=%d",
+		stats.OpenConnections, stats.InUse, stats.Idle, stats.WaitCount)
+
+	// Count FTS rows before DELETE so we can confirm the table had data if
+	// the operation fails.
+	var ftsCount int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM airings_fts`).Scan(&ftsCount); err != nil {
+		log.Printf("diagnostic: could not count FTS rows: %v", err)
+	} else {
+		log.Printf("diagnostic: FTS rows before rebuild: %d", ftsCount)
+	}
+
 	if _, err := tx.ExecContext(ctx, `DELETE FROM airings_fts`); err != nil {
 		return fmt.Errorf("clearing FTS index: %w", err)
 	}
