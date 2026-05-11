@@ -407,11 +407,10 @@ func TestRefresh_IconRedownloadsIfURLChanged(t *testing.T) {
 
 // TestRefresh_FTSRebuildSucceedsOnSubsequentRefresh verifies that a second
 // Refresh correctly clears and rebuilds the FTS index when it already contains
-// data. Regression test for GitHub issues #87 and #231: FTS5 segment operations
-// require a writable temp directory (SQLITE_IOERR_GETTEMPPATH, error 6410). In
-// the scratch Docker image /tmp must exist AND be world-writable (1777); the
-// original #87 fix added /tmp but left it root:0755, which fails for the
-// non-root container user (UID 65534).
+// data. Regression test for GitHub issues #87, #231, and #263: FTS5 segment
+// operations require a writable temp directory (SQLITE_IOERR_GETTEMPPATH,
+// error 6410). The runtime image must ship /tmp world-writable so any
+// container UID (including one overridden via compose `user:`) can write it.
 func TestRefresh_FTSRebuildSucceedsOnSubsequentRefresh(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
