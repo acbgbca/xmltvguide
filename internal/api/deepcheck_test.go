@@ -17,13 +17,13 @@ import (
 )
 
 // newDeepCheckServer creates a test API server with seeded data and a stub
-// XMLTV upstream. xmltvSrv may be nil to point at an unreachable URL.
-func newDeepCheckServer(t *testing.T, xmltvURL string) (*httptest.Server, *database.DB, string, string) {
+// XMLTV upstream. xmltvURL is the upstream URL the deepcheck probe targets.
+func newDeepCheckServer(t *testing.T, xmltvURL string) *httptest.Server {
 	t.Helper()
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 	imgDir := filepath.Join(dir, "images")
-	if err := os.MkdirAll(filepath.Join(imgDir, "channels"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(imgDir, "channels"), 0o750); err != nil {
 		t.Fatalf("mkdir channels: %v", err)
 	}
 	db, err := database.Open(dbPath, 7, xmltvURL, images.NewCache(&http.Client{}, imgDir), nil, nil, nil)
@@ -65,7 +65,7 @@ func newDeepCheckServer(t *testing.T, xmltvURL string) (*httptest.Server, *datab
 		srv.Close()
 		db.Close()
 	})
-	return srv, db, dbPath, imgDir
+	return srv
 }
 
 func TestDeepCheck_HappyPath_Returns200AndSuccess(t *testing.T) {
@@ -75,7 +75,7 @@ func TestDeepCheck_HappyPath_Returns200AndSuccess(t *testing.T) {
 	}))
 	t.Cleanup(upstream.Close)
 
-	srv, _, _, _ := newDeepCheckServer(t, upstream.URL)
+	srv := newDeepCheckServer(t, upstream.URL)
 
 	resp, err := httpGet(t, srv.URL+"/api/deepcheck")
 	if err != nil {
@@ -133,7 +133,7 @@ func TestDeepCheck_HappyPath_Returns200AndSuccess(t *testing.T) {
 
 func TestDeepCheck_UnreachableXMLTV_Returns503(t *testing.T) {
 	// Point at an unreachable URL (TCP port 1 is reserved).
-	srv, _, _, _ := newDeepCheckServer(t, "http://127.0.0.1:1/")
+	srv := newDeepCheckServer(t, "http://127.0.0.1:1/")
 
 	resp, err := httpGet(t, srv.URL+"/api/deepcheck")
 	if err != nil {

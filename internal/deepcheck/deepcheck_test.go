@@ -52,7 +52,7 @@ func newChecker(t *testing.T, db DBProbe, xmltvURL string, now time.Time) *Check
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "tvguide.db")
 	imgDir := filepath.Join(dir, "images")
-	if err := os.MkdirAll(filepath.Join(imgDir, "channels"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(imgDir, "channels"), 0o750); err != nil {
 		t.Fatalf("mkdir imgDir: %v", err)
 	}
 	return &Checker{
