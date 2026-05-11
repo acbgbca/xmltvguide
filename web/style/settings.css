@@ -1,8 +1,18 @@
-/* ── Settings page (channel list) ─────────────────────────────── */
+/* ── Settings page ────────────────────────────────────────────── */
+
+.settings-section {
+    margin-bottom: 18px;
+}
+
+.settings-section-heading {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
 
 .settings-list {
     overflow-y: auto;
-    flex: 1;
 }
 
 .settings-item {
@@ -50,4 +60,106 @@
 .settings-icon-btn.hide-btn.active {
     color: var(--text-muted);
     opacity: 0.45;
+}
+
+/* ── Advanced accordion ───────────────────────────────────────── */
+
+.settings-accordion {
+    border-top: 1px solid var(--border);
+    margin-top: 8px;
+}
+
+.settings-accordion-header {
+    width: 100%;
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 600;
+    text-align: left;
+    padding: 12px 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.settings-accordion-header:hover {
+    color: var(--text-primary);
+}
+
+.settings-accordion-chevron {
+    font-size: 14px;
+    color: var(--text-secondary);
+    transition: transform 0.15s ease;
+}
+
+.settings-accordion.is-expanded .settings-accordion-chevron {
+    transform: rotate(180deg);
+}
+
+.settings-accordion-body {
+    display: none;
+    padding: 4px 0 12px;
+}
+
+.settings-accordion.is-expanded .settings-accordion-body {
+    display: block;
+}
+
+/* ── Action button + inline status ────────────────────────────── */
+
+.settings-action {
+    margin-bottom: 12px;
+}
+
+.settings-action-desc {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
+.settings-action-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.settings-action-btn {
+    background: var(--bg-programme);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.settings-action-btn:hover:not(:disabled) {
+    background: var(--bg-prog-hover);
+}
+
+.settings-action-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.settings-action-row .loading-spinner {
+    width: 18px;
+    height: 18px;
+    border-width: 2px;
+}
+
+.settings-status {
+    font-size: 13px;
+}
+
+.settings-status.is-success {
+    color: #3fb950;
+}
+
+.settings-status.is-error {
+    color: var(--accent-now);
 }

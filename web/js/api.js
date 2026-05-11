@@ -36,6 +36,22 @@ export async function fetchCategories() {
     return state.categories;
 }
 
+export async function refreshGuide() {
+    const res = await fetch('/api/guide/refresh?sync=true', {
+        method: 'POST',
+        redirect: 'manual',
+    }).then(handleRedirect);
+    if (!res.ok) {
+        let msg = `Refresh failed (${res.status})`;
+        try {
+            const body = await res.json();
+            if (body && body.error) msg = body.error;
+        } catch { /* response had no JSON body */ }
+        throw new Error(msg);
+    }
+    return res.json();
+}
+
 export function logError({ type, message, source, lineno, colno, stack, url }) {
     fetch('/api/debug/log', {
         method: 'POST',
