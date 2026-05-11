@@ -27,6 +27,13 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o tvguide .
 # with SQLITE_IOERR_WRITE (6410). See GitHub issue #87.
 RUN mkdir /scratch_tmp && chmod 1777 /scratch_tmp
 
+# Create an empty /data directory to carry into the scratch image.
+# When Docker mounts an empty named volume on top of a directory that exists
+# in the image, the volume inherits the image directory's ownership and mode.
+# Without this, a fresh volume is created root-owned and the non-root runtime
+# user (UID 65534) cannot write the SQLite DB or image cache. See issue #259.
+RUN mkdir /scratch_data && chown 65534:65534 /scratch_data
+
 # ── Runtime stage ─────────────────────────────────────────────────
 # scratch: zero OS overhead (~0 MB vs ~8 MB for alpine).
 # Timezone data is embedded in the binary via `import _ "time/tzdata"`,
@@ -36,6 +43,7 @@ FROM scratch
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /app/tvguide /tvguide
 COPY --from=builder --chmod=1777 /scratch_tmp /tmp
+COPY --from=builder --chown=65534:65534 --chmod=1777 /scratch_data /data
 
 EXPOSE 8080
 
