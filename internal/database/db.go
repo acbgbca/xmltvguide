@@ -12,6 +12,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/acbgbca/xmltvguide/internal/deepcheck"
 	"github.com/acbgbca/xmltvguide/internal/images"
 	"github.com/acbgbca/xmltvguide/internal/model"
 )
@@ -287,6 +288,53 @@ func (d *DB) SetNextRefresh(t time.Time) {
 func (d *DB) Ping(ctx context.Context) error {
 	_, err := d.db.ExecContext(ctx, `SELECT 1 FROM airings_fts LIMIT 1`)
 	return err
+}
+
+// DeepCheck gathers the data the deepcheck package needs to report on the
+// database layer: a write probe, an FTS probe, row counts, and the last
+// refresh timestamp. Per-field errors are stored in the result rather than
+// returned, so the caller can render every check independently.
+func (d *DB) DeepCheck(ctx context.Context) deepcheck.DBCheckResults {
+	var res deepcheck.DBCheckResults
+
+	// Writable probe: create a throwaway table inside a rolled-back transaction.
+	if err := func() error {
+		tx, err := d.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback() }()
+		if _, err := tx.ExecContext(ctx, `CREATE TABLE _deepcheck_probe(x INTEGER)`); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO _deepcheck_probe(x) VALUES (1)`); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DROP TABLE _deepcheck_probe`); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		res.WritableErr = err
+	}
+
+	// FTS probe.
+	if _, err := d.db.ExecContext(ctx, `SELECT 1 FROM airings_fts LIMIT 1`); err != nil {
+		res.FTSErr = err
+	}
+
+	// Row counts.
+	if err := d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM channels`).Scan(&res.ChannelCount); err != nil {
+		res.ChannelCountErr = err
+	}
+	if err := d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM airings`).Scan(&res.AiringCount); err != nil {
+		res.AiringCountErr = err
+	}
+
+	// Last refresh — read through the mutex via GetStatus.
+	res.LastRefresh = d.GetStatus().LastRefresh
+
+	return res
 }
 
 // Close closes the underlying database connection.

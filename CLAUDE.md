@@ -21,7 +21,8 @@ tvguide/
 ├── go.sum                       # Generated on first Docker build (commit after first build)
 ├── internal/
 │   ├── xmltv/parser.go          # Fetch XMLTV from URL and parse into structs
-│   ├── database/db.go           # SQLite store: schema, Refresh, GetChannels, GetAirings
+│   ├── database/db.go           # SQLite store: schema, Refresh, GetChannels, GetAirings, DeepCheck
+│   ├── deepcheck/deepcheck.go   # On-demand deep health probe (DB, disk, XMLTV reachability)
 │   └── api/                     # REST API handlers (one file per resource)
 │       ├── handler.go           # Router setup and shared middleware
 │       ├── guide.go             # GET /api/guide
@@ -31,6 +32,7 @@ tvguide/
 │       ├── explore.go           # GET /api/explore/now-next
 │       ├── rss.go               # RSS feed formatting
 │       ├── health.go            # GET /api/health
+│       ├── deepcheck.go         # GET /api/deepcheck
 │       └── debug.go             # Debug/status endpoints
 ├── web/                         # Frontend — embedded into binary via go:embed
 │   ├── index.html               # App shell (no JS framework)
@@ -77,7 +79,8 @@ tvguide/
 | `GET /images/channel/{channel-id}` | Cached channel logo. Re-downloads from upstream if the local file is missing. Returns 404 if the channel has no icon. |
 | `GET /api/explore/now-next` | For every channel, returns the currently-airing show (`current`) and the next upcoming show (`next`). Either field may be `null`. Ordered by channel sort order (lcn, then source order). |
 | `POST /api/guide/refresh` | Triggers a refresh of TV guide data. `sync=true`: waits for completion and returns `200 {"ok":true}` or `500 {"error":"..."}`. Default (async): returns `202 Accepted` immediately. |
-| `GET /api/health` | Healthcheck endpoint. Probes SQLite connectivity and FTS availability. Returns `200 {"status":"ok"}` when healthy or `500 {"error":"..."}` when unhealthy. Used by the Docker `HEALTHCHECK` instruction via the `--healthcheck` binary flag. |
+| `GET /api/health` | Healthcheck endpoint. Probes SQLite connectivity and FTS availability. Returns `200 {"status":"ok"}` when healthy or `500 {"error":"..."}` when unhealthy. Used by the Docker `HEALTHCHECK` instruction via the `--healthcheck` binary flag — this remains the Docker liveness probe and is unchanged. |
+| `GET /api/deepcheck` | Deep health check across database, FTS, data presence/freshness, XMLTV source reachability, and disk writability for `/data`, `/tmp`, and the image cache. Returns JSON `{status, checks[]}`: each entry is `{name, status, error?, info?}` with `status` one of `SUCCESS`/`FAILURE`. HTTP `200` when global status is `SUCCESS`, `503 Service Unavailable` otherwise. Every check runs independently — one failure does not skip the others. Intended for occasional on-demand diagnostics, not high-frequency probing — use `/api/health` for that. |
 | `GET /` | Serves the embedded frontend (SPA shell) |
 | `GET /{any}` | SPA fallback — serves `index.html` for any path not matching API, images, or static files. Enables client-side routing via History API. |
 

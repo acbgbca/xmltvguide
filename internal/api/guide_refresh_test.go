@@ -24,7 +24,7 @@ func newRefreshServer(t *testing.T, refreshFn func() error) *httptest.Server {
 		t.Fatalf("Open: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
-	h := api.New(db, 0, refreshFn)
+	h := api.New(db, 0, refreshFn, api.DeepCheckConfig{})
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 	srv := httptest.NewServer(mux)
