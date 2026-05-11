@@ -142,6 +142,12 @@ func run(cfg config) error {
 
 	apiHandler := api.New(db, cfg.rssTTL, func() error {
 		return refresh(db, httpClient, cfg.xmltvURL, cfg.pollInterval)
+	}, api.DeepCheckConfig{
+		HTTPClient:    httpClient,
+		XMLTVURL:      cfg.xmltvURL,
+		PollInterval:  cfg.pollInterval,
+		DBPath:        cfg.dbPath,
+		ImageCacheDir: cfg.imageCacheDir,
 	})
 	apiHandler.RegisterRoutes(mux)
 

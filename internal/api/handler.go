@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/acbgbca/xmltvguide/internal/deepcheck"
 	"github.com/acbgbca/xmltvguide/internal/model"
 )
 
@@ -21,6 +22,17 @@ type store interface {
 	GetCategories(ctx context.Context) ([]string, error)
 	GetNowNext(ctx context.Context) ([]model.NowNextEntry, error)
 	Ping(ctx context.Context) error
+	DeepCheck(ctx context.Context) deepcheck.DBCheckResults
+}
+
+// DeepCheckConfig bundles the deepcheck-specific dependencies for the Handler
+// constructor so the signature stays manageable.
+type DeepCheckConfig struct {
+	HTTPClient    *http.Client
+	XMLTVURL      string
+	PollInterval  time.Duration
+	DBPath        string
+	ImageCacheDir string
 }
 
 // Handler holds the HTTP handler dependencies.
@@ -28,14 +40,16 @@ type Handler struct {
 	db        store
 	rssTTL    int          // default RSS TTL in minutes; 0 means use hard-coded default (360)
 	refreshFn func() error // optional; nil means refresh endpoint returns 501
+	deep      DeepCheckConfig
 }
 
 // New creates a new Handler backed by db. rssTTL is the server-wide default
 // RSS feed TTL in minutes (from the RSS_TTL env var); pass 0 to use the
 // hard-coded default of 360 minutes. refreshFn is called by POST /api/guide/refresh;
-// pass nil to disable the endpoint.
-func New(db store, rssTTL int, refreshFn func() error) *Handler {
-	return &Handler{db: db, rssTTL: rssTTL, refreshFn: refreshFn}
+// pass nil to disable the endpoint. deepCfg supplies the dependencies needed
+// by the /api/deepcheck endpoint.
+func New(db store, rssTTL int, refreshFn func() error, deepCfg DeepCheckConfig) *Handler {
+	return &Handler{db: db, rssTTL: rssTTL, refreshFn: refreshFn, deep: deepCfg}
 }
 
 // RegisterRoutes adds all API routes to mux.
@@ -50,6 +64,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/debug/log", h.postDebugLog)
 	mux.HandleFunc("POST /api/guide/refresh", h.postGuideRefresh)
 	mux.HandleFunc("GET /api/health", h.getHealth)
+	mux.HandleFunc("GET /api/deepcheck", h.getDeepCheck)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
