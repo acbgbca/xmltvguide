@@ -39,6 +39,155 @@ test.describe('Settings tab — Rendering', () => {
       await expect(item.locator('.hide-btn')).toBeVisible();
     }
   });
+
+  test('renders Channels section containing the channel list', async ({ page }) => {
+    const settings = new SettingsPage(page);
+    await settings.goto();
+
+    await expect(settings.channelsSection()).toBeVisible();
+    await expect(settings.channelsSection().locator('.settings-item')).toHaveCount(5);
+  });
+
+  test('renders Advanced section collapsed by default', async ({ page }) => {
+    const settings = new SettingsPage(page);
+    await settings.goto();
+
+    await expect(settings.advancedSection()).toBeVisible();
+    await expect(settings.advancedHeader()).toBeVisible();
+    await expect(settings.advancedHeader()).toContainText('Advanced');
+    expect(await settings.isAdvancedExpanded()).toBe(false);
+  });
+});
+
+test.describe('Settings tab — Advanced accordion', () => {
+  test('clicking the header expands and a second click collapses', async ({ page }) => {
+    const settings = new SettingsPage(page);
+    await settings.goto();
+
+    expect(await settings.isAdvancedExpanded()).toBe(false);
+
+    await settings.toggleAdvanced();
+    expect(await settings.isAdvancedExpanded()).toBe(true);
+
+    await settings.toggleAdvanced();
+    expect(await settings.isAdvancedExpanded()).toBe(false);
+  });
+
+  test('Refresh guide button is rendered inside the Advanced section', async ({ page }) => {
+    const settings = new SettingsPage(page);
+    await settings.goto();
+
+    await settings.toggleAdvanced();
+
+    const refresh = settings.refreshButton();
+    await expect(refresh).toBeVisible();
+    await expect(refresh).toContainText(/refresh guide/i);
+  });
+});
+
+test.describe('Settings tab — Refresh guide action', () => {
+  test('successful refresh shows success message and re-fetches channels + guide', async ({
+    page,
+  }) => {
+    const settings = new SettingsPage(page);
+    await settings.goto();
+    await settings.toggleAdvanced();
+
+    let channelsRefetched = 0;
+    let guideRefetched = 0;
+    await page.route('/api/channels', (route) => {
+      channelsRefetched += 1;
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(channelsFixture),
+      });
+    });
+    await page.route('/api/guide**', (route) => {
+      guideRefetched += 1;
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      });
+    });
+
+    let refreshCalled = false;
+    await page.route('**/api/guide/refresh**', (route) => {
+      refreshCalled = true;
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true }),
+      });
+    });
+
+    await settings.clickRefresh();
+
+    const status = settings.refreshStatus();
+    await expect(status).toBeVisible();
+    await expect(status).toHaveClass(/is-success/);
+    await expect(status).toContainText(/refreshed/i);
+
+    expect(refreshCalled).toBe(true);
+    expect(channelsRefetched).toBeGreaterThanOrEqual(1);
+    expect(guideRefetched).toBeGreaterThanOrEqual(1);
+
+    // Button is re-enabled after success
+    await expect(settings.refreshButton()).toBeEnabled();
+  });
+
+  test('failure response shows the error message and re-enables the button', async ({
+    page,
+  }) => {
+    const settings = new SettingsPage(page);
+    await settings.goto();
+    await settings.toggleAdvanced();
+
+    await page.route('**/api/guide/refresh**', (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'upstream timeout' }),
+      })
+    );
+
+    await settings.clickRefresh();
+
+    const status = settings.refreshStatus();
+    await expect(status).toBeVisible();
+    await expect(status).toHaveClass(/is-error/);
+    await expect(status).toContainText('upstream timeout');
+
+    await expect(settings.refreshButton()).toBeEnabled();
+  });
+
+  test('button is disabled while the refresh request is in flight', async ({ page }) => {
+    const settings = new SettingsPage(page);
+    await settings.goto();
+    await settings.toggleAdvanced();
+
+    await page.route('**/api/guide/refresh**', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true }),
+      });
+    });
+
+    // Don't await — let the click resolve in the background
+    const clickPromise = settings.clickRefresh();
+
+    // While the request is in flight, the button is disabled
+    await expect(settings.refreshButton()).toBeDisabled();
+    await expect(settings.refreshSpinner()).toBeVisible();
+
+    await clickPromise;
+
+    // After completion, the button is re-enabled
+    await expect(settings.refreshButton()).toBeEnabled();
+  });
 });
 
 test.describe('Settings tab — Initial state from localStorage', () => {

@@ -11,6 +11,50 @@ export class SettingsPage extends AppPage {
     await this.waitForAppReady();
   }
 
+  // Section containers
+  channelsSection(): Locator {
+    return this.page.locator('.settings-section.channels-section');
+  }
+
+  advancedSection(): Locator {
+    return this.page.locator('.settings-accordion.advanced-section');
+  }
+
+  advancedHeader(): Locator {
+    return this.advancedSection().locator('.settings-accordion-header');
+  }
+
+  advancedBody(): Locator {
+    return this.advancedSection().locator('.settings-accordion-body');
+  }
+
+  async isAdvancedExpanded(): Promise<boolean> {
+    return this.advancedSection().evaluate((el) =>
+      el.classList.contains('is-expanded')
+    );
+  }
+
+  async toggleAdvanced(): Promise<void> {
+    await this.advancedHeader().click();
+  }
+
+  // Refresh-guide action
+  refreshButton(): Locator {
+    return this.page.locator('.settings-action-refresh');
+  }
+
+  refreshSpinner(): Locator {
+    return this.page.locator('.settings-action-row .loading-spinner');
+  }
+
+  refreshStatus(): Locator {
+    return this.page.locator('.settings-status');
+  }
+
+  async clickRefresh(): Promise<void> {
+    await this.refreshButton().click();
+  }
+
   // Channel rows
   channelItems(): Locator {
     return this.page.locator('.settings-item');
