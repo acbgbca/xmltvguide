@@ -25,7 +25,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o tvguide .
 # SQLite FTS5 segment operations require a writable temp directory even when
 # PRAGMA temp_store=MEMORY is set; without /tmp the second+ refresh fails
 # with SQLITE_IOERR_WRITE (6410). See GitHub issue #87.
-RUN mkdir /scratch_tmp && chmod 1777 /scratch_tmp
+RUN mkdir /scratch_tmp && chown 65534:65534 /scratch_tmp
 
 # Create an empty /data directory to carry into the scratch image.
 # When Docker mounts an empty named volume on top of a directory that exists
@@ -42,7 +42,7 @@ FROM scratch
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /app/tvguide /tvguide
-COPY --from=builder --chmod=1777 /scratch_tmp /tmp
+COPY --from=builder --chown=65534:65534 --chmod=1777 /scratch_tmp /tmp
 COPY --from=builder --chown=65534:65534 --chmod=1777 /scratch_data /data
 
 EXPOSE 8080
