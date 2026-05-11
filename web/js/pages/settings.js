@@ -1,6 +1,6 @@
 import { state } from '../state.js';
 import { isHidden, isFavourite, toggleHidden, toggleFavourite } from '../store/preferences.js';
-import { fetchChannels, fetchGuide, fetchStatus, refreshGuide } from '../api.js';
+import { fetchChannels, fetchGuide, fetchStatus, refreshGuide, runDeepCheck } from '../api.js';
 import { renderGuide, hasAiringsStartingOn } from './guide.js';
 import { formatAbsoluteDateTime } from '../utils/date.js';
 
@@ -87,6 +87,8 @@ function buildAdvancedSection() {
     body.appendChild(buildRefreshAction());
     const statusBlock = buildStatusBlock();
     body.appendChild(statusBlock);
+    const deepCheck = buildDeepCheckAction();
+    body.appendChild(deepCheck.wrap);
     body.appendChild(buildResetAction());
 
     let statusLoaded = false;
@@ -96,6 +98,9 @@ function buildAdvancedSection() {
         if (expanded && !statusLoaded) {
             statusLoaded = true;
             loadStatus(statusBlock);
+        }
+        if (!expanded) {
+            deepCheck.clear();
         }
     });
 
@@ -169,6 +174,172 @@ function buildRefreshAction() {
     wrap.appendChild(description);
     wrap.appendChild(row);
     return wrap;
+}
+
+const DEEPCHECK_LABELS = {
+    database:          'Database',
+    database_writable: 'Database writable',
+    fts:               'FTS index',
+    data_presence:     'Data presence',
+    data_freshness:    'Data freshness',
+    xmltv_url:         'XMLTV source',
+    disk_data:         'Disk: /data',
+    disk_tmp:          'Disk: /tmp',
+    image_cache:       'Image cache',
+};
+
+function humaniseDeepCheckName(name) {
+    return DEEPCHECK_LABELS[name] || name;
+}
+
+function buildDeepCheckAction() {
+    const wrap = document.createElement('div');
+    wrap.className = 'settings-action settings-action-deepcheck-wrap';
+
+    const description = document.createElement('p');
+    description.className   = 'settings-action-desc';
+    description.textContent = 'Runs a deeper health check across database, storage, network, and data freshness.';
+
+    const row = document.createElement('div');
+    row.className = 'settings-action-row';
+
+    const btn = document.createElement('button');
+    btn.type        = 'button';
+    btn.className   = 'settings-action-btn settings-action-deepcheck';
+    btn.textContent = 'Run system check';
+
+    const spinner = document.createElement('div');
+    spinner.className = 'loading-spinner';
+    spinner.style.display = 'none';
+
+    row.appendChild(btn);
+    row.appendChild(spinner);
+
+    const results = document.createElement('div');
+    results.className = 'settings-deepcheck-results';
+    results.style.display = 'none';
+    results.setAttribute('role', 'status');
+
+    const clear = () => {
+        results.innerHTML = '';
+        results.style.display = 'none';
+    };
+
+    btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        spinner.style.display = '';
+        clear();
+
+        let report;
+        try {
+            report = await runDeepCheck();
+        } catch (err) {
+            renderDeepCheckNetworkError(results, err);
+            btn.disabled = false;
+            spinner.style.display = 'none';
+            return;
+        }
+
+        renderDeepCheckReport(results, report);
+        btn.disabled = false;
+        spinner.style.display = 'none';
+    });
+
+    wrap.appendChild(description);
+    wrap.appendChild(row);
+    wrap.appendChild(results);
+
+    return { wrap, clear };
+}
+
+function renderDeepCheckReport(results, report) {
+    results.innerHTML = '';
+    results.style.display = '';
+
+    const checks = Array.isArray(report.checks) ? report.checks : [];
+    const failed = checks.filter((c) => c.status !== 'SUCCESS').length;
+    const total  = checks.length;
+
+    const summary = document.createElement('div');
+    summary.className = 'settings-deepcheck-summary';
+    if (report.status === 'SUCCESS' && failed === 0) {
+        summary.classList.add('is-success');
+        summary.textContent = 'All checks passed';
+    } else {
+        summary.classList.add('is-error');
+        summary.textContent = `${failed} of ${total} checks failed`;
+    }
+    results.appendChild(summary);
+
+    for (const check of checks) {
+        results.appendChild(buildDeepCheckRow(check));
+    }
+}
+
+function buildDeepCheckRow(check) {
+    const row = document.createElement('div');
+    row.className = 'settings-deepcheck-row';
+
+    const head = document.createElement('div');
+    head.className = 'settings-deepcheck-head';
+
+    const success = check.status === 'SUCCESS';
+
+    const icon = document.createElement('span');
+    icon.className = 'settings-deepcheck-icon ' + (success ? 'is-success' : 'is-error');
+    icon.textContent = success ? '✓' : '✗'; // ✓ / ✗
+    icon.setAttribute('aria-hidden', 'true');
+
+    const name = document.createElement('span');
+    name.className   = 'settings-deepcheck-name';
+    name.textContent = humaniseDeepCheckName(check.name);
+
+    head.appendChild(icon);
+    head.appendChild(name);
+
+    if (check.info) {
+        const info = document.createElement('span');
+        info.className   = 'settings-deepcheck-info';
+        info.textContent = check.info;
+        head.appendChild(info);
+    }
+
+    row.appendChild(head);
+
+    if (check.error) {
+        const err = document.createElement('div');
+        err.className   = 'settings-deepcheck-error';
+        err.textContent = check.error;
+        row.appendChild(err);
+    }
+
+    return row;
+}
+
+function renderDeepCheckNetworkError(results, err) {
+    results.innerHTML = '';
+    results.style.display = '';
+
+    const row = document.createElement('div');
+    row.className = 'settings-deepcheck-row';
+
+    const head = document.createElement('div');
+    head.className = 'settings-deepcheck-head';
+
+    const icon = document.createElement('span');
+    icon.className = 'settings-deepcheck-icon is-error';
+    icon.textContent = '✗';
+    icon.setAttribute('aria-hidden', 'true');
+
+    const name = document.createElement('span');
+    name.className   = 'settings-deepcheck-name';
+    name.textContent = `System check could not be run: ${err.message || 'request failed'}`;
+
+    head.appendChild(icon);
+    head.appendChild(name);
+    row.appendChild(head);
+
+    results.appendChild(row);
 }
 
 function buildStatusBlock() {

@@ -218,7 +218,7 @@ The app uses a bottom navigation bar (iOS-style) with four tabs:
 | Guide | `/` or `/guide` | The main TV guide grid (default) |
 | Search | `/search` | Search for programmes by title or with advanced filters |
 | Favourites | `/favourites` | Saved search favourites — shows upcoming airings for all saved searches |
-| Settings | `/settings` | Channels section (visibility/favourite toggles) and an Advanced section (collapsible) containing Refresh guide, Status info (last/next refresh + source URL from `/api/status`, fetched lazily on first expand), and Reset preferences (clears `tvguide-prefs` and `tvguide-favourites` from `localStorage` after a `window.confirm`, then reloads the page) |
+| Settings | `/settings` | Channels section (visibility/favourite toggles) and an Advanced section (collapsible) containing Refresh guide, Status info (last/next refresh + source URL from `/api/status`, fetched lazily on first expand), Run system check (calls `/api/deepcheck` and renders per-check results inline; the panel is cleared when the accordion collapses), and Reset preferences (clears `tvguide-prefs` and `tvguide-favourites` from `localStorage` after a `window.confirm`, then reloads the page) |
 | Explore | `/explore` | Browse TV by mode: Now/Next (default), Categories, Premieres, Time Slot |
 
 Navigation uses the **History API** (`pushState`/`popstate`) for client-side routing without full page reloads. The top bar (date display + prev/next day buttons) is only visible on the Guide tab. The Guide tab preserves its `?date=YYYY-MM-DD` query parameter behaviour.

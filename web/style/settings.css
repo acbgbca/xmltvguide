@@ -206,3 +206,70 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 12px;
 }
+
+/* ── Deep / system check results ──────────────────────────────── */
+
+.settings-deepcheck-results {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.settings-deepcheck-summary {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 4px;
+}
+
+.settings-deepcheck-summary.is-success {
+    color: #3fb950;
+}
+
+.settings-deepcheck-summary.is-error {
+    color: var(--accent-now);
+}
+
+.settings-deepcheck-row {
+    padding: 2px 0;
+    font-size: 13px;
+}
+
+.settings-deepcheck-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.settings-deepcheck-icon {
+    flex: 0 0 14px;
+    width: 14px;
+    font-weight: 700;
+    text-align: center;
+    line-height: 1;
+}
+
+.settings-deepcheck-icon.is-success {
+    color: #3fb950;
+}
+
+.settings-deepcheck-icon.is-error {
+    color: var(--accent-now);
+}
+
+.settings-deepcheck-name {
+    color: var(--text-primary);
+}
+
+.settings-deepcheck-info {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.settings-deepcheck-error {
+    margin: 2px 0 0 22px;
+    color: var(--accent-now);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    word-break: break-word;
+}
