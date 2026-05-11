@@ -43,6 +43,14 @@ export function addDays(dateStr, days) {
     ].join('-');
 }
 
+// Formats a Date as an absolute local date+time, e.g. "10 Jun 2025, 23:00".
+export function formatAbsoluteDateTime(date) {
+    return date.toLocaleString([], {
+        day: 'numeric', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+    });
+}
+
 export function formatSearchDate(date) {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());

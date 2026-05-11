@@ -55,6 +55,34 @@ export class SettingsPage extends AppPage {
     await this.refreshButton().click();
   }
 
+  // Status block
+  statusBlock(): Locator {
+    return this.page.locator('.settings-status-block');
+  }
+
+  statusRow(label: string): Locator {
+    return this.page.locator('.settings-status-row').filter({
+      has: this.page.locator('.settings-status-label', { hasText: label }),
+    });
+  }
+
+  statusValue(label: string): Locator {
+    return this.statusRow(label).locator('.settings-status-value');
+  }
+
+  statusUnavailable(): Locator {
+    return this.page.locator('.settings-status-unavailable');
+  }
+
+  // Reset preferences action
+  resetButton(): Locator {
+    return this.page.locator('.settings-action-reset');
+  }
+
+  async clickReset(): Promise<void> {
+    await this.resetButton().click();
+  }
+
   // Channel rows
   channelItems(): Locator {
     return this.page.locator('.settings-item');
