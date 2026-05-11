@@ -35,7 +35,7 @@ FROM scratch
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /app/tvguide /tvguide
-COPY --from=builder /scratch_tmp /tmp
+COPY --from=builder --chmod=1777 /scratch_tmp /tmp
 
 EXPOSE 8080
 
