@@ -1,7 +1,8 @@
 import { state } from '../state.js';
 import { isHidden, isFavourite, toggleHidden, toggleFavourite } from '../store/preferences.js';
-import { fetchChannels, fetchGuide, refreshGuide } from '../api.js';
+import { fetchChannels, fetchGuide, fetchStatus, refreshGuide } from '../api.js';
 import { renderGuide, hasAiringsStartingOn } from './guide.js';
+import { formatAbsoluteDateTime } from '../utils/date.js';
 
 export function renderSettingsPanel() {
     const panel = document.getElementById('settingsPanel');
@@ -84,10 +85,18 @@ function buildAdvancedSection() {
     const body = document.createElement('div');
     body.className = 'settings-accordion-body';
     body.appendChild(buildRefreshAction());
+    const statusBlock = buildStatusBlock();
+    body.appendChild(statusBlock);
+    body.appendChild(buildResetAction());
 
+    let statusLoaded = false;
     header.addEventListener('click', () => {
         const expanded = section.classList.toggle('is-expanded');
         header.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        if (expanded && !statusLoaded) {
+            statusLoaded = true;
+            loadStatus(statusBlock);
+        }
     });
 
     section.appendChild(header);
@@ -157,6 +166,99 @@ function buildRefreshAction() {
     row.appendChild(spinner);
     row.appendChild(status);
 
+    wrap.appendChild(description);
+    wrap.appendChild(row);
+    return wrap;
+}
+
+function buildStatusBlock() {
+    const wrap = document.createElement('div');
+    wrap.className = 'settings-status-block';
+    wrap.setAttribute('aria-busy', 'true');
+
+    const loading = document.createElement('div');
+    loading.className   = 'settings-status-loading';
+    loading.textContent = 'Loading status…';
+    wrap.appendChild(loading);
+
+    return wrap;
+}
+
+async function loadStatus(block) {
+    try {
+        const status = await fetchStatus();
+        renderStatus(block, status);
+    } catch {
+        renderStatusUnavailable(block);
+    } finally {
+        block.removeAttribute('aria-busy');
+    }
+}
+
+function renderStatus(block, status) {
+    block.innerHTML = '';
+    block.appendChild(buildStatusRow('Last refresh', formatStatusTime(status.lastRefresh)));
+    block.appendChild(buildStatusRow('Next refresh', formatStatusTime(status.nextRefresh)));
+    block.appendChild(buildStatusRow('Source', status.sourceUrl || '—', { url: true, title: status.sourceUrl }));
+}
+
+function buildStatusRow(label, value, opts = {}) {
+    const row = document.createElement('div');
+    row.className = 'settings-status-row';
+
+    const l = document.createElement('span');
+    l.className   = 'settings-status-label';
+    l.textContent = label;
+
+    const v = document.createElement('span');
+    v.className   = 'settings-status-value' + (opts.url ? ' settings-status-value-url' : '');
+    v.textContent = value;
+    if (opts.title) v.title = opts.title;
+
+    row.appendChild(l);
+    row.appendChild(v);
+    return row;
+}
+
+function formatStatusTime(value) {
+    if (!value) return '—';
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '—';
+    return formatAbsoluteDateTime(d);
+}
+
+function renderStatusUnavailable(block) {
+    block.innerHTML = '';
+    const msg = document.createElement('div');
+    msg.className   = 'settings-status-unavailable';
+    msg.textContent = 'Status unavailable';
+    block.appendChild(msg);
+}
+
+function buildResetAction() {
+    const wrap = document.createElement('div');
+    wrap.className = 'settings-action settings-action-reset-wrap';
+
+    const description = document.createElement('p');
+    description.className   = 'settings-action-desc';
+    description.textContent = 'Clears hidden channels, channel favourites, and saved searches stored on this device.';
+
+    const row = document.createElement('div');
+    row.className = 'settings-action-row';
+
+    const btn = document.createElement('button');
+    btn.type        = 'button';
+    btn.className   = 'settings-action-btn settings-action-reset';
+    btn.textContent = 'Reset preferences';
+
+    btn.addEventListener('click', () => {
+        if (!window.confirm('Reset all preferences? This cannot be undone.')) return;
+        localStorage.removeItem('tvguide-prefs');
+        localStorage.removeItem('tvguide-favourites');
+        window.location.reload();
+    });
+
+    row.appendChild(btn);
     wrap.appendChild(description);
     wrap.appendChild(row);
     return wrap;

@@ -163,3 +163,46 @@
 .settings-status.is-error {
     color: var(--accent-now);
 }
+
+/* ── Status block ─────────────────────────────────────────────── */
+
+.settings-status-block {
+    margin-bottom: 12px;
+    padding: 8px 0;
+    border-top: 1px solid var(--border);
+}
+
+.settings-status-loading,
+.settings-status-unavailable {
+    color: var(--text-muted);
+    font-size: 13px;
+    font-style: italic;
+}
+
+.settings-status-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 4px 0;
+    font-size: 13px;
+}
+
+.settings-status-label {
+    flex: 0 0 auto;
+    color: var(--text-secondary);
+    min-width: 100px;
+}
+
+.settings-status-value {
+    flex: 1 1 auto;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.settings-status-value-url {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+}

@@ -36,6 +36,12 @@ export async function fetchCategories() {
     return state.categories;
 }
 
+export async function fetchStatus() {
+    const res = await fetch('/api/status', { redirect: 'manual' }).then(handleRedirect);
+    if (!res.ok) throw new Error(`/api/status returned ${res.status}`);
+    return res.json();
+}
+
 export async function refreshGuide() {
     const res = await fetch('/api/guide/refresh?sync=true', {
         method: 'POST',
