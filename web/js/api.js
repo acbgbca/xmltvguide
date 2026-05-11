@@ -58,6 +58,19 @@ export async function refreshGuide() {
     return res.json();
 }
 
+export async function runDeepCheck() {
+    const res = await fetch('/api/deepcheck', { redirect: 'manual' }).then(handleRedirect);
+    // /api/deepcheck returns JSON for both 200 and 503 — both are valid "got a report" cases.
+    // Throw only when there is no parseable JSON body (network error, opaque response, etc.).
+    let body;
+    try {
+        body = await res.json();
+    } catch {
+        throw new Error(`Deep check failed (${res.status})`);
+    }
+    return body;
+}
+
 export function logError({ type, message, source, lineno, colno, stack, url }) {
     fetch('/api/debug/log', {
         method: 'POST',

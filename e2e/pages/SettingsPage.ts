@@ -44,7 +44,7 @@ export class SettingsPage extends AppPage {
   }
 
   refreshSpinner(): Locator {
-    return this.page.locator('.settings-action-row .loading-spinner');
+    return this.page.locator('.settings-action-refresh-wrap .loading-spinner');
   }
 
   refreshStatus(): Locator {
@@ -81,6 +81,38 @@ export class SettingsPage extends AppPage {
 
   async clickReset(): Promise<void> {
     await this.resetButton().click();
+  }
+
+  // Deep / system check action
+  deepCheckButton(): Locator {
+    return this.page.locator('.settings-action-deepcheck');
+  }
+
+  deepCheckSpinner(): Locator {
+    return this.page
+      .locator('.settings-action-deepcheck-wrap .loading-spinner');
+  }
+
+  deepCheckResults(): Locator {
+    return this.page.locator('.settings-deepcheck-results');
+  }
+
+  deepCheckSummary(): Locator {
+    return this.page.locator('.settings-deepcheck-summary');
+  }
+
+  deepCheckRows(): Locator {
+    return this.page.locator('.settings-deepcheck-row');
+  }
+
+  deepCheckRowByName(name: string): Locator {
+    return this.page.locator('.settings-deepcheck-row').filter({
+      has: this.page.locator('.settings-deepcheck-name', { hasText: name }),
+    });
+  }
+
+  async clickDeepCheck(): Promise<void> {
+    await this.deepCheckButton().click();
   }
 
   // Channel rows
