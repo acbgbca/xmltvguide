@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"log"
@@ -155,7 +157,11 @@ func run(cfg config) error {
 	if err != nil {
 		return fmt.Errorf("embedding web files: %w", err)
 	}
-	mux.Handle("/", spaHandler(http.FS(webContent)))
+	staticHandler, err := spaHandler(webContent)
+	if err != nil {
+		return fmt.Errorf("building static handler: %w", err)
+	}
+	mux.Handle("/", staticHandler)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.port,
@@ -250,10 +256,25 @@ func runInitialRefresh(db *database.DB, client *http.Client, xmltvURL string, po
 // spaHandler returns an http.Handler that serves static files from fsys,
 // falling back to index.html for any path that doesn't match a real file.
 // This enables client-side (History API) routing in the SPA.
-func spaHandler(fsys http.FileSystem) http.Handler {
-	fileServer := http.FileServer(fsys)
+//
+// All static responses are tagged with a per-file content-hash ETag and
+// Cache-Control: no-cache. The browser revalidates each request and the Go
+// stdlib's serveContent returns 304 when the client's If-None-Match matches.
+// Embedded files have zero mtime so Last-Modified would be absent; ETags give
+// us proper revalidation regardless. Without this, browsers (notably iOS
+// Safari in standalone PWA mode) apply heuristic caching and can serve stale
+// assets into the service worker's pre-cache — see issue #271.
+//
+// /sw.js is the one exception: it keeps no-store so the browser never caches
+// it at all, which is required for the SW update-check mechanism to work.
+func spaHandler(fsys fs.FS) (http.Handler, error) {
+	etags, err := computeStaticETags(fsys)
+	if err != nil {
+		return nil, fmt.Errorf("computing static asset ETags: %w", err)
+	}
+	httpFS := http.FS(fsys)
+	fileServer := http.FileServer(httpFS)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Try to open the requested file. If it exists, serve it normally.
 		path := r.URL.Path
 
 		// Prevent the browser from caching the service worker script itself.
@@ -261,22 +282,64 @@ func spaHandler(fsys http.FileSystem) http.Handler {
 		// stale HTTP caching of sw.js defeats the entire versioning scheme.
 		if path == "/sw.js" {
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			fileServer.ServeHTTP(w, r)
+			return
 		}
 
-		if path == "/" {
-			fileServer.ServeHTTP(w, r)
-			return
+		// Resolve which file will actually be served: the requested path if it
+		// exists, otherwise / (SPA fallback to index.html).
+		servedPath := path
+		if path != "/" {
+			f, err := httpFS.Open(path)
+			if err == nil {
+				_ = f.Close()
+			} else {
+				servedPath = "/"
+				r.URL.Path = "/"
+			}
 		}
-		f, err := fsys.Open(path)
-		if err == nil {
-			_ = f.Close()
-			fileServer.ServeHTTP(w, r)
-			return
+
+		if tag, ok := etags[servedPath]; ok {
+			w.Header().Set("ETag", tag)
+			w.Header().Set("Cache-Control", "no-cache")
 		}
-		// File not found — serve index.html for SPA client-side routing.
-		r.URL.Path = "/"
 		fileServer.ServeHTTP(w, r)
+	}), nil
+}
+
+// computeStaticETags walks the embedded web filesystem at startup and
+// computes a content-hash ETag for every file. The map is keyed by the URL
+// path (with leading slash); "/" maps to the same tag as "/index.html" so
+// SPA-fallback navigations serve a consistent ETag.
+func computeStaticETags(fsys fs.FS) (map[string]string, error) {
+	etags := make(map[string]string)
+	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		// Skip sw.js — it intentionally has no-store and no ETag.
+		if p == "sw.js" {
+			return nil
+		}
+		data, err := fs.ReadFile(fsys, p)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(data)
+		tag := `"` + hex.EncodeToString(sum[:8]) + `"`
+		etags["/"+p] = tag
+		if p == "index.html" {
+			etags["/"] = tag
+		}
+		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	return etags, nil
 }
 
 // parseStripWords splits the CHANNEL_NAME_STRIP value on commas and trims whitespace.

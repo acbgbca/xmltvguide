@@ -235,6 +235,18 @@ The now-line timer only runs when the Guide tab is active.
 4. The frontend fetches `/api/channels` and `/api/guide?date=...` in parallel on page load.
 5. Airings are rendered as absolutely-positioned cells within a CSS-grid layout.
 
+## PWA caching
+
+The service worker (`web/sw.js`) is cache-first for static assets and network-first for the API. Cache invalidation across deploys depends on **two cooperating mechanisms**:
+
+1. **Service-worker cache versioning.** The cache name is `tvguide-__CACHE_VERSION__`; the Dockerfile replaces the placeholder with the build `VERSION` arg (`github.sha` in CI). A new build → new cache name → on the next SW update check, the new SW installs, `cache.addAll()` populates the new cache, the old one is deleted, `controllerchange` fires, and the page reloads. The SW's install step uses `new Request(url, { cache: 'reload' })` so `cache.addAll()` bypasses the browser's HTTP cache (without this, iOS Safari's heuristic caching can pull stale assets into the new SW cache — issue #271).
+
+2. **Per-file ETag + `Cache-Control: no-cache` on static asset responses.** `spaHandler` walks the embedded `web/` filesystem at startup, computes a SHA-256 hash per file, and serves it as the response ETag. The browser revalidates on every request; Go's `serveContent` returns `304 Not Modified` automatically when `If-None-Match` matches. This is defence-in-depth for the first install and for navigation requests (which bypass the SW so Traefik/Authelia can intercept).
+
+`/sw.js` is the deliberate exception: it has `Cache-Control: no-cache, no-store, must-revalidate` and no ETag, so the browser never caches it — required for the SW update-check mechanism.
+
+When adding a new static asset under `web/`, also add it to the `STATIC` list in `web/sw.js` so it is pre-cached for offline use.
+
 ## XMLTV notes
 
 - Time format: `YYYYMMDDHHmmss ±HHMM` — the parser handles both `+1100` and `+11:00` offset styles.
