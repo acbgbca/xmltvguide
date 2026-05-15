@@ -1,20 +1,25 @@
 const CACHE = 'tvguide-__CACHE_VERSION__';
-const STATIC = ['/', '/index.html', '/style/base.css', '/style/layout.css', '/style/guide.css', '/style/modal.css', '/style/search.css', '/style/favourites.css', '/style/settings.css', '/js/main.js', '/js/router.js', '/js/state.js', '/js/api.js', '/js/config.js', '/js/utils/date.js', '/js/store/preferences.js', '/js/store/favourites.js', '/js/components/modal.js', '/js/pages/guide.js', '/js/pages/search.js', '/js/pages/favourites.js', '/js/pages/settings.js', '/manifest.json', '/icon.svg', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png'];
+const STATIC = ['/', '/index.html', '/style/base.css', '/style/layout.css', '/style/guide.css', '/style/modal.css', '/style/search.css', '/style/favourites.css', '/style/settings.css', '/style/explore.css', '/js/main.js', '/js/router.js', '/js/state.js', '/js/api.js', '/js/config.js', '/js/utils/date.js', '/js/store/preferences.js', '/js/store/favourites.js', '/js/components/modal.js', '/js/pages/guide.js', '/js/pages/search.js', '/js/pages/favourites.js', '/js/pages/settings.js', '/js/pages/explore.js', '/manifest.json', '/icon.svg', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', event => {
+    // Use { cache: 'reload' } so cache.addAll() bypasses the browser's HTTP cache.
+    // Without this, a stale heuristic-cached asset can be pulled from the browser
+    // cache into our SW cache during an update, defeating the version-based cache
+    // invalidation scheme — see issue #271.
     event.waitUntil(
-        caches.open(CACHE).then(cache => cache.addAll(STATIC))
+        caches.open(CACHE).then(cache =>
+            cache.addAll(STATIC.map(url => new Request(url, { cache: 'reload' })))
+        )
     );
     self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
-    event.waitUntil(
-        caches.keys().then(keys =>
-            Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-        )
-    );
-    self.clients.claim();
+    event.waitUntil((async () => {
+        const keys = await caches.keys();
+        await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
+        await self.clients.claim();
+    })());
 });
 
 self.addEventListener('fetch', event => {

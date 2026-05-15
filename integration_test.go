@@ -111,7 +111,11 @@ func newIntegrationServer(t *testing.T, xmltvURL string) *httptest.Server {
 	if err != nil {
 		t.Fatalf("fs.Sub: %v", err)
 	}
-	mux.Handle("/", spaHandler(http.FS(webSub)))
+	staticHandler, err := spaHandler(webSub)
+	if err != nil {
+		t.Fatalf("spaHandler: %v", err)
+	}
+	mux.Handle("/", staticHandler)
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(func() {
@@ -1358,6 +1362,183 @@ func TestIntegration_AuthRedirectHandling(t *testing.T) {
 		// error must propagate so the page can trigger re-authentication.
 		if strings.Contains(body, "fetch(event.request).catch(() => caches.match(event.request))") {
 			t.Error("sw.js must not fall back to stale cache on API fetch failure — re-throw so the page can handle auth redirects")
+		}
+	})
+}
+
+// TestIntegration_PWACacheInvalidation_ServiceWorker verifies the service
+// worker's pre-cache step bypasses the browser's HTTP cache. Without this,
+// cache.addAll() can store stale assets fetched from the browser's heuristic
+// HTTP cache, defeating the version-based cache invalidation scheme. See #271.
+func TestIntegration_PWACacheInvalidation_ServiceWorker(t *testing.T) {
+	srv := newSampleIntegrationServer(t)
+	swJS := fetchBody(t, srv, "/sw.js")
+
+	t.Run("addAll_uses_reload_cache_mode", func(t *testing.T) {
+		// The SW install handler must construct Request objects with
+		// { cache: 'reload' } so cache.addAll() bypasses the HTTP cache.
+		if !strings.Contains(swJS, "cache: 'reload'") {
+			t.Error("sw.js install handler must use { cache: 'reload' } when pre-caching to bypass the browser HTTP cache (see #271)")
+		}
+	})
+
+	t.Run("static_includes_explore_assets", func(t *testing.T) {
+		// /style/explore.css and /js/pages/explore.js are loaded by the
+		// Explore page; both must be pre-cached so the PWA works offline.
+		for _, path := range []string{"/style/explore.css", "/js/pages/explore.js"} {
+			if !strings.Contains(swJS, path) {
+				t.Errorf("sw.js STATIC list should include %s", path)
+			}
+		}
+	})
+
+	t.Run("clients_claim_inside_waitUntil", func(t *testing.T) {
+		// clients.claim() should be inside event.waitUntil() so the activate
+		// event isn't considered complete until claim resolves — some browsers
+		// (iOS Safari historically) are flaky if it runs outside.
+		activateIdx := strings.Index(swJS, "addEventListener('activate'")
+		if activateIdx < 0 {
+			t.Fatal("sw.js missing activate handler")
+		}
+		// Find the waitUntil( call within the activate handler and walk the
+		// parentheses to find its matching close. clients.claim() must appear
+		// between them.
+		bodyStart := activateIdx
+		waitRel := strings.Index(swJS[bodyStart:], "waitUntil(")
+		if waitRel < 0 {
+			t.Fatal("sw.js activate handler must use event.waitUntil()")
+		}
+		waitOpen := bodyStart + waitRel + len("waitUntil(") - 1 // position of '('
+		depth := 0
+		waitClose := -1
+		for i := waitOpen; i < len(swJS); i++ {
+			switch swJS[i] {
+			case '(':
+				depth++
+			case ')':
+				depth--
+				if depth == 0 {
+					waitClose = i
+				}
+			}
+			if waitClose >= 0 {
+				break
+			}
+		}
+		if waitClose < 0 {
+			t.Fatal("sw.js activate handler: could not find closing ) for waitUntil(")
+		}
+		waitUntilBody := swJS[waitOpen+1 : waitClose]
+		if !strings.Contains(waitUntilBody, "clients.claim()") {
+			t.Error("sw.js activate handler must call clients.claim() inside event.waitUntil(), not after it")
+		}
+	})
+}
+
+// TestIntegration_PWACacheInvalidation_StaticAssetHeaders verifies the
+// server sets Cache-Control and ETag on static assets so the browser's HTTP
+// cache revalidates on every request. This is defense-in-depth alongside the
+// SW's { cache: 'reload' } change. See #271.
+func TestIntegration_PWACacheInvalidation_StaticAssetHeaders(t *testing.T) {
+	srv := newSampleIntegrationServer(t)
+
+	staticPaths := []string{
+		"/index.html",
+		"/js/main.js",
+		"/style/base.css",
+		"/manifest.json",
+	}
+
+	t.Run("static_assets_have_cache_control_no_cache", func(t *testing.T) {
+		for _, path := range staticPaths {
+			resp, err := httpGet(t, srv.URL+path)
+			if err != nil {
+				t.Fatalf("GET %s: %v", path, err)
+			}
+			_ = resp.Body.Close()
+			cc := resp.Header.Get("Cache-Control")
+			if !strings.Contains(cc, "no-cache") {
+				t.Errorf("GET %s: Cache-Control = %q; want it to contain 'no-cache' so the browser revalidates", path, cc)
+			}
+		}
+	})
+
+	t.Run("static_assets_have_etag", func(t *testing.T) {
+		for _, path := range staticPaths {
+			resp, err := httpGet(t, srv.URL+path)
+			if err != nil {
+				t.Fatalf("GET %s: %v", path, err)
+			}
+			_ = resp.Body.Close()
+			if resp.Header.Get("ETag") == "" {
+				t.Errorf("GET %s: ETag header missing; needed for 304 revalidation", path)
+			}
+		}
+	})
+
+	t.Run("sw_js_keeps_no_store", func(t *testing.T) {
+		// /sw.js must remain uncached entirely (no-store) so the browser
+		// always fetches fresh on update checks. This pre-dates #271 — guard
+		// against the new middleware overriding it.
+		resp, err := httpGet(t, srv.URL+"/sw.js")
+		if err != nil {
+			t.Fatalf("GET /sw.js: %v", err)
+		}
+		_ = resp.Body.Close()
+		cc := resp.Header.Get("Cache-Control")
+		if !strings.Contains(cc, "no-store") {
+			t.Errorf("GET /sw.js: Cache-Control = %q; must contain 'no-store'", cc)
+		}
+	})
+
+	t.Run("matching_if_none_match_returns_304", func(t *testing.T) {
+		// First request: capture the ETag.
+		resp, err := httpGet(t, srv.URL+"/js/main.js")
+		if err != nil {
+			t.Fatalf("GET /js/main.js: %v", err)
+		}
+		_ = resp.Body.Close()
+		etag := resp.Header.Get("ETag")
+		if etag == "" {
+			t.Fatal("first GET /js/main.js did not return an ETag")
+		}
+
+		// Second request with If-None-Match: must return 304.
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/js/main.js", nil)
+		if err != nil {
+			t.Fatalf("NewRequest: %v", err)
+		}
+		req.Header.Set("If-None-Match", etag)
+		resp2, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("conditional GET: %v", err)
+		}
+		_ = resp2.Body.Close()
+		if resp2.StatusCode != http.StatusNotModified {
+			t.Errorf("conditional GET with If-None-Match: got %d, want 304", resp2.StatusCode)
+		}
+	})
+
+	t.Run("different_assets_have_different_etags", func(t *testing.T) {
+		// Per-file ETags (not a single global version stamp) — otherwise an
+		// unchanged file can't return 304 after redeploy.
+		resp1, err := httpGet(t, srv.URL+"/js/main.js")
+		if err != nil {
+			t.Fatalf("GET /js/main.js: %v", err)
+		}
+		_ = resp1.Body.Close()
+		resp2, err := httpGet(t, srv.URL+"/style/base.css")
+		if err != nil {
+			t.Fatalf("GET /style/base.css: %v", err)
+		}
+		_ = resp2.Body.Close()
+		e1 := resp1.Header.Get("ETag")
+		e2 := resp2.Header.Get("ETag")
+		if e1 == "" || e2 == "" {
+			t.Fatalf("missing ETag: main.js=%q, base.css=%q", e1, e2)
+		}
+		if e1 == e2 {
+			t.Errorf("different assets should have different ETags; both = %q", e1)
 		}
 	})
 }
