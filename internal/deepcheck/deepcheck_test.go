@@ -255,74 +255,56 @@ func TestRun_XMLTVURL_SuccessOnHEAD200(t *testing.T) {
 	}
 }
 
-func TestRun_XMLTVURL_FallbackToGETOn405(t *testing.T) {
-	now := time.Now()
-	var headCalls, getCalls atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodHead:
-			headCalls.Add(1)
-			w.WriteHeader(http.StatusMethodNotAllowed)
-		case http.MethodGet:
-			getCalls.Add(1)
-			// Validate Range header presence.
-			if r.Header.Get("Range") == "" {
-				t.Errorf("GET fallback should set Range header")
+// TestRun_XMLTVURL_FallbackToGETOnHEADFailure verifies that any non-2xx/3xx
+// HEAD response triggers the cheap Range GET fallback. The list covers the
+// common rejection codes seen in the wild (405 Method Not Allowed, 406 Not
+// Acceptable from xmltv.net — issue #270 — plus other typical rejections).
+func TestRun_XMLTVURL_FallbackToGETOnHEADFailure(t *testing.T) {
+	cases := []struct {
+		name       string
+		headStatus int
+	}{
+		{"400", http.StatusBadRequest},
+		{"403", http.StatusForbidden},
+		{"405", http.StatusMethodNotAllowed},
+		{"406", http.StatusNotAcceptable},
+		{"501", http.StatusNotImplemented},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now()
+			var headCalls, getCalls atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.Method {
+				case http.MethodHead:
+					headCalls.Add(1)
+					w.WriteHeader(tc.headStatus)
+				case http.MethodGet:
+					getCalls.Add(1)
+					if r.Header.Get("Range") == "" {
+						t.Errorf("GET fallback should set Range header")
+					}
+					w.WriteHeader(http.StatusPartialContent)
+					w.Write([]byte("x"))
+				default:
+					w.WriteHeader(http.StatusMethodNotAllowed)
+				}
+			}))
+			t.Cleanup(srv.Close)
+
+			c := newChecker(t, healthyDB(now), srv.URL, now)
+			rep := c.Run(context.Background())
+			check := findCheck(t, rep, "xmltv_url")
+			if check.Status != StatusSuccess {
+				t.Errorf("xmltv_url status = %q, want SUCCESS (err=%q)", check.Status, check.Error)
 			}
-			w.WriteHeader(http.StatusPartialContent)
-			w.Write([]byte("x"))
-		default:
-			w.WriteHeader(http.StatusMethodNotAllowed)
-		}
-	}))
-	t.Cleanup(srv.Close)
-
-	c := newChecker(t, healthyDB(now), srv.URL, now)
-	rep := c.Run(context.Background())
-	check := findCheck(t, rep, "xmltv_url")
-	if check.Status != StatusSuccess {
-		t.Errorf("xmltv_url status = %q, want SUCCESS (err=%q)", check.Status, check.Error)
-	}
-	if headCalls.Load() != 1 {
-		t.Errorf("HEAD called %d times, want 1", headCalls.Load())
-	}
-	if getCalls.Load() != 1 {
-		t.Errorf("GET called %d times, want 1", getCalls.Load())
-	}
-}
-
-func TestRun_XMLTVURL_FallbackToGETOn406(t *testing.T) {
-	now := time.Now()
-	var headCalls, getCalls atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodHead:
-			headCalls.Add(1)
-			w.WriteHeader(http.StatusNotAcceptable)
-		case http.MethodGet:
-			getCalls.Add(1)
-			if r.Header.Get("Range") == "" {
-				t.Errorf("GET fallback should set Range header")
+			if headCalls.Load() != 1 {
+				t.Errorf("HEAD called %d times, want 1", headCalls.Load())
 			}
-			w.WriteHeader(http.StatusPartialContent)
-			w.Write([]byte("x"))
-		default:
-			w.WriteHeader(http.StatusMethodNotAllowed)
-		}
-	}))
-	t.Cleanup(srv.Close)
-
-	c := newChecker(t, healthyDB(now), srv.URL, now)
-	rep := c.Run(context.Background())
-	check := findCheck(t, rep, "xmltv_url")
-	if check.Status != StatusSuccess {
-		t.Errorf("xmltv_url status = %q, want SUCCESS (err=%q)", check.Status, check.Error)
-	}
-	if headCalls.Load() != 1 {
-		t.Errorf("HEAD called %d times, want 1", headCalls.Load())
-	}
-	if getCalls.Load() != 1 {
-		t.Errorf("GET called %d times, want 1", getCalls.Load())
+			if getCalls.Load() != 1 {
+				t.Errorf("GET called %d times, want 1", getCalls.Load())
+			}
+		})
 	}
 }
 
