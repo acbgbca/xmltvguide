@@ -160,8 +160,11 @@ func runCheck(name string, fn func() (string, error)) CheckResult {
 	return CheckResult{Name: name, Status: StatusSuccess, Info: info}
 }
 
-// probeXMLTV issues a HEAD request to c.XMLTVURL with a fresh 5s timeout. On
-// a 405 Method Not Allowed response, it falls back to a single GET with
+// probeXMLTV issues a HEAD request to c.XMLTVURL with a fresh 5s timeout. The
+// HEAD and GET fallback requests both carry the same Accept and User-Agent
+// headers the real XMLTV fetcher uses (see internal/xmltv/parser.go) so hosts
+// that key on those don't reject the probe with 406. If HEAD returns anything
+// outside the 2xx/3xx success range it falls back to a single GET with
 // Range: bytes=0-0. Final response status outside 2xx/3xx is a failure.
 func (c *Checker) probeXMLTV(parent context.Context) CheckResult {
 	const name = "xmltv_url"
@@ -180,12 +183,20 @@ func (c *Checker) probeXMLTV(parent context.Context) CheckResult {
 		return fmt.Errorf("%s %s: unexpected status %d", method, c.XMLTVURL, status)
 	}
 
-	doRequest := func(method string, headers map[string]string) (*http.Response, error) {
+	baseHeaders := map[string]string{
+		"Accept":     "text/xml, application/xml, */*",
+		"User-Agent": "xmltvguide/1.0",
+	}
+
+	doRequest := func(method string, extraHeaders map[string]string) (*http.Response, error) {
 		req, err := http.NewRequestWithContext(ctx, method, c.XMLTVURL, nil)
 		if err != nil {
 			return nil, err
 		}
-		for k, v := range headers {
+		for k, v := range baseHeaders {
+			req.Header.Set(k, v)
+		}
+		for k, v := range extraHeaders {
 			req.Header.Set(k, v)
 		}
 		return client.Do(req)
@@ -202,8 +213,10 @@ func (c *Checker) probeXMLTV(parent context.Context) CheckResult {
 	method := http.MethodHead
 	status := resp.StatusCode
 
-	if status == http.StatusMethodNotAllowed {
-		// Fallback to GET with Range header to minimise bytes transferred.
+	if status < 200 || status >= 400 {
+		// HEAD failed — some servers reject HEAD with 400, 403, 405, 406, 501,
+		// etc. Fall back to a single GET with Range: bytes=0-0 to keep the
+		// probe cheap.
 		resp2, err2 := doRequest(http.MethodGet, map[string]string{"Range": "bytes=0-0"})
 		if err2 != nil {
 			return CheckResult{Name: name, Status: StatusFailure, Error: wrapErr(http.MethodGet, err2).Error()}
