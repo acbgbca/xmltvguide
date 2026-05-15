@@ -291,6 +291,92 @@ func TestRun_XMLTVURL_FallbackToGETOn405(t *testing.T) {
 	}
 }
 
+func TestRun_XMLTVURL_FallbackToGETOn406(t *testing.T) {
+	now := time.Now()
+	var headCalls, getCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodHead:
+			headCalls.Add(1)
+			w.WriteHeader(http.StatusNotAcceptable)
+		case http.MethodGet:
+			getCalls.Add(1)
+			if r.Header.Get("Range") == "" {
+				t.Errorf("GET fallback should set Range header")
+			}
+			w.WriteHeader(http.StatusPartialContent)
+			w.Write([]byte("x"))
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newChecker(t, healthyDB(now), srv.URL, now)
+	rep := c.Run(context.Background())
+	check := findCheck(t, rep, "xmltv_url")
+	if check.Status != StatusSuccess {
+		t.Errorf("xmltv_url status = %q, want SUCCESS (err=%q)", check.Status, check.Error)
+	}
+	if headCalls.Load() != 1 {
+		t.Errorf("HEAD called %d times, want 1", headCalls.Load())
+	}
+	if getCalls.Load() != 1 {
+		t.Errorf("GET called %d times, want 1", getCalls.Load())
+	}
+}
+
+func TestRun_XMLTVURL_SendsExpectedHeaders(t *testing.T) {
+	// Both HEAD and the GET fallback must send the same Accept and User-Agent
+	// headers as the real XMLTV fetcher (internal/xmltv/parser.go), otherwise
+	// upstream servers may reject the request with 406 Not Acceptable.
+	now := time.Now()
+	wantAccept := "text/xml, application/xml, */*"
+	wantUA := "xmltvguide/1.0"
+
+	type seen struct {
+		accept    string
+		userAgent string
+	}
+	var headSeen, getSeen seen
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodHead:
+			headSeen = seen{accept: r.Header.Get("Accept"), userAgent: r.Header.Get("User-Agent")}
+			// Force the GET fallback so we can inspect both requests.
+			w.WriteHeader(http.StatusNotAcceptable)
+		case http.MethodGet:
+			getSeen = seen{accept: r.Header.Get("Accept"), userAgent: r.Header.Get("User-Agent")}
+			w.WriteHeader(http.StatusPartialContent)
+			w.Write([]byte("x"))
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newChecker(t, healthyDB(now), srv.URL, now)
+	rep := c.Run(context.Background())
+	check := findCheck(t, rep, "xmltv_url")
+	if check.Status != StatusSuccess {
+		t.Fatalf("xmltv_url status = %q, want SUCCESS (err=%q)", check.Status, check.Error)
+	}
+
+	if headSeen.accept != wantAccept {
+		t.Errorf("HEAD Accept = %q, want %q", headSeen.accept, wantAccept)
+	}
+	if headSeen.userAgent != wantUA {
+		t.Errorf("HEAD User-Agent = %q, want %q", headSeen.userAgent, wantUA)
+	}
+	if getSeen.accept != wantAccept {
+		t.Errorf("GET Accept = %q, want %q", getSeen.accept, wantAccept)
+	}
+	if getSeen.userAgent != wantUA {
+		t.Errorf("GET User-Agent = %q, want %q", getSeen.userAgent, wantUA)
+	}
+}
+
 func TestRun_XMLTVURL_FailureOn500(t *testing.T) {
 	now := time.Now()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
