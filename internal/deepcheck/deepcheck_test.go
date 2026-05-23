@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/acbgbca/xmltvguide/internal/plex"
 )
 
 // fakeDB implements DBProbe for tests. Behaviour is configured per-test.
@@ -97,6 +99,7 @@ func TestRun_AllSuccess(t *testing.T) {
 		"disk_data",
 		"disk_tmp",
 		"image_cache",
+		"plex_reachable",
 	}
 	if len(rep.Checks) != len(wantOrder) {
 		t.Fatalf("got %d checks, want %d (%v)", len(rep.Checks), len(wantOrder), rep.Checks)
@@ -439,8 +442,8 @@ func TestRun_AllChecksRun_EvenWhenOneFails(t *testing.T) {
 	c := newChecker(t, db, srv.URL, now)
 
 	rep := c.Run(context.Background())
-	if len(rep.Checks) != 9 {
-		t.Fatalf("expected 9 checks, got %d (%+v)", len(rep.Checks), rep.Checks)
+	if len(rep.Checks) != 10 {
+		t.Fatalf("expected 10 checks, got %d (%+v)", len(rep.Checks), rep.Checks)
 	}
 	// All non-fts checks should still be SUCCESS.
 	for _, c := range rep.Checks {
@@ -510,3 +513,85 @@ func TestRun_XMLTVURL_RespectsPerRequestTimeout(t *testing.T) {
 
 // Compile-time guard that fakeDB implements DBProbe.
 var _ DBProbe = (*fakeDB)(nil)
+
+// fakePlex implements PlexProbe for tests.
+type fakePlex struct {
+	pingErr error
+}
+
+func (f *fakePlex) Ping(ctx context.Context) error { return f.pingErr }
+
+// Compile-time guard that fakePlex implements PlexProbe.
+var _ PlexProbe = (*fakePlex)(nil)
+
+func TestRun_PlexReachable_NotConfigured(t *testing.T) {
+	now := time.Now()
+	srv := successHEADServer(t)
+	c := newChecker(t, healthyDB(now), srv.URL, now)
+	c.PlexURL = ""
+	c.PlexClient = nil
+
+	rep := c.Run(context.Background())
+	check := findCheck(t, rep, "plex_reachable")
+	if check.Status != StatusSuccess {
+		t.Errorf("plex_reachable status = %q, want SUCCESS (err=%q)", check.Status, check.Error)
+	}
+	if !strings.Contains(strings.ToLower(check.Info), "not configured") {
+		t.Errorf("plex_reachable info = %q, want to mention 'not configured'", check.Info)
+	}
+	// Not-configured plex must not fail the overall report.
+	if rep.Status != StatusSuccess {
+		t.Errorf("global status = %q, want SUCCESS when only plex is unset", rep.Status)
+	}
+}
+
+func TestRun_PlexReachable_Healthy(t *testing.T) {
+	now := time.Now()
+	srv := successHEADServer(t)
+	c := newChecker(t, healthyDB(now), srv.URL, now)
+	c.PlexURL = "http://plex.local:32400"
+	c.PlexClient = &fakePlex{pingErr: nil}
+
+	rep := c.Run(context.Background())
+	check := findCheck(t, rep, "plex_reachable")
+	if check.Status != StatusSuccess {
+		t.Errorf("plex_reachable status = %q, want SUCCESS (err=%q)", check.Status, check.Error)
+	}
+}
+
+func TestRun_PlexReachable_UnauthorizedReportsActionableMessage(t *testing.T) {
+	now := time.Now()
+	srv := successHEADServer(t)
+	c := newChecker(t, healthyDB(now), srv.URL, now)
+	c.PlexURL = "http://plex.local:32400"
+	c.PlexClient = &fakePlex{pingErr: plex.ErrUnauthorized}
+
+	rep := c.Run(context.Background())
+	check := findCheck(t, rep, "plex_reachable")
+	if check.Status != StatusFailure {
+		t.Errorf("plex_reachable status = %q, want FAILURE", check.Status)
+	}
+	if !strings.Contains(check.Error, "PLEX_TOKEN") {
+		t.Errorf("plex_reachable error = %q, want to mention PLEX_TOKEN", check.Error)
+	}
+	if rep.Status != StatusFailure {
+		t.Errorf("global status should be FAILURE when plex auth fails")
+	}
+}
+
+func TestRun_PlexReachable_GenericError(t *testing.T) {
+	now := time.Now()
+	srv := successHEADServer(t)
+	c := newChecker(t, healthyDB(now), srv.URL, now)
+	c.PlexURL = "http://plex.local:32400"
+	c.PlexClient = &fakePlex{pingErr: errors.New("connection refused")}
+
+	rep := c.Run(context.Background())
+	check := findCheck(t, rep, "plex_reachable")
+	if check.Status != StatusFailure {
+		t.Errorf("plex_reachable status = %q, want FAILURE", check.Status)
+	}
+	if !strings.Contains(check.Error, "connection refused") {
+		t.Errorf("plex_reachable error = %q, want the underlying error", check.Error)
+	}
+}

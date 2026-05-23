@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -36,7 +37,8 @@ func (d *DB) GetAirings(ctx context.Context, date time.Time) ([]model.Airing, er
 			COALESCE(icon, ''),
 			COALESCE(country, ''),
 			is_repeat,
-			is_premiere
+			is_premiere,
+			plex_rating_key
 		FROM airings
 		WHERE stop_time > ? AND start_time < ?
 		ORDER BY start_time
@@ -55,6 +57,7 @@ func (d *DB) GetAirings(ctx context.Context, date time.Time) ([]model.Airing, er
 		var a model.Airing
 		var startStr, stopStr, catsJSON string
 		var isRepeat, isPremiere int
+		var plexRatingKey sql.NullString
 
 		if err := rows.Scan(
 			&a.ChannelID, &startStr, &stopStr,
@@ -62,6 +65,7 @@ func (d *DB) GetAirings(ctx context.Context, date time.Time) ([]model.Airing, er
 			&a.EpisodeNum, &a.EpisodeNumDisplay, &a.ProgID,
 			&a.StarRating, &a.ContentRating, &a.Year, &a.Icon, &a.Country,
 			&isRepeat, &isPremiere,
+			&plexRatingKey,
 		); err != nil {
 			return nil, fmt.Errorf("scanning airing: %w", err)
 		}
@@ -71,6 +75,10 @@ func (d *DB) GetAirings(ctx context.Context, date time.Time) ([]model.Airing, er
 		json.Unmarshal([]byte(catsJSON), &a.Categories) //nolint:errcheck,gosec // malformed JSON yields nil slice, which is acceptable
 		a.IsRepeat = isRepeat == 1
 		a.IsPremiere = isPremiere == 1
+		if plexRatingKey.Valid {
+			s := plexRatingKey.String
+			a.PlexRatingKey = &s
+		}
 
 		airings = append(airings, a)
 	}

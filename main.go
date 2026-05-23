@@ -22,6 +22,7 @@ import (
 	"github.com/acbgbca/xmltvguide/internal/database"
 	"github.com/acbgbca/xmltvguide/internal/images"
 	"github.com/acbgbca/xmltvguide/internal/logging"
+	"github.com/acbgbca/xmltvguide/internal/plex"
 	"github.com/acbgbca/xmltvguide/internal/xmltv"
 )
 
@@ -171,17 +172,35 @@ func run(cfg config) error {
 		}
 	}()
 
+	// Plex enrichment: only when configured.
+	var plexClient *plex.Client
+	plexState := &plexPollerState{}
+	var plexTicker *time.Ticker
+	if cfg.plexURL != "" {
+		plexClient = plex.NewClient(cfg.plexURL, cfg.plexToken, &http.Client{Timeout: 30 * time.Second})
+		plexTicker = startPlexPoller(db, plexClient, cfg.plexURL, cfg.plexPollInterval, plexState)
+	}
+
 	mux := http.NewServeMux()
 
-	apiHandler := api.New(db, cfg.rssTTL, func() error {
-		return refresh(db, httpClient, cfg.xmltvURL, cfg.pollInterval)
-	}, api.DeepCheckConfig{
+	deepCfg := api.DeepCheckConfig{
 		HTTPClient:    httpClient,
 		XMLTVURL:      cfg.xmltvURL,
 		PollInterval:  cfg.pollInterval,
 		DBPath:        cfg.dbPath,
 		ImageCacheDir: cfg.imageCacheDir,
-	})
+		PlexURL:       cfg.plexURL,
+	}
+	if plexClient != nil {
+		deepCfg.PlexClient = plexClient
+	}
+
+	apiHandler := api.New(db, cfg.rssTTL, func() error {
+		return refresh(db, httpClient, cfg.xmltvURL, cfg.pollInterval)
+	}, deepCfg)
+	if cfg.plexURL != "" {
+		apiHandler.SetPlexStatusFunc(plexState.snapshot)
+	}
 	apiHandler.RegisterRoutes(mux)
 
 	webContent, err := fs.Sub(webFS, "web")
@@ -215,6 +234,9 @@ func run(cfg config) error {
 	log.Println("shutting down...")
 
 	ticker.Stop()
+	if plexTicker != nil {
+		plexTicker.Stop()
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

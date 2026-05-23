@@ -4,6 +4,7 @@ package deepcheck
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/acbgbca/xmltvguide/internal/plex"
 )
 
 // CheckStatus is the SUCCESS/FAILURE indicator for a single check or the
@@ -46,6 +49,12 @@ type DBProbe interface {
 	DeepCheck(ctx context.Context) DBCheckResults
 }
 
+// PlexProbe is the narrow interface deepcheck needs to verify the Plex Media
+// Server is reachable. *plex.Client satisfies it; tests can stub it.
+type PlexProbe interface {
+	Ping(ctx context.Context) error
+}
+
 // DBCheckResults holds the data the DB layer can gather. Per-field errors are
 // stored so the caller can render every check independently — DBCheckResults
 // itself never carries a fatal error.
@@ -68,6 +77,11 @@ type Checker struct {
 	DBPath        string
 	ImageCacheDir string
 	Now           func() time.Time
+
+	// PlexURL is empty when Plex enrichment is not configured. When set, the
+	// plex_reachable check pings PlexClient.
+	PlexURL    string
+	PlexClient PlexProbe
 }
 
 // Run executes every check in order and returns the aggregated report. One
@@ -140,6 +154,9 @@ func (c *Checker) Run(ctx context.Context) Report {
 	// 9. image_cache — write-probe in IMAGE_CACHE_DIR/channels.
 	checks = append(checks, writeProbe("image_cache", filepath.Join(c.ImageCacheDir, "channels")))
 
+	// 10. plex_reachable — only when configured.
+	checks = append(checks, c.probePlex(ctx))
+
 	overall := StatusSuccess
 	for _, r := range checks {
 		if r.Status != StatusSuccess {
@@ -158,6 +175,26 @@ func runCheck(name string, fn func() (string, error)) CheckResult {
 		return CheckResult{Name: name, Status: StatusFailure, Error: err.Error(), Info: info}
 	}
 	return CheckResult{Name: name, Status: StatusSuccess, Info: info}
+}
+
+// probePlex pings the configured Plex Media Server. When PlexURL is empty
+// the check is a no-op success ("not configured") so it never fails the
+// overall report on installations that don't use Plex. When configured, an
+// auth failure is translated into the documented actionable error message.
+func (c *Checker) probePlex(parent context.Context) CheckResult {
+	const name = "plex_reachable"
+	if c.PlexURL == "" || c.PlexClient == nil {
+		return CheckResult{Name: name, Status: StatusSuccess, Info: "not configured"}
+	}
+	ctx, cancel := context.WithTimeout(parent, xmltvProbeTimeout)
+	defer cancel()
+	if err := c.PlexClient.Ping(ctx); err != nil {
+		if errors.Is(err, plex.ErrUnauthorized) {
+			return CheckResult{Name: name, Status: StatusFailure, Error: "PLEX_TOKEN appears invalid (401/403 from Plex)"}
+		}
+		return CheckResult{Name: name, Status: StatusFailure, Error: err.Error()}
+	}
+	return CheckResult{Name: name, Status: StatusSuccess}
 }
 
 // probeXMLTV issues a HEAD request to c.XMLTVURL with a fresh 5s timeout. The
