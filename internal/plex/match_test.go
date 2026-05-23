@@ -122,17 +122,12 @@ func TestMatchChannel(t *testing.T) {
 			if src != tc.wantSource {
 				t.Errorf("source: got %v, want %v", src, tc.wantSource)
 			}
-			if tc.wantID == "" {
-				if got != nil {
-					t.Errorf("expected nil match, got %v", got)
-				}
-				return
+			gotID := ""
+			if got != nil {
+				gotID = got.ID
 			}
-			if got == nil {
-				t.Fatalf("expected match %q, got nil", tc.wantID)
-			}
-			if got.ID != tc.wantID {
-				t.Errorf("matched id: got %q, want %q", got.ID, tc.wantID)
+			if gotID != tc.wantID {
+				t.Errorf("matched id: got %q, want %q", gotID, tc.wantID)
 			}
 		})
 	}
@@ -224,20 +219,16 @@ func TestMatchAiring(t *testing.T) {
 			if reason != tc.wantReason {
 				t.Errorf("reason: got %v, want %v", reason, tc.wantReason)
 			}
-			if tc.wantID == "" {
-				if got != nil {
-					t.Errorf("expected nil match, got %+v", got)
-				}
-				return
+			gotID, gotStart := "", time.Time{}
+			if got != nil {
+				gotID = got.ChannelID
+				gotStart = got.Start
 			}
-			if got == nil {
-				t.Fatalf("expected match, got nil")
+			if gotID != tc.wantID {
+				t.Errorf("matched channel_id: got %q, want %q", gotID, tc.wantID)
 			}
-			if got.ChannelID != tc.wantID {
-				t.Errorf("matched channel_id: got %q, want %q", got.ChannelID, tc.wantID)
-			}
-			if !got.Start.Equal(tc.wantStart) {
-				t.Errorf("matched start: got %v, want %v", got.Start, tc.wantStart)
+			if !gotStart.Equal(tc.wantStart) {
+				t.Errorf("matched start: got %v, want %v", gotStart, tc.wantStart)
 			}
 		})
 	}

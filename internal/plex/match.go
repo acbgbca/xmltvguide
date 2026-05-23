@@ -33,67 +33,98 @@ const (
 	UnmatchedNoStartTimeMatch
 )
 
+// tierResult describes the outcome of a single matcher tier.
+type tierResult int
+
+const (
+	tierMiss      tierResult = iota // no candidate matched — fall through to the next tier
+	tierHit                         // exactly one candidate matched
+	tierAmbiguous                   // two or more candidates matched — stop without falling through
+)
+
+// findUnique scans candidates and returns the sole element satisfying pred.
+// The tierResult distinguishes "no match" (caller should fall through) from
+// "ambiguous" (caller should stop with MatchSourceNone).
+func findUnique(candidates []model.Channel, pred func(*model.Channel) bool) (*model.Channel, tierResult) {
+	var match *model.Channel
+	for i := range candidates {
+		if !pred(&candidates[i]) {
+			continue
+		}
+		if match != nil {
+			return nil, tierAmbiguous
+		}
+		match = &candidates[i]
+	}
+	if match == nil {
+		return nil, tierMiss
+	}
+	return match, tierHit
+}
+
 // MatchChannel pairs a Plex lineup channel with one local channel. The cascade
 // is ID → LCN → Name. At each tier, an ambiguous result (two or more
 // candidates match by the same property) returns MatchSourceNone without
 // falling through — see issue #282 for the rationale.
 func MatchChannel(plex LineupChannel, candidates []model.Channel) (*model.Channel, MatchSource) {
-	if len(candidates) == 0 {
-		return nil, MatchSourceNone
+	tiers := []struct {
+		source MatchSource
+		pred   func(*model.Channel) bool
+	}{
+		{MatchSourceID, idPredicate(plex)},
+		{MatchSourceLCN, lcnPredicate(plex)},
+		{MatchSourceName, namePredicate(plex)},
 	}
 
-	// Tier 1: exact xmltv id equality.
-	if plex.XMLTVID != "" {
-		var hits []*model.Channel
-		for i := range candidates {
-			if candidates[i].ID == plex.XMLTVID {
-				hits = append(hits, &candidates[i])
-			}
+	for _, t := range tiers {
+		if t.pred == nil {
+			continue
 		}
-		if len(hits) == 1 {
-			return hits[0], MatchSourceID
-		}
-		if len(hits) > 1 {
+		match, result := findUnique(candidates, t.pred)
+		switch result {
+		case tierHit:
+			return match, t.source
+		case tierAmbiguous:
 			return nil, MatchSourceNone
 		}
 	}
-
-	// Tier 2: exact LCN equality (only when both sides have an LCN).
-	if plex.LCN != "" {
-		if plexLCN, err := strconv.Atoi(plex.LCN); err == nil {
-			var hits []*model.Channel
-			for i := range candidates {
-				if candidates[i].LCN != nil && *candidates[i].LCN == plexLCN {
-					hits = append(hits, &candidates[i])
-				}
-			}
-			if len(hits) == 1 {
-				return hits[0], MatchSourceLCN
-			}
-			if len(hits) > 1 {
-				return nil, MatchSourceNone
-			}
-		}
-	}
-
-	// Tier 3: case-insensitive display_name equality.
-	if plex.DisplayName != "" {
-		target := strings.ToLower(plex.DisplayName)
-		var hits []*model.Channel
-		for i := range candidates {
-			if strings.ToLower(candidates[i].DisplayName) == target {
-				hits = append(hits, &candidates[i])
-			}
-		}
-		if len(hits) == 1 {
-			return hits[0], MatchSourceName
-		}
-		if len(hits) > 1 {
-			return nil, MatchSourceNone
-		}
-	}
-
 	return nil, MatchSourceNone
+}
+
+// idPredicate returns a match function for the ID tier, or nil if Plex has no
+// xmltv id to compare against.
+func idPredicate(plex LineupChannel) func(*model.Channel) bool {
+	if plex.XMLTVID == "" {
+		return nil
+	}
+	return func(c *model.Channel) bool { return c.ID == plex.XMLTVID }
+}
+
+// lcnPredicate returns a match function for the LCN tier, or nil if Plex has
+// no LCN or its LCN is not a valid integer.
+func lcnPredicate(plex LineupChannel) func(*model.Channel) bool {
+	if plex.LCN == "" {
+		return nil
+	}
+	plexLCN, err := strconv.Atoi(plex.LCN)
+	if err != nil {
+		return nil
+	}
+	return func(c *model.Channel) bool {
+		return c.LCN != nil && *c.LCN == plexLCN
+	}
+}
+
+// namePredicate returns a match function for the case-insensitive display-name
+// tier, or nil if Plex has no display name.
+func namePredicate(plex LineupChannel) func(*model.Channel) bool {
+	if plex.DisplayName == "" {
+		return nil
+	}
+	target := strings.ToLower(plex.DisplayName)
+	return func(c *model.Channel) bool {
+		return strings.ToLower(c.DisplayName) == target
+	}
 }
 
 // MatchAiring pairs a Plex grid entry with one airing on the already-matched
