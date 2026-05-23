@@ -202,3 +202,38 @@ func TestMigration_PopulateSQL_SkipsAlreadyApplied(t *testing.T) {
 		t.Errorf("expected FTS to be empty (populateSQL should not re-run), got %d results", len(results))
 	}
 }
+
+// TestMigration_PlexColumnsExist verifies that after migrations run, the
+// channels table has plex_channel_id and plex_lineup_id columns, and the
+// airings table has a plex_rating_key column. These are nullable enrichment
+// columns populated by the Plex poller (see issue #282).
+func TestMigration_PlexColumnsExist(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	// Open the DB so all migrations run.
+	openDBAt(t, dbPath)
+
+	rawDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open raw: %v", err)
+	}
+	defer rawDB.Close()
+
+	expectColumn := func(table, column string) {
+		t.Helper()
+		var count int
+		if err := rawDB.QueryRowContext(context.Background(),
+			"SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?", table, column,
+		).Scan(&count); err != nil {
+			t.Fatalf("pragma_table_info(%s, %s): %v", table, column, err)
+		}
+		if count != 1 {
+			t.Errorf("expected column %s.%s to exist (count=1), got count=%d", table, column, count)
+		}
+	}
+
+	expectColumn("channels", "plex_channel_id")
+	expectColumn("channels", "plex_lineup_id")
+	expectColumn("airings", "plex_rating_key")
+}

@@ -107,6 +107,9 @@ var migrations = []migration{
 		`INSERT OR IGNORE INTO categories (name)
 		SELECT DISTINCT value FROM airings, json_each(airings.categories)
 		WHERE value IS NOT NULL AND value != ''`},
+	{5, `ALTER TABLE channels ADD COLUMN plex_channel_id TEXT;
+ALTER TABLE channels ADD COLUMN plex_lineup_id TEXT;
+ALTER TABLE airings ADD COLUMN plex_rating_key TEXT;`, ""},
 }
 
 // applyMigration applies a single migration to the database. It checks whether
@@ -175,6 +178,17 @@ func migrationAlreadyApplied(db *sql.DB, version int) (bool, error) {
 		return tableExists(db, "airings_fts")
 	case 4:
 		return tableExists(db, "categories")
+	case 5:
+		// All three columns must be present for the migration to be considered applied.
+		chOK, err := columnExists(db, "channels", "plex_channel_id")
+		if err != nil || !chOK {
+			return false, err
+		}
+		lineupOK, err := columnExists(db, "channels", "plex_lineup_id")
+		if err != nil || !lineupOK {
+			return false, err
+		}
+		return columnExists(db, "airings", "plex_rating_key")
 	}
 	return false, nil
 }
