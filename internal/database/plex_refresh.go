@@ -78,6 +78,13 @@ type airingUpdate struct {
 	plexRatingKey string
 }
 
+// dvrTask pairs a DVR's grid key with the lineup IDs it serves. RefreshPlex
+// walks one task per DVR.
+type dvrTask struct {
+	gridKey   string
+	lineupIDs []string
+}
+
 // RefreshPlex performs one Plex EPG enrichment cycle: discover DVRs, match
 // every Plex channel against the local channels table, then match every Plex
 // grid entry against the airings on its already-matched local channel. All
@@ -103,33 +110,53 @@ func (d *DB) RefreshPlex(ctx context.Context, client PlexAPI) (PlexPollResult, e
 		return result, nil
 	}
 
-	type dvrTask struct {
-		gridKey   string
-		lineupIDs []string
-	}
-	var tasks []dvrTask
-	totalLineups := 0
-	for _, dvr := range dvrs {
-		tasks = append(tasks, dvrTask{gridKey: dvr.GridKey, lineupIDs: dvr.LineupIDs})
-		totalLineups += len(dvr.LineupIDs)
-	}
+	tasks, totalLineups := buildDVRTasks(dvrs)
 	result.Lineups = totalLineups
 	if totalLineups == 0 {
 		logging.Warn("WARN: Plex returned 0 DVRs — Plex Live TV / DVR may not be configured on this server.")
 	}
 	logging.Info(fmt.Sprintf("[plex] poll started (%d lineups discovered)", totalLineups))
 
-	// Load local channels once for channel matching.
 	localChannels, err := d.GetChannels(ctx)
 	if err != nil {
 		return result, fmt.Errorf("loading channels: %w", err)
 	}
 
-	// channelMatchMap: Plex channel ID → local channel ID. Used to resolve
-	// grid entries back to local channels in the airing-match phase.
-	channelMatchMap := map[string]string{}
-	var channelUpdates []channelUpdate
+	channelMatchMap, channelUpdates := d.matchAllChannels(ctx, client, tasks, localChannels, &result)
+	logChannelSummary(result.ChannelMatches, result.UnmatchedChan)
 
+	gridStart := time.Now().UTC()
+	gridEnd := gridStart.AddDate(0, 0, d.retentionDays)
+	airingUpdates := d.matchAllAirings(ctx, client, tasks, channelMatchMap, gridStart, gridEnd, &result)
+	logAiringSummary(result.AiringMatches, result.UnmatchedAirings)
+
+	if err := d.applyPlexUpdates(ctx, channelUpdates, airingUpdates); err != nil {
+		result.Errors = append(result.Errors, fmt.Sprintf("applyPlexUpdates: %v", err))
+	}
+
+	logging.Info(fmt.Sprintf("[plex] poll completed in %s", time.Since(result.StartedAt).Round(time.Millisecond)))
+	return result, nil
+}
+
+// buildDVRTasks flattens the slice of DVRs returned by Plex into the dvrTask
+// shape RefreshPlex iterates, and returns the total lineup count.
+func buildDVRTasks(dvrs []plex.DVR) ([]dvrTask, int) {
+	tasks := make([]dvrTask, 0, len(dvrs))
+	total := 0
+	for _, dvr := range dvrs {
+		tasks = append(tasks, dvrTask{gridKey: dvr.GridKey, lineupIDs: dvr.LineupIDs})
+		total += len(dvr.LineupIDs)
+	}
+	return tasks, total
+}
+
+// matchAllChannels walks every lineup, calls GetLineupChannels, and matches
+// each Plex channel against localChannels. Returns the Plex→local ID map and
+// the pending channel UPDATEs. Stats and unmatched entries are accumulated on
+// result.
+func (d *DB) matchAllChannels(ctx context.Context, client PlexAPI, tasks []dvrTask, localChannels []model.Channel, result *PlexPollResult) (map[string]string, []channelUpdate) {
+	channelMatchMap := map[string]string{}
+	var updates []channelUpdate
 	for _, task := range tasks {
 		for _, lineupID := range task.lineupIDs {
 			pcs, err := client.GetLineupChannels(ctx, lineupID)
@@ -140,31 +167,10 @@ func (d *DB) RefreshPlex(ctx context.Context, client PlexAPI) (PlexPollResult, e
 				continue
 			}
 			for _, pc := range pcs {
-				result.ChannelMatches.Total++
-				matched, src := plex.MatchChannel(pc, localChannels)
-				if matched != nil {
-					result.ChannelMatches.Matched++
-					switch src {
-					case plex.MatchSourceID:
-						result.ChannelMatches.ByID++
-					case plex.MatchSourceLCN:
-						result.ChannelMatches.ByLCN++
-					case plex.MatchSourceName:
-						result.ChannelMatches.ByName++
-					}
-					channelUpdates = append(channelUpdates, channelUpdate{
-						channelID:     matched.ID,
-						plexChannelID: pc.ID,
-						plexLineupID:  lineupID,
-					})
-					channelMatchMap[pc.ID] = matched.ID
-					logging.Debug(fmt.Sprintf("channel '%s' matched '%s' via %s", pc.DisplayName, matched.ID, matchSourceName(src)))
-				} else {
-					result.UnmatchedChan = append(result.UnmatchedChan, PlexUnmatchedChannel{
-						PlexID:      pc.ID,
-						DisplayName: pc.DisplayName,
-						Reason:      "no_id_lcn_or_name_match",
-					})
+				u, ok := matchSingleChannel(pc, lineupID, localChannels, result)
+				if ok {
+					updates = append(updates, u)
+					channelMatchMap[pc.ID] = u.channelID
 				}
 			}
 		}
@@ -172,20 +178,55 @@ func (d *DB) RefreshPlex(ctx context.Context, client PlexAPI) (PlexPollResult, e
 	if result.ChannelMatches.Total > 0 && result.ChannelMatches.Matched == 0 {
 		logging.Warn(fmt.Sprintf("WARN: Plex returned %d channels but none matched TV Guide channels. Check that both sources reference the same lineup (compare channel IDs/LCNs/names).", result.ChannelMatches.Total))
 	}
-	logChannelSummary(result.ChannelMatches, result.UnmatchedChan)
+	return channelMatchMap, updates
+}
 
-	// Airing phase — per unique grid key.
-	gridStart := time.Now().UTC()
-	gridEnd := gridStart.AddDate(0, 0, d.retentionDays)
-	var airingUpdates []airingUpdate
+// matchSingleChannel pairs one Plex channel with a local candidate and
+// updates result's stats. Returns the pending UPDATE row and ok=true on
+// success; ok=false means the channel was logged as unmatched.
+func matchSingleChannel(pc plex.LineupChannel, lineupID string, localChannels []model.Channel, result *PlexPollResult) (channelUpdate, bool) {
+	result.ChannelMatches.Total++
+	matched, src := plex.MatchChannel(pc, localChannels)
+	if matched == nil {
+		result.UnmatchedChan = append(result.UnmatchedChan, PlexUnmatchedChannel{
+			PlexID:      pc.ID,
+			DisplayName: pc.DisplayName,
+			Reason:      "no_id_lcn_or_name_match",
+		})
+		return channelUpdate{}, false
+	}
+	result.ChannelMatches.Matched++
+	tickChannelMatchSource(src, &result.ChannelMatches)
+	logging.Debug(fmt.Sprintf("channel '%s' matched '%s' via %s", pc.DisplayName, matched.ID, matchSourceName(src)))
+	return channelUpdate{
+		channelID:     matched.ID,
+		plexChannelID: pc.ID,
+		plexLineupID:  lineupID,
+	}, true
+}
+
+// tickChannelMatchSource increments the per-source counter for a channel match.
+func tickChannelMatchSource(src plex.MatchSource, stats *PlexMatchStats) {
+	switch src {
+	case plex.MatchSourceID:
+		stats.ByID++
+	case plex.MatchSourceLCN:
+		stats.ByLCN++
+	case plex.MatchSourceName:
+		stats.ByName++
+	}
+}
+
+// matchAllAirings walks unique grid keys, fetches each grid, and matches each
+// entry against airings on its already-matched channel.
+func (d *DB) matchAllAirings(ctx context.Context, client PlexAPI, tasks []dvrTask, channelMatchMap map[string]string, gridStart, gridEnd time.Time, result *PlexPollResult) []airingUpdate {
+	var updates []airingUpdate
 	gridSeen := map[string]bool{}
-
 	for _, task := range tasks {
 		if task.gridKey == "" || gridSeen[task.gridKey] {
 			continue
 		}
 		gridSeen[task.gridKey] = true
-
 		entries, err := client.GetGrid(ctx, task.gridKey, gridStart, gridEnd)
 		if err != nil {
 			msg := fmt.Sprintf("GetGrid(%s): %v", task.gridKey, err)
@@ -193,57 +234,69 @@ func (d *DB) RefreshPlex(ctx context.Context, client PlexAPI) (PlexPollResult, e
 			logPlexFetchError(msg, err)
 			continue
 		}
+		updates = append(updates, d.matchGridEntries(ctx, entries, channelMatchMap, gridStart, gridEnd, result)...)
+	}
+	return updates
+}
 
-		byChannel := map[string][]plex.GridEntry{}
-		for _, e := range entries {
-			byChannel[e.Channel] = append(byChannel[e.Channel], e)
+// matchGridEntries groups entries by Plex channel and pairs each group with
+// the airings on the corresponding local channel.
+func (d *DB) matchGridEntries(ctx context.Context, entries []plex.GridEntry, channelMatchMap map[string]string, gridStart, gridEnd time.Time, result *PlexPollResult) []airingUpdate {
+	byChannel := map[string][]plex.GridEntry{}
+	for _, e := range entries {
+		byChannel[e.Channel] = append(byChannel[e.Channel], e)
+	}
+	var updates []airingUpdate
+	for plexChanID, gridEntries := range byChannel {
+		localChannelID, ok := channelMatchMap[plexChanID]
+		if !ok {
+			continue
 		}
-
-		for plexChanID, gridEntries := range byChannel {
-			localChannelID, ok := channelMatchMap[plexChanID]
-			if !ok {
-				continue
-			}
-			candidates, err := d.getAiringsForChannel(ctx, localChannelID, gridStart, gridEnd)
-			if err != nil {
-				result.Errors = append(result.Errors, fmt.Sprintf("getAiringsForChannel(%s): %v", localChannelID, err))
-				continue
-			}
-			for _, entry := range gridEntries {
-				result.AiringMatches.Total++
-				matched, src, reason := plex.MatchAiring(entry, candidates)
-				if matched != nil {
-					result.AiringMatches.Matched++
-					switch src {
-					case plex.MatchSourceProgID:
-						result.AiringMatches.ByProgID++
-					case plex.MatchSourceStartTime:
-						result.AiringMatches.ByStartTime++
-					}
-					airingUpdates = append(airingUpdates, airingUpdate{
-						channelID:     matched.ChannelID,
-						startTime:     matched.Start,
-						plexRatingKey: entry.RatingKey,
-					})
-				} else {
-					result.UnmatchedAirings = append(result.UnmatchedAirings, PlexUnmatchedAiring{
-						ChannelID: localChannelID,
-						Title:     entry.Title,
-						StartTime: time.Unix(entry.BeginsAt, 0).UTC(),
-						Reason:    unmatchedReasonString(reason),
-					})
-				}
+		candidates, err := d.getAiringsForChannel(ctx, localChannelID, gridStart, gridEnd)
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("getAiringsForChannel(%s): %v", localChannelID, err))
+			continue
+		}
+		for _, entry := range gridEntries {
+			if u, ok := matchSingleAiring(entry, localChannelID, candidates, result); ok {
+				updates = append(updates, u)
 			}
 		}
 	}
-	logAiringSummary(result.AiringMatches, result.UnmatchedAirings)
+	return updates
+}
 
-	if err := d.applyPlexUpdates(ctx, channelUpdates, airingUpdates); err != nil {
-		result.Errors = append(result.Errors, fmt.Sprintf("applyPlexUpdates: %v", err))
+// matchSingleAiring pairs one Plex grid entry with a local airing and updates
+// result's stats. Returns ok=false when the entry could not be matched.
+func matchSingleAiring(entry plex.GridEntry, localChannelID string, candidates []model.Airing, result *PlexPollResult) (airingUpdate, bool) {
+	result.AiringMatches.Total++
+	matched, src, reason := plex.MatchAiring(entry, candidates)
+	if matched == nil {
+		result.UnmatchedAirings = append(result.UnmatchedAirings, PlexUnmatchedAiring{
+			ChannelID: localChannelID,
+			Title:     entry.Title,
+			StartTime: time.Unix(entry.BeginsAt, 0).UTC(),
+			Reason:    unmatchedReasonString(reason),
+		})
+		return airingUpdate{}, false
 	}
+	result.AiringMatches.Matched++
+	tickAiringMatchSource(src, &result.AiringMatches)
+	return airingUpdate{
+		channelID:     matched.ChannelID,
+		startTime:     matched.Start,
+		plexRatingKey: entry.RatingKey,
+	}, true
+}
 
-	logging.Info(fmt.Sprintf("[plex] poll completed in %s", time.Since(result.StartedAt).Round(time.Millisecond)))
-	return result, nil
+// tickAiringMatchSource increments the per-source counter for an airing match.
+func tickAiringMatchSource(src plex.MatchSource, stats *PlexMatchStats) {
+	switch src {
+	case plex.MatchSourceProgID:
+		stats.ByProgID++
+	case plex.MatchSourceStartTime:
+		stats.ByStartTime++
+	}
 }
 
 // getAiringsForChannel returns the (start, prog_id) pair for every airing on
@@ -292,41 +345,60 @@ func (d *DB) applyPlexUpdates(ctx context.Context, channelUpdates []channelUpdat
 		}
 	}()
 
-	if len(channelUpdates) > 0 {
-		stmt, err := tx.PrepareContext(ctx, `UPDATE channels SET plex_channel_id = ?, plex_lineup_id = ? WHERE id = ?`)
-		if err != nil {
-			return fmt.Errorf("prepare channel update: %w", err)
-		}
-		for _, cu := range channelUpdates {
-			if _, err := stmt.ExecContext(ctx, cu.plexChannelID, cu.plexLineupID, cu.channelID); err != nil {
-				_ = stmt.Close()
-				return fmt.Errorf("update channel %s: %w", cu.channelID, err)
-			}
-		}
-		if err := stmt.Close(); err != nil {
-			log.Printf("closing channel update stmt: %v", err)
-		}
+	if err := execChannelUpdates(ctx, tx, channelUpdates); err != nil {
+		return err
 	}
-
-	if len(airingUpdates) > 0 {
-		stmt, err := tx.PrepareContext(ctx, `UPDATE airings SET plex_rating_key = ? WHERE channel_id = ? AND start_time = ?`)
-		if err != nil {
-			return fmt.Errorf("prepare airing update: %w", err)
-		}
-		for _, au := range airingUpdates {
-			startStr := au.startTime.UTC().Format(time.RFC3339)
-			if _, err := stmt.ExecContext(ctx, au.plexRatingKey, au.channelID, startStr); err != nil {
-				_ = stmt.Close()
-				return fmt.Errorf("update airing %s@%s: %w", au.channelID, startStr, err)
-			}
-		}
-		if err := stmt.Close(); err != nil {
-			log.Printf("closing airing update stmt: %v", err)
-		}
+	if err := execAiringUpdates(ctx, tx, airingUpdates); err != nil {
+		return err
 	}
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit plex tx: %w", err)
+	}
+	return nil
+}
+
+// execChannelUpdates runs all channel UPDATEs inside tx. A no-op when updates is empty.
+func execChannelUpdates(ctx context.Context, tx *sql.Tx, updates []channelUpdate) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	stmt, err := tx.PrepareContext(ctx, `UPDATE channels SET plex_channel_id = ?, plex_lineup_id = ? WHERE id = ?`)
+	if err != nil {
+		return fmt.Errorf("prepare channel update: %w", err)
+	}
+	defer func() {
+		if err := stmt.Close(); err != nil {
+			log.Printf("closing channel update stmt: %v", err)
+		}
+	}()
+	for _, cu := range updates {
+		if _, err := stmt.ExecContext(ctx, cu.plexChannelID, cu.plexLineupID, cu.channelID); err != nil {
+			return fmt.Errorf("update channel %s: %w", cu.channelID, err)
+		}
+	}
+	return nil
+}
+
+// execAiringUpdates runs all airing UPDATEs inside tx. A no-op when updates is empty.
+func execAiringUpdates(ctx context.Context, tx *sql.Tx, updates []airingUpdate) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	stmt, err := tx.PrepareContext(ctx, `UPDATE airings SET plex_rating_key = ? WHERE channel_id = ? AND start_time = ?`)
+	if err != nil {
+		return fmt.Errorf("prepare airing update: %w", err)
+	}
+	defer func() {
+		if err := stmt.Close(); err != nil {
+			log.Printf("closing airing update stmt: %v", err)
+		}
+	}()
+	for _, au := range updates {
+		startStr := au.startTime.UTC().Format(time.RFC3339)
+		if _, err := stmt.ExecContext(ctx, au.plexRatingKey, au.channelID, startStr); err != nil {
+			return fmt.Errorf("update airing %s@%s: %w", au.channelID, startStr, err)
+		}
 	}
 	return nil
 }

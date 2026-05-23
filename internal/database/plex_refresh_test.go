@@ -106,8 +106,18 @@ func seedDBForPlex(t *testing.T, base time.Time) *database.DB {
 	return db
 }
 
-func TestRefreshPlex_EndToEnd_MatchesChannelsAndAirings(t *testing.T) {
-	// Anchor airings just past now so they fall inside the grid window.
+// runEndToEndPoll spins up a DB seeded with three channels + three airings,
+// serves the canonical fixture from a stub Plex server, runs one RefreshPlex
+// cycle, and returns the poll result alongside the live DB. The fixtures are
+// designed to exercise every match outcome in one pass:
+//
+//   - abc.com.au   — channel matched by xmltvId; one airing matched by progid,
+//     one by start-time; one ProgID column verified intact
+//   - seven.com.au — channel matched by lcn; its sole airing remains unmatched
+//     because the corresponding grid entry's progid does not match
+//   - nine.com.au  — no Plex counterpart, so all three plex_* columns stay NULL
+func runEndToEndPoll(t *testing.T) (*database.DB, time.Time, database.PlexPollResult) {
+	t.Helper()
 	base := time.Now().UTC().Truncate(time.Hour).Add(time.Hour)
 	db := seedDBForPlex(t, base)
 
@@ -137,104 +147,117 @@ func TestRefreshPlex_EndToEnd_MatchesChannelsAndAirings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RefreshPlex: %v", err)
 	}
+	return db, base, result
+}
 
-	// Channel stats.
-	if result.ChannelMatches.Total != 3 {
-		t.Errorf("ChannelMatches.Total = %d, want 3", result.ChannelMatches.Total)
-	}
-	if result.ChannelMatches.Matched != 2 {
-		t.Errorf("ChannelMatches.Matched = %d, want 2", result.ChannelMatches.Matched)
-	}
-	if result.ChannelMatches.ByID != 1 {
-		t.Errorf("ChannelMatches.ByID = %d, want 1", result.ChannelMatches.ByID)
-	}
-	if result.ChannelMatches.ByLCN != 1 {
-		t.Errorf("ChannelMatches.ByLCN = %d, want 1", result.ChannelMatches.ByLCN)
-	}
+func TestRefreshPlex_EndToEnd_ChannelStats(t *testing.T) {
+	_, _, result := runEndToEndPoll(t)
+	checkChannelStats(t, result)
 	if len(result.UnmatchedChan) != 1 || result.UnmatchedChan[0].PlexID != "plex.extra" {
 		t.Errorf("UnmatchedChan = %+v, want one entry with PlexID=plex.extra", result.UnmatchedChan)
 	}
+}
 
-	// Airing stats.
-	if result.AiringMatches.Total != 3 {
-		t.Errorf("AiringMatches.Total = %d, want 3", result.AiringMatches.Total)
-	}
-	if result.AiringMatches.Matched != 2 {
-		t.Errorf("AiringMatches.Matched = %d, want 2", result.AiringMatches.Matched)
-	}
-	if result.AiringMatches.ByProgID != 1 {
-		t.Errorf("AiringMatches.ByProgID = %d, want 1", result.AiringMatches.ByProgID)
-	}
-	if result.AiringMatches.ByStartTime != 1 {
-		t.Errorf("AiringMatches.ByStartTime = %d, want 1", result.AiringMatches.ByStartTime)
-	}
+func TestRefreshPlex_EndToEnd_AiringStats(t *testing.T) {
+	_, _, result := runEndToEndPoll(t)
+	checkAiringStats(t, result)
+}
 
-	// Channels in DB.
+func TestRefreshPlex_EndToEnd_ChannelsTablePopulated(t *testing.T) {
+	db, _, _ := runEndToEndPoll(t)
 	chans, err := db.GetChannels(context.Background())
 	if err != nil {
 		t.Fatalf("GetChannels: %v", err)
 	}
-	mustPlexID := func(id, want string) {
-		t.Helper()
-		for _, c := range chans {
-			if c.ID == id {
-				if c.PlexChannelID == nil || *c.PlexChannelID != want {
-					t.Errorf("%s PlexChannelID = %v, want %s", id, c.PlexChannelID, want)
-				}
-				return
-			}
-		}
-		t.Errorf("channel %s not found", id)
-	}
-	mustPlexID("abc.com.au", "plex.abc")
-	mustPlexID("seven.com.au", "plex.seven")
+	checkChannelRowState(t, chans)
+}
 
-	// Verify nine.com.au stayed NULL.
-	for _, c := range chans {
-		if c.ID == "nine.com.au" && c.PlexChannelID != nil {
-			t.Errorf("nine.com.au PlexChannelID should be nil, got %v", *c.PlexChannelID)
-		}
-		if c.ID == "abc.com.au" {
-			if c.DisplayName != "ABC" {
-				t.Errorf("abc DisplayName mutated: got %q, want ABC", c.DisplayName)
-			}
-			if c.PlexLineupID == nil || *c.PlexLineupID != "L1" {
-				t.Errorf("abc PlexLineupID = %v, want L1", c.PlexLineupID)
-			}
-		}
-	}
-
-	// Airings in DB.
+func TestRefreshPlex_EndToEnd_AiringsTablePopulated(t *testing.T) {
+	db, base, _ := runEndToEndPoll(t)
 	airings, err := db.GetAirings(context.Background(), base)
 	if err != nil {
 		t.Fatalf("GetAirings: %v", err)
 	}
+	checkAiringRowState(t, airings)
+}
+
+// checkChannelStats asserts the totals/sources on result.ChannelMatches.
+func checkChannelStats(t *testing.T, result database.PlexPollResult) {
+	t.Helper()
+	expectInt(t, "ChannelMatches.Total", result.ChannelMatches.Total, 3)
+	expectInt(t, "ChannelMatches.Matched", result.ChannelMatches.Matched, 2)
+	expectInt(t, "ChannelMatches.ByID", result.ChannelMatches.ByID, 1)
+	expectInt(t, "ChannelMatches.ByLCN", result.ChannelMatches.ByLCN, 1)
+}
+
+// checkAiringStats asserts the totals/sources on result.AiringMatches.
+func checkAiringStats(t *testing.T, result database.PlexPollResult) {
+	t.Helper()
+	expectInt(t, "AiringMatches.Total", result.AiringMatches.Total, 3)
+	expectInt(t, "AiringMatches.Matched", result.AiringMatches.Matched, 2)
+	expectInt(t, "AiringMatches.ByProgID", result.AiringMatches.ByProgID, 1)
+	expectInt(t, "AiringMatches.ByStartTime", result.AiringMatches.ByStartTime, 1)
+}
+
+// checkChannelRowState validates plex_* columns and unchanged display names
+// for every seeded channel.
+func checkChannelRowState(t *testing.T, chans []model.Channel) {
+	t.Helper()
+	for _, c := range chans {
+		switch c.ID {
+		case "abc.com.au":
+			expectPtrEq(t, "abc PlexChannelID", c.PlexChannelID, "plex.abc")
+			expectPtrEq(t, "abc PlexLineupID", c.PlexLineupID, "L1")
+			if c.DisplayName != "ABC" {
+				t.Errorf("abc DisplayName mutated: got %q, want ABC", c.DisplayName)
+			}
+		case "seven.com.au":
+			expectPtrEq(t, "seven PlexChannelID", c.PlexChannelID, "plex.seven")
+		case "nine.com.au":
+			if c.PlexChannelID != nil {
+				t.Errorf("nine.com.au PlexChannelID should be nil, got %v", *c.PlexChannelID)
+			}
+		}
+	}
+}
+
+// checkAiringRowState validates plex_rating_key on each matched airing and
+// confirms the XMLTV ProgID column was not overwritten by Plex.
+func checkAiringRowState(t *testing.T, airings []model.Airing) {
+	t.Helper()
 	var foundNews, foundMovie bool
 	for _, a := range airings {
 		if a.ChannelID == "abc.com.au" && a.Title == "News at Noon" {
 			foundNews = true
-			if a.PlexRatingKey == nil || *a.PlexRatingKey != "rk-1" {
-				t.Errorf("News PlexRatingKey = %v, want rk-1", a.PlexRatingKey)
-			}
+			expectPtrEq(t, "News PlexRatingKey", a.PlexRatingKey, "rk-1")
 			if a.ProgID != "EP000123450001" {
 				t.Errorf("News ProgID mutated: got %q", a.ProgID)
 			}
 		}
 		if a.ChannelID == "abc.com.au" && a.Title == "Movie A" {
 			foundMovie = true
-			if a.PlexRatingKey == nil || *a.PlexRatingKey != "rk-2" {
-				t.Errorf("Movie PlexRatingKey = %v, want rk-2", a.PlexRatingKey)
-			}
+			expectPtrEq(t, "Movie PlexRatingKey", a.PlexRatingKey, "rk-2")
 		}
-		// Morning Show on seven should remain unmatched.
-		if a.ChannelID == "seven.com.au" && a.Title == "Morning Show" {
-			if a.PlexRatingKey != nil {
-				t.Errorf("Morning Show PlexRatingKey should be nil, got %v", *a.PlexRatingKey)
-			}
+		if a.ChannelID == "seven.com.au" && a.Title == "Morning Show" && a.PlexRatingKey != nil {
+			t.Errorf("Morning Show PlexRatingKey should be nil, got %v", *a.PlexRatingKey)
 		}
 	}
 	if !foundNews || !foundMovie {
 		t.Fatalf("expected matched airings; News=%v Movie=%v", foundNews, foundMovie)
+	}
+}
+
+func expectInt(t *testing.T, label string, got, want int) {
+	t.Helper()
+	if got != want {
+		t.Errorf("%s = %d, want %d", label, got, want)
+	}
+}
+
+func expectPtrEq(t *testing.T, label string, got *string, want string) {
+	t.Helper()
+	if got == nil || *got != want {
+		t.Errorf("%s = %v, want %s", label, got, want)
 	}
 }
 
