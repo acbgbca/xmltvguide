@@ -14,7 +14,7 @@ import (
 // that have an icon; it is empty for channels without one.
 func (d *DB) GetChannels(ctx context.Context) ([]model.Channel, error) {
 	rows, err := d.db.QueryContext(ctx, `
-		SELECT id, display_name, COALESCE(icon_url, ''), lcn
+		SELECT id, display_name, COALESCE(icon_url, ''), lcn, plex_channel_id, plex_lineup_id
 		FROM channels
 		ORDER BY sort_order
 	`)
@@ -32,7 +32,8 @@ func (d *DB) GetChannels(ctx context.Context) ([]model.Channel, error) {
 		var ch model.Channel
 		var lcn sql.NullInt64
 		var iconURL string
-		if err := rows.Scan(&ch.ID, &ch.DisplayName, &iconURL, &lcn); err != nil {
+		var plexChannelID, plexLineupID sql.NullString
+		if err := rows.Scan(&ch.ID, &ch.DisplayName, &iconURL, &lcn, &plexChannelID, &plexLineupID); err != nil {
 			return nil, fmt.Errorf("scanning channel: %w", err)
 		}
 		if iconURL != "" {
@@ -41,6 +42,14 @@ func (d *DB) GetChannels(ctx context.Context) ([]model.Channel, error) {
 		if lcn.Valid {
 			n := int(lcn.Int64)
 			ch.LCN = &n
+		}
+		if plexChannelID.Valid {
+			s := plexChannelID.String
+			ch.PlexChannelID = &s
+		}
+		if plexLineupID.Valid {
+			s := plexLineupID.String
+			ch.PlexLineupID = &s
 		}
 		channels = append(channels, ch)
 	}

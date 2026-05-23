@@ -23,6 +23,8 @@ func (h *Handler) getDeepCheck(w http.ResponseWriter, r *http.Request) {
 		PollInterval:  h.deep.PollInterval,
 		DBPath:        h.deep.DBPath,
 		ImageCacheDir: h.deep.ImageCacheDir,
+		PlexURL:       h.deep.PlexURL,
+		PlexClient:    h.deep.PlexClient,
 	}
 	report := checker.Run(ctx)
 	if report.Status != deepcheck.StatusSuccess {

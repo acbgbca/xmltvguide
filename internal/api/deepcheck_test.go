@@ -116,6 +116,7 @@ func TestDeepCheck_HappyPath_Returns200AndSuccess(t *testing.T) {
 		"disk_data",
 		"disk_tmp",
 		"image_cache",
+		"plex_reachable",
 	}
 	if len(body.Checks) != len(wantOrder) {
 		t.Fatalf("got %d checks, want %d (%+v)", len(body.Checks), len(wantOrder), body.Checks)
@@ -161,8 +162,8 @@ func TestDeepCheck_UnreachableXMLTV_Returns503(t *testing.T) {
 	}
 
 	// All checks should be present even when xmltv_url fails.
-	if len(body.Checks) != 9 {
-		t.Errorf("expected 9 checks, got %d", len(body.Checks))
+	if len(body.Checks) != 10 {
+		t.Errorf("expected 10 checks, got %d", len(body.Checks))
 	}
 	var xmltv *struct {
 		Name, Status, Error string

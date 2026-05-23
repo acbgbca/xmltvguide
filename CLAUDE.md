@@ -17,12 +17,17 @@ A personal PWA TV guide that parses XMLTV data and displays it as a scrollable g
 ```
 tvguide/
 ├── main.go                      # Entry point: config, XMLTV poller, HTTP server, embed
+├── plex_poller.go               # Plex enrichment ticker + status snapshot wiring
 ├── go.mod                       # Module: github.com/acbgbca/xmltvguide
 ├── go.sum                       # Generated on first Docker build (commit after first build)
 ├── internal/
 │   ├── xmltv/parser.go          # Fetch XMLTV from URL and parse into structs
+│   ├── plex/                    # Plex API client + match algorithms
+│   │   ├── client.go            # HTTP client (Ping, GetDVRs, GetLineupChannels, GetGrid)
+│   │   └── match.go             # MatchChannel (id/lcn/name cascade) and MatchAiring (progid/start-time)
 │   ├── database/db.go           # SQLite store: schema, Refresh, GetChannels, GetAirings, DeepCheck
-│   ├── deepcheck/deepcheck.go   # On-demand deep health probe (DB, disk, XMLTV reachability)
+│   ├── database/plex_refresh.go # RefreshPlex orchestrator — pairs Plex IDs onto channels/airings
+│   ├── deepcheck/deepcheck.go   # On-demand deep health probe (DB, disk, XMLTV, Plex reachability)
 │   └── api/                     # REST API handlers (one file per resource)
 │       ├── handler.go           # Router setup and shared middleware
 │       ├── guide.go             # GET /api/guide
@@ -33,6 +38,7 @@ tvguide/
 │       ├── rss.go               # RSS feed formatting
 │       ├── health.go            # GET /api/health
 │       ├── deepcheck.go         # GET /api/deepcheck
+│       ├── plex.go              # GET /api/plex/status
 │       └── debug.go             # Debug/status endpoints
 ├── web/                         # Frontend — embedded into binary via go:embed
 │   ├── index.html               # App shell (no JS framework)
@@ -80,7 +86,8 @@ tvguide/
 | `GET /api/explore/now-next` | For every channel, returns the currently-airing show (`current`) and the next upcoming show (`next`). Either field may be `null`. Ordered by channel sort order (lcn, then source order). |
 | `POST /api/guide/refresh` | Triggers a refresh of TV guide data. `sync=true`: waits for completion and returns `200 {"ok":true}` or `500 {"error":"..."}`. Default (async): returns `202 Accepted` immediately. |
 | `GET /api/health` | Healthcheck endpoint. Probes SQLite connectivity and FTS availability. Returns `200 {"status":"ok"}` when healthy or `500 {"error":"..."}` when unhealthy. Used by the Docker `HEALTHCHECK` instruction via the `--healthcheck` binary flag — this remains the Docker liveness probe and is unchanged. |
-| `GET /api/deepcheck` | Deep health check across database, FTS, data presence/freshness, XMLTV source reachability, and disk writability for `/data`, `/tmp`, and the image cache. Returns JSON `{status, checks[]}`: each entry is `{name, status, error?, info?}` with `status` one of `SUCCESS`/`FAILURE`. HTTP `200` when global status is `SUCCESS`, `503 Service Unavailable` otherwise. Every check runs independently — one failure does not skip the others. Intended for occasional on-demand diagnostics, not high-frequency probing — use `/api/health` for that. |
+| `GET /api/deepcheck` | Deep health check across database, FTS, data presence/freshness, XMLTV source reachability, disk writability for `/data`, `/tmp`, and the image cache, and Plex reachability (when configured). Returns JSON `{status, checks[]}`: each entry is `{name, status, error?, info?}` with `status` one of `SUCCESS`/`FAILURE`. HTTP `200` when global status is `SUCCESS`, `503 Service Unavailable` otherwise. The `plex_reachable` check reports `info="not configured"` when `PLEX_URL` is unset and never fails the report in that case. Every check runs independently — one failure does not skip the others. Intended for occasional on-demand diagnostics, not high-frequency probing — use `/api/health` for that. |
+| `GET /api/plex/status` | Snapshot of the most recent Plex EPG enrichment poll. When `PLEX_URL` is unset, returns `{"enabled": false}` only. When enabled, returns `lastPoll`, `nextPoll`, `lastDurationMs`, and `channels`/`airings` blocks containing total/matched counts, per-source counters (`byId`/`byLcn`/`byName` for channels; `byProgId`/`byStartTime` for airings), and the full list of unmatched entries with reasons. HTTP 200 in both cases — the endpoint always exists. |
 | `GET /` | Serves the embedded frontend (SPA shell) |
 | `GET /{any}` | SPA fallback — serves `index.html` for any path not matching API, images, or static files. Enables client-side routing via History API. |
 
@@ -126,7 +133,7 @@ channels (id PK, display_name, icon, sort_order, lcn, icon_url, plex_channel_id,
 -- lcn:     logical channel number from <lcn> element (nullable); used for display ordering
 -- icon:    local filesystem path of the cached icon file (e.g. /data/images/channels/ch1.png); NULL if not yet downloaded
 -- icon_url: original external URL from the XMLTV source; used to detect URL changes and to re-download if the local file goes missing
--- plex_channel_id, plex_lineup_id: Plex EPG enrichment IDs; nullable, populated by the Plex poller (see #276/#282)
+-- plex_channel_id, plex_lineup_id: Plex EPG enrichment IDs; nullable, populated by the Plex poller — see "Plex enrichment" section
 
 airings (
   channel_id + start_time  -- composite PK
@@ -137,7 +144,7 @@ airings (
   prog_id                  -- dd_progid (TMS/Gracenote stable ID, if present)
   star_rating, content_rating, year, icon, country,
   is_repeat, is_premiere,
-  plex_rating_key          -- Plex EPG ratingKey; nullable, populated by the Plex poller (see #276/#282)
+  plex_rating_key          -- Plex EPG ratingKey; nullable, populated by the Plex poller — see "Plex enrichment" section
 )
 
 airings_fts  -- FTS5 virtual table for full-text search
@@ -258,6 +265,56 @@ When adding a new static asset under `web/`, also add it to the `STATIC` list in
 - Time format: `YYYYMMDDHHmmss ±HHMM` — the parser handles both `+1100` and `+11:00` offset styles.
 - Large files (e.g. Melbourne.xml ~50MB) are parsed fully into memory on each poll, then written to SQLite in a single transaction.
 - The HTTP request sets `Accept: text/xml, application/xml, */*` and `User-Agent: xmltvguide/1.0` — required because some XMLTV hosts return 406 without an explicit Accept header.
+
+## Plex enrichment
+
+Plex enrichment is purely **additive**: it populates three new columns on existing rows but never modifies XMLTV-derived fields. The integration is a no-op when `PLEX_URL` is unset — no goroutine, no requests, and `/api/plex/status` returns `{"enabled": false}`.
+
+### What it does
+
+A background ticker (cadence: `PLEX_POLL_INTERVAL`, default 12 h) calls `db.RefreshPlex`. One cycle:
+
+1. `GET /livetv/dvrs` — discover lineup IDs and grid keys.
+2. For each lineup, `GET /epg/lineups/{id}/channels` — match each Plex channel to a local channel via the **channel cascade**: xmltv ID → LCN → display name (case-insensitive). Ambiguous matches (two or more candidates at the same tier) abort without falling through; see `internal/plex/match.go` for the rationale. On match, `UPDATE channels SET plex_channel_id, plex_lineup_id`.
+3. For each unique grid key, `GET /{gridKey}/grid?type=4&beginsAt=now&endsAt=now+RETENTION_DAYS` — group entries by Plex channel, resolve to a local channel via step 2's map, then match each entry against airings on that channel only via the **airing strategy**: `dd_progid` when Plex has one; otherwise exact start-time match. On match, `UPDATE airings SET plex_rating_key`.
+4. All UPDATEs commit in a single transaction. Per-step fetch errors are accumulated in `result.Errors` and do not abort the transaction — partial enrichment is preferred over rolling back successful matches.
+
+### Where the IDs are stored
+
+| Column | Table | Populated by |
+|---|---|---|
+| `plex_channel_id` | `channels` | step 2 |
+| `plex_lineup_id` | `channels` | step 2 |
+| `plex_rating_key` | `airings` | step 3 |
+
+All three columns are nullable. Unmatched rows stay `NULL`. The XMLTV refresh path never reads or writes these columns; the Plex poller never reads or writes any XMLTV column.
+
+### Log output
+
+Each poll emits an INFO summary block:
+
+```
+[plex] poll started (2 lineups discovered)
+[plex] channels: matched 38/45 (32 by id, 4 by lcn, 2 by name)
+[plex]   unmatched Plex channels: [plex.foo plex.bar plex.baz] (and 4 more)
+[plex] airings: matched 1180/1240 (1145 by progid, 35 by start-time)
+[plex]   unmatched sample: "Movie B" on ch5.au @ 21:00 (progid_mismatch)
+[plex] poll completed in 2.3s
+```
+
+Unmatched lists are truncated to 5 entries in logs; the full lists are available via `/api/plex/status`.
+
+Actionable error log lines for common failure modes:
+
+| Condition | Level | Message |
+|---|---|---|
+| Plex unreachable on startup probe | ERROR | `Plex unreachable at <URL>: <err>. Plex enrichment disabled until reachable. Verify PLEX_URL and that Plex is running.` |
+| 401/403 from any endpoint | ERROR | `Plex returned 401 — PLEX_TOKEN appears invalid. Regenerate at https://plex.tv → Account → Authorized Devices.` |
+| Timeout / 5xx during poll | WARN | `Plex poll failed (<endpoint>): <err>. Will retry in <interval>.` |
+| 0 DVRs returned | WARN | `Plex returned 0 DVRs — Plex Live TV / DVR may not be configured on this server.` |
+| Poll succeeded but 0 channels matched | WARN | `Plex returned N channels but none matched TV Guide channels. Check that both sources reference the same lineup (compare channel IDs/LCNs/names).` |
+
+DEBUG (opt-in via `LOG_LEVEL=debug`): per-HTTP-request `GET <url> → <status> (<bytes>, <ms>)` and per-channel match decisions.
 
 ## Testing
 

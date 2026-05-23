@@ -33,14 +33,17 @@ type DeepCheckConfig struct {
 	PollInterval  time.Duration
 	DBPath        string
 	ImageCacheDir string
+	PlexURL       string
+	PlexClient    deepcheck.PlexProbe
 }
 
 // Handler holds the HTTP handler dependencies.
 type Handler struct {
-	db        store
-	rssTTL    int          // default RSS TTL in minutes; 0 means use hard-coded default (360)
-	refreshFn func() error // optional; nil means refresh endpoint returns 501
-	deep      DeepCheckConfig
+	db           store
+	rssTTL       int          // default RSS TTL in minutes; 0 means use hard-coded default (360)
+	refreshFn    func() error // optional; nil means refresh endpoint returns 501
+	deep         DeepCheckConfig
+	plexStatusFn PlexStatusFunc // optional; nil means /api/plex/status returns {"enabled": false}
 }
 
 // New creates a new Handler backed by db. rssTTL is the server-wide default
@@ -65,6 +68,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/guide/refresh", h.postGuideRefresh)
 	mux.HandleFunc("GET /api/health", h.getHealth)
 	mux.HandleFunc("GET /api/deepcheck", h.getDeepCheck)
+	mux.HandleFunc("GET /api/plex/status", h.getPlexStatus)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

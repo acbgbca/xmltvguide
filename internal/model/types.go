@@ -6,10 +6,12 @@ import (
 
 // Channel holds display data for a TV channel.
 type Channel struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"displayName"`
-	Icon        string `json:"icon,omitempty"`
-	LCN         *int   `json:"lcn,omitempty"`
+	ID            string  `json:"id"`
+	DisplayName   string  `json:"displayName"`
+	Icon          string  `json:"icon,omitempty"`
+	LCN           *int    `json:"lcn,omitempty"`
+	PlexChannelID *string `json:"plexChannelId,omitempty"`
+	PlexLineupID  *string `json:"plexLineupId,omitempty"`
 }
 
 // Airing holds all data for a single broadcast slot.
@@ -32,6 +34,7 @@ type Airing struct {
 	Country           string    `json:"country,omitempty"`
 	IsRepeat          bool      `json:"isRepeat"`
 	IsPremiere        bool      `json:"isPremiere"`
+	PlexRatingKey     *string   `json:"plexRatingKey,omitempty"`
 }
 
 // Status holds metadata about the last data refresh.
