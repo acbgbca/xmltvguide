@@ -98,6 +98,10 @@ tvguide/
 | `RSS_TTL` | `360` | Default TTL (time-to-live) in minutes for RSS feed responses. Tells feed readers how often to re-poll. Can be overridden per-request via the `ttl` query parameter on `/api/search`. Must be a positive integer; invalid values are ignored. |
 | `HIDDEN_CHANNELS` | *(unset)* | Comma-separated list of channel IDs and/or LCN numbers to hide server-wide. Integer tokens are treated as LCN numbers; all other tokens are treated as channel IDs. Hidden channels are excluded from all API responses (`/api/channels`, `/api/guide`, `/api/search`, `/api/explore/now-next`). Example: `ch1.xmltv.id,6,9,10` |
 | `CHANNEL_NAME_STRIP` | *(unset)* | Comma-separated list of words/phrases to strip from all channel display names at refresh time. Matching is case-insensitive; resulting names are trimmed of surrounding whitespace. Example: `Melbourne,Victoria` turns "ABC Melbourne" into "ABC" and "Nine Victoria" into "Nine". |
+| `LOG_LEVEL` | `info` | Global log level for the `internal/logging` package. Accepts `debug`, `info`, `warn`, `error` (case-insensitive). Invalid values fall back to `info` and emit a warning at startup. |
+| `PLEX_URL` | *(unset)* | Origin of the Plex Media Server used as an EPG enrichment source (e.g. `http://plex.local:32400`). Enrichment is a no-op while this is unset. Requires `PLEX_TOKEN`; if `PLEX_TOKEN` is empty, Plex enrichment is disabled with an error log line and the XMLTV path continues to work. |
+| `PLEX_TOKEN` | *(unset)* | `X-Plex-Token` value for authenticating against the Plex Media Server identified by `PLEX_URL`. Required whenever `PLEX_URL` is set. |
+| `PLEX_POLL_INTERVAL` | `12h` | How often to re-poll the Plex EPG endpoints for enrichment. Accepts Go duration strings: `6h`, `30m`, etc. Independent of `POLL_INTERVAL` (the XMLTV cadence). |
 
 ## How to build and run
 

@@ -165,6 +165,98 @@ func TestParseConfig_InvalidRssTTLIsIgnored(t *testing.T) {
 	}
 }
 
+func TestParseConfig_LogLevelDefault(t *testing.T) {
+	t.Setenv("XMLTV_URL", "http://example.com/guide.xml")
+	t.Setenv("LOG_LEVEL", "")
+
+	cfg, err := parseConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.logLevel != "info" {
+		t.Errorf("logLevel = %q, want %q", cfg.logLevel, "info")
+	}
+}
+
+func TestParseConfig_LogLevelCustom(t *testing.T) {
+	t.Setenv("XMLTV_URL", "http://example.com/guide.xml")
+	t.Setenv("LOG_LEVEL", "DEBUG")
+
+	cfg, err := parseConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.logLevel != "DEBUG" {
+		t.Errorf("logLevel = %q, want %q", cfg.logLevel, "DEBUG")
+	}
+}
+
+func TestParseConfig_PlexDefaults(t *testing.T) {
+	t.Setenv("XMLTV_URL", "http://example.com/guide.xml")
+	t.Setenv("PLEX_URL", "")
+	t.Setenv("PLEX_TOKEN", "")
+	t.Setenv("PLEX_POLL_INTERVAL", "")
+
+	cfg, err := parseConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.plexURL != "" {
+		t.Errorf("plexURL = %q, want empty", cfg.plexURL)
+	}
+	if cfg.plexToken != "" {
+		t.Errorf("plexToken = %q, want empty", cfg.plexToken)
+	}
+	if cfg.plexPollInterval != 12*time.Hour {
+		t.Errorf("plexPollInterval = %v, want %v", cfg.plexPollInterval, 12*time.Hour)
+	}
+}
+
+func TestParseConfig_PlexCustom(t *testing.T) {
+	t.Setenv("XMLTV_URL", "http://example.com/guide.xml")
+	t.Setenv("PLEX_URL", "http://plex.local:32400")
+	t.Setenv("PLEX_TOKEN", "secret")
+	t.Setenv("PLEX_POLL_INTERVAL", "6h")
+
+	cfg, err := parseConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.plexURL != "http://plex.local:32400" {
+		t.Errorf("plexURL = %q", cfg.plexURL)
+	}
+	if cfg.plexToken != "secret" {
+		t.Errorf("plexToken = %q", cfg.plexToken)
+	}
+	if cfg.plexPollInterval != 6*time.Hour {
+		t.Errorf("plexPollInterval = %v", cfg.plexPollInterval)
+	}
+}
+
+func TestParseConfig_PlexURLWithoutTokenIsDisabled(t *testing.T) {
+	t.Setenv("XMLTV_URL", "http://example.com/guide.xml")
+	t.Setenv("PLEX_URL", "http://plex.local:32400")
+	t.Setenv("PLEX_TOKEN", "")
+
+	cfg, err := parseConfig()
+	if err != nil {
+		t.Fatalf("parseConfig should not fail on missing token, got: %v", err)
+	}
+	if cfg.plexURL != "" {
+		t.Errorf("expected plexURL to be cleared when token is missing, got %q", cfg.plexURL)
+	}
+}
+
+func TestParseConfig_InvalidPlexPollInterval(t *testing.T) {
+	t.Setenv("XMLTV_URL", "http://example.com/guide.xml")
+	t.Setenv("PLEX_POLL_INTERVAL", "notaduration")
+
+	_, err := parseConfig()
+	if err == nil {
+		t.Fatal("expected error for invalid PLEX_POLL_INTERVAL")
+	}
+}
+
 func TestParseConfig_NegativeRssTTLIsIgnored(t *testing.T) {
 	t.Setenv("XMLTV_URL", "http://example.com/guide.xml")
 	t.Setenv("POLL_INTERVAL", "")

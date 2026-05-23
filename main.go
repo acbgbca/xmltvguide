@@ -21,6 +21,7 @@ import (
 	"github.com/acbgbca/xmltvguide/internal/api"
 	"github.com/acbgbca/xmltvguide/internal/database"
 	"github.com/acbgbca/xmltvguide/internal/images"
+	"github.com/acbgbca/xmltvguide/internal/logging"
 	"github.com/acbgbca/xmltvguide/internal/xmltv"
 )
 
@@ -28,17 +29,21 @@ import (
 var webFS embed.FS
 
 type config struct {
-	xmltvURL       string
-	pollInterval   time.Duration
-	retentionDays  int
-	dbPath         string
-	imageCacheDir  string
-	port           string
-	hiddenIDs      []string
-	hiddenLCNs     []int
-	stripWords     []string
-	rssTTL         int
-	refreshOnStart bool
+	xmltvURL         string
+	pollInterval     time.Duration
+	retentionDays    int
+	dbPath           string
+	imageCacheDir    string
+	port             string
+	hiddenIDs        []string
+	hiddenLCNs       []int
+	stripWords       []string
+	rssTTL           int
+	refreshOnStart   bool
+	logLevel         string
+	plexURL          string
+	plexToken        string
+	plexPollInterval time.Duration
 }
 
 func parseConfig() (config, error) {
@@ -92,18 +97,44 @@ func parseConfig() (config, error) {
 
 	refreshOnStart := os.Getenv("REFRESH_ON_START") == "true"
 
+	logLevel := os.Getenv("LOG_LEVEL")
+	if logLevel == "" {
+		logLevel = "info"
+	}
+
+	plexURL := os.Getenv("PLEX_URL")
+	plexToken := os.Getenv("PLEX_TOKEN")
+	plexPollInterval := 12 * time.Hour
+	if v := os.Getenv("PLEX_POLL_INTERVAL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return config{}, fmt.Errorf("invalid PLEX_POLL_INTERVAL %q: %w", v, err)
+		}
+		plexPollInterval = d
+	}
+	// Misconfigured Plex (URL set, token empty) disables enrichment with a clear
+	// error. We never crash on this — the XMLTV path must continue to work.
+	if plexURL != "" && plexToken == "" {
+		logging.Error("PLEX_URL configured but PLEX_TOKEN is empty — set PLEX_TOKEN to enable Plex enrichment. Skipping Plex poller.")
+		plexURL = ""
+	}
+
 	return config{
-		xmltvURL:       xmltvURL,
-		pollInterval:   pollInterval,
-		retentionDays:  retentionDays,
-		dbPath:         dbPath,
-		imageCacheDir:  imageCacheDir,
-		port:           port,
-		hiddenIDs:      hiddenIDs,
-		hiddenLCNs:     hiddenLCNs,
-		stripWords:     stripWords,
-		rssTTL:         rssTTL,
-		refreshOnStart: refreshOnStart,
+		xmltvURL:         xmltvURL,
+		pollInterval:     pollInterval,
+		retentionDays:    retentionDays,
+		dbPath:           dbPath,
+		imageCacheDir:    imageCacheDir,
+		port:             port,
+		hiddenIDs:        hiddenIDs,
+		hiddenLCNs:       hiddenLCNs,
+		stripWords:       stripWords,
+		rssTTL:           rssTTL,
+		refreshOnStart:   refreshOnStart,
+		logLevel:         logLevel,
+		plexURL:          plexURL,
+		plexToken:        plexToken,
+		plexPollInterval: plexPollInterval,
 	}, nil
 }
 
@@ -202,6 +233,12 @@ func main() {
 		}
 		os.Exit(0)
 	}
+
+	// Initialise logging from LOG_LEVEL before parseConfig so any errors
+	// emitted while parsing (e.g. PLEX_URL without PLEX_TOKEN) are routed
+	// through the configured handler. parseConfig also records the resolved
+	// level in the config for documentation/inspection purposes.
+	logging.Init(os.Getenv("LOG_LEVEL"))
 
 	cfg, err := parseConfig()
 	if err != nil {
