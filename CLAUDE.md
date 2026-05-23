@@ -122,10 +122,11 @@ SQLite file at `DB_PATH` (default `/data/tvguide.db`). Mount `/data` as a named 
 ### Schema
 
 ```sql
-channels (id PK, display_name, icon, sort_order, lcn, icon_url)
+channels (id PK, display_name, icon, sort_order, lcn, icon_url, plex_channel_id, plex_lineup_id)
 -- lcn:     logical channel number from <lcn> element (nullable); used for display ordering
 -- icon:    local filesystem path of the cached icon file (e.g. /data/images/channels/ch1.png); NULL if not yet downloaded
 -- icon_url: original external URL from the XMLTV source; used to detect URL changes and to re-download if the local file goes missing
+-- plex_channel_id, plex_lineup_id: Plex EPG enrichment IDs; nullable, populated by the Plex poller (see #276/#282)
 
 airings (
   channel_id + start_time  -- composite PK
@@ -135,7 +136,8 @@ airings (
   episode_num_display      -- onscreen/SxxExx format: "S02E04"
   prog_id                  -- dd_progid (TMS/Gracenote stable ID, if present)
   star_rating, content_rating, year, icon, country,
-  is_repeat, is_premiere
+  is_repeat, is_premiere,
+  plex_rating_key          -- Plex EPG ratingKey; nullable, populated by the Plex poller (see #276/#282)
 )
 
 airings_fts  -- FTS5 virtual table for full-text search
