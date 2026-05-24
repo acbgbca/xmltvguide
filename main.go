@@ -45,6 +45,7 @@ type config struct {
 	plexURL          string
 	plexToken        string
 	plexPollInterval time.Duration
+	plexExternalURL  string
 }
 
 func parseConfig() (config, error) {
@@ -105,6 +106,7 @@ func parseConfig() (config, error) {
 
 	plexURL := os.Getenv("PLEX_URL")
 	plexToken := os.Getenv("PLEX_TOKEN")
+	plexExternalURL := os.Getenv("PLEX_EXTERNAL_URL")
 	plexPollInterval := 12 * time.Hour
 	if v := os.Getenv("PLEX_POLL_INTERVAL"); v != "" {
 		d, err := time.ParseDuration(v)
@@ -136,6 +138,7 @@ func parseConfig() (config, error) {
 		plexURL:          plexURL,
 		plexToken:        plexToken,
 		plexPollInterval: plexPollInterval,
+		plexExternalURL:  plexExternalURL,
 	}, nil
 }
 
@@ -198,9 +201,7 @@ func run(cfg config) error {
 	apiHandler := api.New(db, cfg.rssTTL, func() error {
 		return refresh(db, httpClient, cfg.xmltvURL, cfg.pollInterval)
 	}, deepCfg)
-	if cfg.plexURL != "" {
-		apiHandler.SetPlexStatusFunc(plexState.snapshot)
-	}
+	wirePlexAPI(apiHandler, cfg, plexState)
 	apiHandler.RegisterRoutes(mux)
 
 	webContent, err := fs.Sub(webFS, "web")
@@ -296,6 +297,26 @@ func healthcheck() error {
 		return fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// wirePlexAPI registers the optional Plex-related handlers on apiHandler.
+// /api/plex/status needs the live poll snapshot; /api/channels/{id}/plex-link
+// needs a user-facing base URL. PLEX_EXTERNAL_URL takes precedence over
+// PLEX_URL because the user's mobile devices may reach Plex over a different
+// URL than the server uses for polling (e.g. https://plex.example.com vs
+// http://plex.local:32400). Both setters are no-ops on empty input, leaving
+// the corresponding endpoint disabled.
+func wirePlexAPI(apiHandler *api.Handler, cfg config, plexState *plexPollerState) {
+	if cfg.plexURL != "" {
+		apiHandler.SetPlexStatusFunc(plexState.snapshot)
+	}
+	linkURL := cfg.plexExternalURL
+	if linkURL == "" {
+		linkURL = cfg.plexURL
+	}
+	if linkURL != "" {
+		apiHandler.SetPlexLinkURL(linkURL)
+	}
 }
 
 func runInitialRefresh(db *database.DB, client *http.Client, xmltvURL string, pollInterval time.Duration, refreshOnStart bool) {
