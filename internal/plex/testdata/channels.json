@@ -1,0 +1,37 @@
+{
+  "MediaContainer": {
+    "size": 3,
+    "Channel": [
+      {
+        "id": "5fc76c607dc1e8002d48a65d-5fc705f4dd53a6002d8f9173",
+        "gridKey": "5fc76c607dc1e8002d48a65d-5fc705f4dd53a6002d8f9173",
+        "vcn": "001",
+        "isHd": true,
+        "thumb": "https://example.com/thumbs/ten.png",
+        "title": "Network Ten (Australia)",
+        "callSign": "THMEANZ",
+        "language": "en"
+      },
+      {
+        "id": "5fc76c607dc1e8002d48a65d-1a2b3c4d5e6f",
+        "gridKey": "5fc76c607dc1e8002d48a65d-1a2b3c4d5e6f",
+        "vcn": "010",
+        "isHd": true,
+        "thumb": "https://example.com/thumbs/ten-bold.png",
+        "title": "10 Bold Drama",
+        "callSign": "TENBOLD",
+        "language": "en"
+      },
+      {
+        "id": "5fc76c607dc1e8002d48a65d-aabbccddeeff",
+        "gridKey": "5fc76c607dc1e8002d48a65d-aabbccddeeff",
+        "vcn": "002",
+        "isHd": true,
+        "thumb": "https://example.com/thumbs/abc.png",
+        "title": "ABC TV",
+        "callSign": "ABCAUS",
+        "language": "en"
+      }
+    ]
+  }
+}

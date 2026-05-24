@@ -7,15 +7,14 @@ import (
 
 // PlexMatchStats summarises Plex match counts for one entity kind. Per-source
 // counters are non-zero only for the kind they apply to (channels:
-// ByID/ByLCN/ByName; airings: ByProgID/ByStartTime). Zero counters are omitted
-// from the JSON response via omitempty.
+// ByID/ByLCN/ByName; airings: ByStartTime). Zero counters are omitted from the
+// JSON response via omitempty.
 type PlexMatchStats struct {
 	Total       int
 	Matched     int
 	ByID        int
 	ByLCN       int
 	ByName      int
-	ByProgID    int
 	ByStartTime int
 }
 
@@ -76,7 +75,6 @@ type channelStatsView struct {
 type airingStatsView struct {
 	Total       int                       `json:"total"`
 	Matched     int                       `json:"matched"`
-	ByProgID    int                       `json:"byProgId,omitempty"`
 	ByStartTime int                       `json:"byStartTime,omitempty"`
 	Unmatched   []plexUnmatchedAiringView `json:"unmatched,omitempty"`
 }
@@ -135,7 +133,6 @@ func (h *Handler) getPlexStatus(w http.ResponseWriter, r *http.Request) {
 		Airings: airingStatsView{
 			Total:       snap.AiringMatches.Total,
 			Matched:     snap.AiringMatches.Matched,
-			ByProgID:    snap.AiringMatches.ByProgID,
 			ByStartTime: snap.AiringMatches.ByStartTime,
 			Unmatched:   mapUnmatchedAirings(snap.UnmatchedAirings),
 		},

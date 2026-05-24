@@ -60,9 +60,11 @@ func (c *Client) GetDVRs(ctx context.Context) ([]DVR, error) {
 	return out.MediaContainer.Dvr, nil
 }
 
-// GetLineupChannels issues GET /epg/lineups/{lineupID}/channels.
-func (c *Client) GetLineupChannels(ctx context.Context, lineupID string) ([]LineupChannel, error) {
-	path := "/epg/lineups/" + lineupID + "/channels"
+// GetLineupChannels issues GET /{epgIdentifier}/lineups/dvr/channels — the
+// path Plex Cloud EPG actually exposes (the older /epg/lineups/{id}/channels
+// returns 404 against real servers).
+func (c *Client) GetLineupChannels(ctx context.Context, epgIdentifier string) ([]LineupChannel, error) {
+	path := "/" + strings.TrimPrefix(epgIdentifier, "/") + "/lineups/dvr/channels"
 	body, err := c.doRequest(ctx, path, nil)
 	if err != nil {
 		return nil, err
@@ -74,18 +76,16 @@ func (c *Client) GetLineupChannels(ctx context.Context, lineupID string) ([]Line
 	return out.MediaContainer.Channel, nil
 }
 
-// GetGrid issues GET /{gridKey}/grid?type=4&beginsAt=<unix>&endsAt=<unix>.
-func (c *Client) GetGrid(ctx context.Context, gridKey string, beginsAt, endsAt time.Time) ([]GridEntry, error) {
-	// gridKey is a path prefix returned by /livetv/dvrs; preserve its leading
-	// slash but tolerate inputs without one.
-	if !strings.HasPrefix(gridKey, "/") {
-		gridKey = "/" + gridKey
-	}
-	path := gridKey + "/grid"
+// GetGrid issues GET /{epgIdentifier}/grid?type=4&beginsAt>=<unix>&endsAt<=<unix>.
+// Plex requires the comparison operators on beginsAt/endsAt — without them
+// the server silently returns {"MediaContainer":{"size":0}}. The operator
+// characters `>` and `<` are url-encoded as %3E and %3C in the wire format.
+func (c *Client) GetGrid(ctx context.Context, epgIdentifier string, beginsAt, endsAt time.Time) ([]GridEntry, error) {
+	path := "/" + strings.TrimPrefix(epgIdentifier, "/") + "/grid"
 	query := map[string]string{
-		"type":     "4",
-		"beginsAt": strconv.FormatInt(beginsAt.Unix(), 10),
-		"endsAt":   strconv.FormatInt(endsAt.Unix(), 10),
+		"type":      "4",
+		"beginsAt>": strconv.FormatInt(beginsAt.Unix(), 10),
+		"endsAt<":   strconv.FormatInt(endsAt.Unix(), 10),
 	}
 	body, err := c.doRequest(ctx, path, query)
 	if err != nil {

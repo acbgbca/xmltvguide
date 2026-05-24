@@ -53,12 +53,12 @@ func plexStatusFixture() api.PlexStatusSnapshot {
 		LastDuration:   2300 * time.Millisecond,
 		Lineups:        1,
 		ChannelMatches: api.PlexMatchStats{Total: 45, Matched: 38, ByID: 32, ByLCN: 4, ByName: 2},
-		AiringMatches:  api.PlexMatchStats{Total: 1240, Matched: 1180, ByProgID: 1145, ByStartTime: 35},
+		AiringMatches:  api.PlexMatchStats{Total: 1240, Matched: 1180, ByStartTime: 1180},
 		UnmatchedChannels: []api.PlexUnmatchedChannel{
 			{PlexID: "plex.foo", DisplayName: "Foo TV", Reason: "no_id_lcn_or_name_match"},
 		},
 		UnmatchedAirings: []api.PlexUnmatchedAiring{
-			{ChannelID: "ch5.au", Title: "Movie B", StartTime: time.Date(2026, 5, 23, 21, 0, 0, 0, time.UTC), Reason: "progid_mismatch"},
+			{ChannelID: "ch5.au", Title: "Movie B", StartTime: time.Date(2026, 5, 23, 21, 0, 0, 0, time.UTC), Reason: "no_start_time_match"},
 		},
 		Errors: []string{},
 	}
@@ -146,8 +146,8 @@ func TestPlexStatus_Enabled_AiringsBlock(t *testing.T) {
 	}
 	expectJSONFloat(t, airings, "total", 1240)
 	expectJSONFloat(t, airings, "matched", 1180)
-	expectJSONFloat(t, airings, "byProgId", 1145)
-	expectJSONFloat(t, airings, "byStartTime", 35)
+	expectJSONFloat(t, airings, "byStartTime", 1180)
+	expectJSONAbsent(t, airings, "byProgId")
 	expectJSONAbsent(t, airings, "byId")
 	expectJSONAbsent(t, airings, "byLcn")
 
@@ -156,7 +156,7 @@ func TestPlexStatus_Enabled_AiringsBlock(t *testing.T) {
 		t.Fatalf("airings.unmatched not [1 entry]: %v", airings["unmatched"])
 	}
 	uam := ua[0].(map[string]any)
-	if uam["channelId"] != "ch5.au" || uam["title"] != "Movie B" || uam["reason"] != "progid_mismatch" {
+	if uam["channelId"] != "ch5.au" || uam["title"] != "Movie B" || uam["reason"] != "no_start_time_match" {
 		t.Errorf("unmatched airing = %v, missing expected fields", uam)
 	}
 }

@@ -18,11 +18,13 @@ import (
 	"github.com/acbgbca/xmltvguide/internal/xmltv"
 )
 
+const testEPGID = "tv.plex.providers.epg.cloud:4"
+
 // newPlexFixtureServer returns an httptest server that serves Plex fixture
-// JSON for the four endpoints used by RefreshPlex. lineupBodies is keyed by
-// lineup ID; gridBodies is keyed by the full path prefix used by GetGrid
-// (e.g. "/grid/L1").
-func newPlexFixtureServer(t *testing.T, dvrsBody string, lineupBodies map[string]string, gridBodies map[string]string) *httptest.Server {
+// JSON for the three endpoints used by RefreshPlex. channelsByEPG is keyed by
+// epgIdentifier; gridByEPG is keyed by epgIdentifier and returns the body for
+// `/{epgIdentifier}/grid`.
+func newPlexFixtureServer(t *testing.T, dvrsBody string, channelsByEPG map[string]string, gridByEPG map[string]string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -31,20 +33,18 @@ func newPlexFixtureServer(t *testing.T, dvrsBody string, lineupBodies map[string
 			_, _ = w.Write([]byte(`{"MediaContainer":{}}`))
 		case r.URL.Path == "/livetv/dvrs":
 			_, _ = w.Write([]byte(dvrsBody))
-		case strings.HasPrefix(r.URL.Path, "/epg/lineups/") && strings.HasSuffix(r.URL.Path, "/channels"):
-			parts := strings.Split(r.URL.Path, "/")
-			if len(parts) < 5 {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-			body, ok := lineupBodies[parts[3]]
+		case strings.HasSuffix(r.URL.Path, "/lineups/dvr/channels"):
+			epg := strings.TrimPrefix(r.URL.Path, "/")
+			epg = strings.TrimSuffix(epg, "/lineups/dvr/channels")
+			body, ok := channelsByEPG[epg]
 			if !ok {
 				body = `{"MediaContainer":{"Channel":[]}}`
 			}
 			_, _ = w.Write([]byte(body))
 		case strings.HasSuffix(r.URL.Path, "/grid"):
-			gridKey := strings.TrimSuffix(r.URL.Path, "/grid")
-			body, ok := gridBodies[gridKey]
+			epg := strings.TrimPrefix(r.URL.Path, "/")
+			epg = strings.TrimSuffix(epg, "/grid")
+			body, ok := gridByEPG[epg]
 			if !ok {
 				body = `{"MediaContainer":{"Metadata":[]}}`
 			}
@@ -111,36 +111,37 @@ func seedDBForPlex(t *testing.T, base time.Time) *database.DB {
 // cycle, and returns the poll result alongside the live DB. The fixtures are
 // designed to exercise every match outcome in one pass:
 //
-//   - abc.com.au   — channel matched by xmltvId; one airing matched by progid,
-//     one by start-time; one ProgID column verified intact
-//   - seven.com.au — channel matched by lcn; its sole airing remains unmatched
-//     because the corresponding grid entry's progid does not match
+//   - abc.com.au   — channel matched by id (Plex XMLTV-provider style); two
+//     airings matched by start-time (one exact, one +3 min within tolerance)
+//   - seven.com.au — channel matched by vcn=7; its sole airing remains
+//     unmatched because the Plex grid entry's BeginsAt is +10 min away (out of
+//     the ±5 min window)
 //   - nine.com.au  — no Plex counterpart, so all three plex_* columns stay NULL
 func runEndToEndPoll(t *testing.T) (*database.DB, time.Time, database.PlexPollResult) {
 	t.Helper()
 	base := time.Now().UTC().Truncate(time.Hour).Add(time.Hour)
 	db := seedDBForPlex(t, base)
 
-	dvrs := `{"MediaContainer":{"Dvr":[{"id":1,"lineupIDs":["L1"],"gridKey":"/grid/L1"}]}}`
-	lineups := map[string]string{
-		"L1": `{"MediaContainer":{"Channel":[
-			{"id":"plex.abc","xmltvId":"abc.com.au","lcn":"2","title":"ABC"},
-			{"id":"plex.seven","lcn":"7","title":"Seven Network"},
-			{"id":"plex.extra","lcn":"42","title":"Extra Channel"}
+	dvrs := fmt.Sprintf(`{"MediaContainer":{"Dvr":[{"key":"4","epgIdentifier":%q}]}}`, testEPGID)
+	channels := map[string]string{
+		testEPGID: `{"MediaContainer":{"Channel":[
+			{"id":"abc.com.au","vcn":"002","title":"ABC","callSign":"ABCAUS"},
+			{"id":"plex-seven-hex","vcn":"7","title":"Seven Network","callSign":"SEVEN"},
+			{"id":"plex-extra-hex","vcn":"42","title":"Extra Channel","callSign":"EXTRA"}
 		]}}`,
 	}
 	grids := map[string]string{
-		"/grid/L1": fmt.Sprintf(`{"MediaContainer":{"Metadata":[
-			{"ratingKey":"rk-1","channel":"plex.abc","beginsAt":%d,"endsAt":%d,"title":"News at Noon","ddProgID":"EP000123450001"},
-			{"ratingKey":"rk-2","channel":"plex.abc","beginsAt":%d,"endsAt":%d,"title":"Movie A"},
-			{"ratingKey":"rk-3","channel":"plex.seven","beginsAt":%d,"endsAt":%d,"title":"Unrelated Show","ddProgID":"EPNOMATCH"}
+		testEPGID: fmt.Sprintf(`{"MediaContainer":{"Metadata":[
+			{"ratingKey":"rk-1","title":"News at Noon","Media":[{"channelIdentifier":"abc.com.au","beginsAt":%d,"endsAt":%d}]},
+			{"ratingKey":"rk-2","title":"Movie A","Media":[{"channelIdentifier":"abc.com.au","beginsAt":%d,"endsAt":%d}]},
+			{"ratingKey":"rk-3","title":"Unrelated Show","Media":[{"channelIdentifier":"plex-seven-hex","beginsAt":%d,"endsAt":%d}]}
 		]}}`,
 			base.Unix(), base.Add(time.Hour).Unix(),
-			base.Add(time.Hour).Unix(), base.Add(2*time.Hour).Unix(),
-			base.Add(3*time.Hour).Unix(), base.Add(4*time.Hour).Unix(),
+			base.Add(time.Hour).Add(3*time.Minute).Unix(), base.Add(2*time.Hour).Unix(),
+			base.Add(10*time.Minute).Unix(), base.Add(70*time.Minute).Unix(),
 		),
 	}
-	srv := newPlexFixtureServer(t, dvrs, lineups, grids)
+	srv := newPlexFixtureServer(t, dvrs, channels, grids)
 	client := plex.NewClient(srv.URL, "tok", &http.Client{Timeout: 2 * time.Second})
 
 	result, err := db.RefreshPlex(context.Background(), client)
@@ -153,8 +154,8 @@ func runEndToEndPoll(t *testing.T) (*database.DB, time.Time, database.PlexPollRe
 func TestRefreshPlex_EndToEnd_ChannelStats(t *testing.T) {
 	_, _, result := runEndToEndPoll(t)
 	checkChannelStats(t, result)
-	if len(result.UnmatchedChan) != 1 || result.UnmatchedChan[0].PlexID != "plex.extra" {
-		t.Errorf("UnmatchedChan = %+v, want one entry with PlexID=plex.extra", result.UnmatchedChan)
+	if len(result.UnmatchedChan) != 1 || result.UnmatchedChan[0].PlexID != "plex-extra-hex" {
+		t.Errorf("UnmatchedChan = %+v, want one entry with PlexID=plex-extra-hex", result.UnmatchedChan)
 	}
 }
 
@@ -195,24 +196,24 @@ func checkAiringStats(t *testing.T, result database.PlexPollResult) {
 	t.Helper()
 	expectInt(t, "AiringMatches.Total", result.AiringMatches.Total, 3)
 	expectInt(t, "AiringMatches.Matched", result.AiringMatches.Matched, 2)
-	expectInt(t, "AiringMatches.ByProgID", result.AiringMatches.ByProgID, 1)
-	expectInt(t, "AiringMatches.ByStartTime", result.AiringMatches.ByStartTime, 1)
+	expectInt(t, "AiringMatches.ByStartTime", result.AiringMatches.ByStartTime, 2)
 }
 
 // checkChannelRowState validates plex_* columns and unchanged display names
-// for every seeded channel.
+// for every seeded channel. plex_lineup_id stores the EPG identifier.
 func checkChannelRowState(t *testing.T, chans []model.Channel) {
 	t.Helper()
 	for _, c := range chans {
 		switch c.ID {
 		case "abc.com.au":
-			expectPtrEq(t, "abc PlexChannelID", c.PlexChannelID, "plex.abc")
-			expectPtrEq(t, "abc PlexLineupID", c.PlexLineupID, "L1")
+			expectPtrEq(t, "abc PlexChannelID", c.PlexChannelID, "abc.com.au")
+			expectPtrEq(t, "abc PlexLineupID", c.PlexLineupID, testEPGID)
 			if c.DisplayName != "ABC" {
 				t.Errorf("abc DisplayName mutated: got %q, want ABC", c.DisplayName)
 			}
 		case "seven.com.au":
-			expectPtrEq(t, "seven PlexChannelID", c.PlexChannelID, "plex.seven")
+			expectPtrEq(t, "seven PlexChannelID", c.PlexChannelID, "plex-seven-hex")
+			expectPtrEq(t, "seven PlexLineupID", c.PlexLineupID, testEPGID)
 		case "nine.com.au":
 			if c.PlexChannelID != nil {
 				t.Errorf("nine.com.au PlexChannelID should be nil, got %v", *c.PlexChannelID)
@@ -261,22 +262,26 @@ func expectPtrEq(t *testing.T, label string, got *string, want string) {
 	}
 }
 
-func TestRefreshPlex_PartialFailure_OneLineupErrors(t *testing.T) {
+func TestRefreshPlex_PartialFailure_ChannelsEndpointErrors(t *testing.T) {
 	base := time.Now().UTC().Truncate(time.Hour).Add(time.Hour)
 	db := seedDBForPlex(t, base)
+
+	const failingEPG = "tv.plex.providers.epg.cloud:1"
+	const okEPG = "tv.plex.providers.epg.cloud:2"
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.URL.Path == "/livetv/dvrs":
-			_, _ = w.Write([]byte(`{"MediaContainer":{"Dvr":[
-				{"id":1,"lineupIDs":["L1","L2"],"gridKey":"/grid/main"}
-			]}}`))
-		case r.URL.Path == "/epg/lineups/L1/channels":
+			_, _ = fmt.Fprintf(w, `{"MediaContainer":{"Dvr":[
+				{"key":"1","epgIdentifier":%q},
+				{"key":"2","epgIdentifier":%q}
+			]}}`, failingEPG, okEPG)
+		case r.URL.Path == "/"+failingEPG+"/lineups/dvr/channels":
 			w.WriteHeader(http.StatusInternalServerError)
-		case r.URL.Path == "/epg/lineups/L2/channels":
+		case r.URL.Path == "/"+okEPG+"/lineups/dvr/channels":
 			_, _ = w.Write([]byte(`{"MediaContainer":{"Channel":[
-				{"id":"plex.abc","xmltvId":"abc.com.au","title":"ABC"}
+				{"id":"abc.com.au","title":"ABC","vcn":"2"}
 			]}}`))
 		case strings.HasSuffix(r.URL.Path, "/grid"):
 			_, _ = w.Write([]byte(`{"MediaContainer":{"Metadata":[]}}`))
@@ -296,22 +301,22 @@ func TestRefreshPlex_PartialFailure_OneLineupErrors(t *testing.T) {
 		t.Errorf("expected at least one per-step error in result, got %+v", result.Errors)
 	}
 	if result.ChannelMatches.Matched != 1 {
-		t.Errorf("ChannelMatches.Matched = %d, want 1 (L2 should still succeed)", result.ChannelMatches.Matched)
+		t.Errorf("ChannelMatches.Matched = %d, want 1 (second EPG should still succeed)", result.ChannelMatches.Matched)
 	}
 
-	// abc should still be updated despite L1 failing.
+	// abc should still be updated despite the first EPG failing.
 	chans, err := db.GetChannels(context.Background())
 	if err != nil {
 		t.Fatalf("GetChannels: %v", err)
 	}
 	updated := false
 	for _, ch := range chans {
-		if ch.ID == "abc.com.au" && ch.PlexChannelID != nil && *ch.PlexChannelID == "plex.abc" {
+		if ch.ID == "abc.com.au" && ch.PlexChannelID != nil && *ch.PlexChannelID == "abc.com.au" {
 			updated = true
 		}
 	}
 	if !updated {
-		t.Errorf("abc should have plex_channel_id set despite L1 failure")
+		t.Errorf("abc should have plex_channel_id set despite first EPG failure")
 	}
 }
 
@@ -323,16 +328,16 @@ func TestRefreshPlex_DoesNotMutateXMLTVColumns(t *testing.T) {
 	preChans, _ := db.GetChannels(context.Background())
 	preAirs, _ := db.GetAirings(context.Background(), base)
 
-	dvrs := `{"MediaContainer":{"Dvr":[{"id":1,"lineupIDs":["L1"],"gridKey":"/grid/L1"}]}}`
-	lineups := map[string]string{
-		"L1": `{"MediaContainer":{"Channel":[{"id":"plex.abc","xmltvId":"abc.com.au","title":"Different Name"}]}}`,
+	dvrs := fmt.Sprintf(`{"MediaContainer":{"Dvr":[{"key":"4","epgIdentifier":%q}]}}`, testEPGID)
+	channels := map[string]string{
+		testEPGID: `{"MediaContainer":{"Channel":[{"id":"abc.com.au","title":"Different Name","vcn":"2"}]}}`,
 	}
 	grids := map[string]string{
-		"/grid/L1": fmt.Sprintf(`{"MediaContainer":{"Metadata":[
-			{"ratingKey":"rk-1","channel":"plex.abc","beginsAt":%d,"endsAt":%d,"title":"Plex Says Different","ddProgID":"EP000123450001"}
+		testEPGID: fmt.Sprintf(`{"MediaContainer":{"Metadata":[
+			{"ratingKey":"rk-1","title":"Plex Says Different","Media":[{"channelIdentifier":"abc.com.au","beginsAt":%d,"endsAt":%d}]}
 		]}}`, base.Unix(), base.Add(time.Hour).Unix()),
 	}
-	srv := newPlexFixtureServer(t, dvrs, lineups, grids)
+	srv := newPlexFixtureServer(t, dvrs, channels, grids)
 	client := plex.NewClient(srv.URL, "tok", &http.Client{Timeout: 2 * time.Second})
 
 	if _, err := db.RefreshPlex(context.Background(), client); err != nil {
