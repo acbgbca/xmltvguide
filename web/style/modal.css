@@ -122,3 +122,31 @@
     line-height: 1.65;
     color: var(--text-secondary);
 }
+
+.modal-watch-now {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+}
+
+.watch-btn {
+    flex: 1 1 0;
+    min-width: 140px;
+    text-align: center;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.watch-btn:hover {
+    background: var(--accent, #e5a00d);
+    border-color: var(--accent, #e5a00d);
+    color: #000;
+}

@@ -44,6 +44,7 @@ type Handler struct {
 	refreshFn    func() error // optional; nil means refresh endpoint returns 501
 	deep         DeepCheckConfig
 	plexStatusFn PlexStatusFunc // optional; nil means /api/plex/status returns {"enabled": false}
+	plexLinkURL  string         // base URL for Plex deep links; empty means /api/channels/{id}/plex-link returns 404
 }
 
 // New creates a new Handler backed by db. rssTTL is the server-wide default
@@ -69,6 +70,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/health", h.getHealth)
 	mux.HandleFunc("GET /api/deepcheck", h.getDeepCheck)
 	mux.HandleFunc("GET /api/plex/status", h.getPlexStatus)
+	mux.HandleFunc("GET /api/channels/{id}/plex-link", h.getPlexLink)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

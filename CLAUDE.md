@@ -39,6 +39,7 @@ tvguide/
 │       ├── health.go            # GET /api/health
 │       ├── deepcheck.go         # GET /api/deepcheck
 │       ├── plex.go              # GET /api/plex/status
+│       ├── plex_link.go         # GET /api/channels/{id}/plex-link — "Watch now" deep links
 │       └── debug.go             # Debug/status endpoints
 ├── web/                         # Frontend — embedded into binary via go:embed
 │   ├── index.html               # App shell (no JS framework)
@@ -62,7 +63,7 @@ tvguide/
 │       ├── utils/date.js        # Date formatting utilities
 │       ├── store/preferences.js # Channel hide/favourite persistence (localStorage)
 │       ├── store/favourites.js  # Saved search persistence (localStorage)
-│       ├── components/modal.js  # Airing detail modal
+│       ├── components/modal.js  # Airing detail modal — fetches /api/channels/{id}/plex-link on open and shows Plex Web / Plex App "Watch now" buttons when the channel has a Plex mapping
 │       └── pages/
 │           ├── guide.js         # Guide tab rendering
 │           ├── search.js        # Search tab rendering
@@ -87,6 +88,7 @@ tvguide/
 | `POST /api/guide/refresh` | Triggers a refresh of TV guide data. `sync=true`: waits for completion and returns `200 {"ok":true}` or `500 {"error":"..."}`. Default (async): returns `202 Accepted` immediately. |
 | `GET /api/health` | Healthcheck endpoint. Probes SQLite connectivity and FTS availability. Returns `200 {"status":"ok"}` when healthy or `500 {"error":"..."}` when unhealthy. Used by the Docker `HEALTHCHECK` instruction via the `--healthcheck` binary flag — this remains the Docker liveness probe and is unchanged. |
 | `GET /api/deepcheck` | Deep health check across database, FTS, data presence/freshness, XMLTV source reachability, disk writability for `/data`, `/tmp`, and the image cache, and Plex reachability (when configured). Returns JSON `{status, checks[]}`: each entry is `{name, status, error?, info?}` with `status` one of `SUCCESS`/`FAILURE`. HTTP `200` when global status is `SUCCESS`, `503 Service Unavailable` otherwise. The `plex_reachable` check reports `info="not configured"` when `PLEX_URL` is unset and never fails the report in that case. Every check runs independently — one failure does not skip the others. Intended for occasional on-demand diagnostics, not high-frequency probing — use `/api/health` for that. |
+| `GET /api/channels/{id}/plex-link` | Returns `{"webUrl": "...", "appUrl": "..."}` for opening the channel in Plex. `webUrl` is `{base}/web/index.html#!/livetv/{lineupId}/channels/{plexChannelId}` (base from `PLEX_EXTERNAL_URL`, falling back to `PLEX_URL`); `appUrl` uses the `plex://livetv?lineup=…&channel=…` scheme so the Plex mobile app can claim it. HTTP `404` when the channel has no Plex mapping, the channel id is unknown, or neither `PLEX_EXTERNAL_URL` nor `PLEX_URL` is configured — the frontend hides the modal's "Watch now" buttons in that case. |
 | `GET /api/plex/status` | Snapshot of the most recent Plex EPG enrichment poll. When `PLEX_URL` is unset, returns `{"enabled": false}` only. When enabled, returns `lastPoll`, `nextPoll`, `lastDurationMs`, and `channels`/`airings` blocks containing total/matched counts, per-source counters (`byId`/`byLcn`/`byName` for channels; `byStartTime` for airings — the older `byProgId` counter was removed in #287), and the full list of unmatched entries with reasons. HTTP 200 in both cases — the endpoint always exists. Consumers must handle missing per-source counters gracefully: zero values are omitted via `omitempty`, and new counters may be added later. |
 | `GET /` | Serves the embedded frontend (SPA shell) |
 | `GET /{any}` | SPA fallback — serves `index.html` for any path not matching API, images, or static files. Enables client-side routing via History API. |
@@ -109,6 +111,7 @@ tvguide/
 | `PLEX_URL` | *(unset)* | Origin of the Plex Media Server used as an EPG enrichment source (e.g. `http://plex.local:32400`). Enrichment is a no-op while this is unset. Requires `PLEX_TOKEN`; if `PLEX_TOKEN` is empty, Plex enrichment is disabled with an error log line and the XMLTV path continues to work. |
 | `PLEX_TOKEN` | *(unset)* | `X-Plex-Token` value for authenticating against the Plex Media Server identified by `PLEX_URL`. Required whenever `PLEX_URL` is set. |
 | `PLEX_POLL_INTERVAL` | `12h` | How often to re-poll the Plex EPG endpoints for enrichment. Accepts Go duration strings: `6h`, `30m`, etc. Independent of `POLL_INTERVAL` (the XMLTV cadence). |
+| `PLEX_EXTERNAL_URL` | *(unset)* | User-facing Plex base URL used to build "Watch now" deep links from the airing modal. Use this when the user's clients reach Plex via a different URL than the server uses for polling (e.g. `https://plex.example.com` from a mobile device while `PLEX_URL=http://plex.local:32400` on the LAN). When unset, the deep-link endpoint falls back to `PLEX_URL`; when neither is set, `/api/channels/{id}/plex-link` returns 404 and the modal hides the buttons. |
 
 ## How to build and run
 
