@@ -24,7 +24,7 @@ tvguide/
 │   ├── xmltv/parser.go          # Fetch XMLTV from URL and parse into structs
 │   ├── plex/                    # Plex API client + match algorithms
 │   │   ├── client.go            # HTTP client (Ping, GetDVRs, GetLineupChannels, GetGrid)
-│   │   └── match.go             # MatchChannel (id/lcn/name cascade) and MatchAiring (progid/start-time)
+│   │   └── match.go             # MatchChannel (id/lcn/name cascade) and MatchAiring (±5 min start-time)
 │   ├── database/db.go           # SQLite store: schema, Refresh, GetChannels, GetAirings, DeepCheck
 │   ├── database/plex_refresh.go # RefreshPlex orchestrator — pairs Plex IDs onto channels/airings
 │   ├── deepcheck/deepcheck.go   # On-demand deep health probe (DB, disk, XMLTV, Plex reachability)
@@ -87,7 +87,7 @@ tvguide/
 | `POST /api/guide/refresh` | Triggers a refresh of TV guide data. `sync=true`: waits for completion and returns `200 {"ok":true}` or `500 {"error":"..."}`. Default (async): returns `202 Accepted` immediately. |
 | `GET /api/health` | Healthcheck endpoint. Probes SQLite connectivity and FTS availability. Returns `200 {"status":"ok"}` when healthy or `500 {"error":"..."}` when unhealthy. Used by the Docker `HEALTHCHECK` instruction via the `--healthcheck` binary flag — this remains the Docker liveness probe and is unchanged. |
 | `GET /api/deepcheck` | Deep health check across database, FTS, data presence/freshness, XMLTV source reachability, disk writability for `/data`, `/tmp`, and the image cache, and Plex reachability (when configured). Returns JSON `{status, checks[]}`: each entry is `{name, status, error?, info?}` with `status` one of `SUCCESS`/`FAILURE`. HTTP `200` when global status is `SUCCESS`, `503 Service Unavailable` otherwise. The `plex_reachable` check reports `info="not configured"` when `PLEX_URL` is unset and never fails the report in that case. Every check runs independently — one failure does not skip the others. Intended for occasional on-demand diagnostics, not high-frequency probing — use `/api/health` for that. |
-| `GET /api/plex/status` | Snapshot of the most recent Plex EPG enrichment poll. When `PLEX_URL` is unset, returns `{"enabled": false}` only. When enabled, returns `lastPoll`, `nextPoll`, `lastDurationMs`, and `channels`/`airings` blocks containing total/matched counts, per-source counters (`byId`/`byLcn`/`byName` for channels; `byProgId`/`byStartTime` for airings), and the full list of unmatched entries with reasons. HTTP 200 in both cases — the endpoint always exists. |
+| `GET /api/plex/status` | Snapshot of the most recent Plex EPG enrichment poll. When `PLEX_URL` is unset, returns `{"enabled": false}` only. When enabled, returns `lastPoll`, `nextPoll`, `lastDurationMs`, and `channels`/`airings` blocks containing total/matched counts, per-source counters (`byId`/`byLcn`/`byName` for channels; `byStartTime` for airings — the older `byProgId` counter was removed in #287), and the full list of unmatched entries with reasons. HTTP 200 in both cases — the endpoint always exists. Consumers must handle missing per-source counters gracefully: zero values are omitted via `omitempty`, and new counters may be added later. |
 | `GET /` | Serves the embedded frontend (SPA shell) |
 | `GET /{any}` | SPA fallback — serves `index.html` for any path not matching API, images, or static files. Enables client-side routing via History API. |
 
@@ -133,7 +133,8 @@ channels (id PK, display_name, icon, sort_order, lcn, icon_url, plex_channel_id,
 -- lcn:     logical channel number from <lcn> element (nullable); used for display ordering
 -- icon:    local filesystem path of the cached icon file (e.g. /data/images/channels/ch1.png); NULL if not yet downloaded
 -- icon_url: original external URL from the XMLTV source; used to detect URL changes and to re-download if the local file goes missing
--- plex_channel_id, plex_lineup_id: Plex EPG enrichment IDs; nullable, populated by the Plex poller — see "Plex enrichment" section
+-- plex_channel_id: Plex EPG channel id; nullable, populated by the Plex poller
+-- plex_lineup_id:  Plex EPG identifier (e.g. "tv.plex.providers.epg.cloud:4") — the path prefix used for the channels/grid endpoints. Nullable, populated by the Plex poller. See "Plex enrichment" section.
 
 airings (
   channel_id + start_time  -- composite PK
@@ -274,9 +275,9 @@ Plex enrichment is purely **additive**: it populates three new columns on existi
 
 A background ticker (cadence: `PLEX_POLL_INTERVAL`, default 12 h) calls `db.RefreshPlex`. One cycle:
 
-1. `GET /livetv/dvrs` — discover lineup IDs and grid keys.
-2. For each lineup, `GET /epg/lineups/{id}/channels` — match each Plex channel to a local channel via the **channel cascade**: xmltv ID → LCN → display name (case-insensitive). Ambiguous matches (two or more candidates at the same tier) abort without falling through; see `internal/plex/match.go` for the rationale. On match, `UPDATE channels SET plex_channel_id, plex_lineup_id`.
-3. For each unique grid key, `GET /{gridKey}/grid?type=4&beginsAt=now&endsAt=now+RETENTION_DAYS` — group entries by Plex channel, resolve to a local channel via step 2's map, then match each entry against airings on that channel only via the **airing strategy**: `dd_progid` when Plex has one; otherwise exact start-time match. On match, `UPDATE airings SET plex_rating_key`.
+1. `GET /livetv/dvrs` — discover each DVR's `epgIdentifier` (e.g. `tv.plex.providers.epg.cloud:4`). This identifier is both the path prefix for the channels endpoint and the grid endpoint.
+2. For each DVR, `GET /{epgIdentifier}/lineups/dvr/channels` — match each Plex channel to a local channel via the **channel cascade**: id → LCN → display name (case-insensitive). The id tier compares the Plex `id` field against the local channel id — a no-op for Plex Cloud EPG (opaque hex strings) but functional for Plex XMLTV-provider users (where Plex sets `id` to the xmltv id). The LCN tier reads Plex's `vcn` field; `strconv.Atoi` strips leading zeros so `vcn="001"` matches `lcn=1` and `vcn="010"` matches `lcn=10`. Ambiguous matches (two or more candidates at the same tier) abort without falling through; see `internal/plex/match.go` for the rationale. On match, `UPDATE channels SET plex_channel_id, plex_lineup_id` (the EPG identifier is stored in `plex_lineup_id`).
+3. For each unique EPG identifier, `GET /{epgIdentifier}/grid?type=4&beginsAt%3E=<unix>&endsAt%3C=<unix>` — the comparison operators `>` (%3E) and `<` (%3C) are mandatory; without them Plex silently returns `{"size":0}`. Group entries by `Media[0].channelIdentifier`, resolve to a local channel via step 2's map, then match each entry against airings on that channel only via the **airing strategy**: ±5 minute start-time tolerance around `Media[0].beginsAt`; when multiple candidates fall inside the window the one with the smallest absolute delta wins. (Plex Cloud EPG never emits `dd_progid`; the older program-id tier was removed in #287.) On match, `UPDATE airings SET plex_rating_key`.
 4. All UPDATEs commit in a single transaction. Per-step fetch errors are accumulated in `result.Errors` and do not abort the transaction — partial enrichment is preferred over rolling back successful matches.
 
 ### Where the IDs are stored
@@ -294,11 +295,11 @@ All three columns are nullable. Unmatched rows stay `NULL`. The XMLTV refresh pa
 Each poll emits an INFO summary block:
 
 ```
-[plex] poll started (2 lineups discovered)
-[plex] channels: matched 38/45 (32 by id, 4 by lcn, 2 by name)
-[plex]   unmatched Plex channels: [plex.foo plex.bar plex.baz] (and 4 more)
-[plex] airings: matched 1180/1240 (1145 by progid, 35 by start-time)
-[plex]   unmatched sample: "Movie B" on ch5.au @ 21:00 (progid_mismatch)
+[plex] poll started (1 lineups discovered)
+[plex] channels: matched 38/45 (0 by id, 36 by lcn, 2 by name)
+[plex]   unmatched Plex channels: [5fc-foo 5fc-bar 5fc-baz] (and 4 more)
+[plex] airings: matched 1180/1240 (1180 by start-time)
+[plex]   unmatched sample: "Movie B" on ch5.au @ 21:00 (no_start_time_match)
 [plex] poll completed in 2.3s
 ```
 
@@ -311,7 +312,7 @@ Actionable error log lines for common failure modes:
 | Plex unreachable on startup probe | ERROR | `Plex unreachable at <URL>: <err>. Plex enrichment disabled until reachable. Verify PLEX_URL and that Plex is running.` |
 | 401/403 from any endpoint | ERROR | `Plex returned 401 — PLEX_TOKEN appears invalid. Regenerate at https://plex.tv → Account → Authorized Devices.` |
 | Timeout / 5xx during poll | WARN | `Plex poll failed (<endpoint>): <err>. Will retry in <interval>.` |
-| 0 DVRs returned | WARN | `Plex returned 0 DVRs — Plex Live TV / DVR may not be configured on this server.` |
+| `Dvr` array literally empty | WARN | `Plex returned 0 DVRs — Plex Live TV / DVR may not be configured on this server.` |
 | Poll succeeded but 0 channels matched | WARN | `Plex returned N channels but none matched TV Guide channels. Check that both sources reference the same lineup (compare channel IDs/LCNs/names).` |
 
 DEBUG (opt-in via `LOG_LEVEL=debug`): per-HTTP-request `GET <url> → <status> (<bytes>, <ms>)` and per-channel match decisions.

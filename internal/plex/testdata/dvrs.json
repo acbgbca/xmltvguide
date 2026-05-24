@@ -1,0 +1,22 @@
+{
+  "MediaContainer": {
+    "size": 1,
+    "Dvr": [
+      {
+        "key": "4",
+        "uuid": "abcdef12-3456-7890-abcd-ef1234567890",
+        "language": "eng",
+        "lineupTitle": "Freeview - Melbourne (61 channels)",
+        "lineup": "lineup://tv.plex.providers.epg.cloud/melbourne-au",
+        "country": "aus",
+        "epgIdentifier": "tv.plex.providers.epg.cloud:4",
+        "Lineup": [
+          {
+            "id": "lineup://tv.plex.providers.epg.cloud/melbourne-au",
+            "title": "Freeview - Melbourne (61 channels)"
+          }
+        ]
+      }
+    ]
+  }
+}

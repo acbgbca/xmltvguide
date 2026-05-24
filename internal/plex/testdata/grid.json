@@ -1,0 +1,56 @@
+{
+  "MediaContainer": {
+    "size": 2,
+    "Metadata": [
+      {
+        "ratingKey": "plex%3A%2F%2Fepisode%2F6a01ce4627f52460ad3410f4",
+        "key": "/tv.plex.providers.epg.cloud:4/metadata/6a01ce4627f52460ad3410f4",
+        "guid": "plex://episode/6a01ce4627f52460ad3410f4",
+        "type": "episode",
+        "title": "MasterChef Australia",
+        "grandparentTitle": "MasterChef Australia",
+        "parentTitle": "Season 18",
+        "summary": "Contestants face the dessert challenge.",
+        "year": 2026,
+        "duration": 4200000,
+        "originallyAvailableAt": "2026-05-20 22:00:00",
+        "Media": [
+          {
+            "id": 64,
+            "channelCallSign": "THMEANZ",
+            "channelIdentifier": "5fc76c607dc1e8002d48a65d-5fc705f4dd53a6002d8f9173",
+            "channelVcn": "001",
+            "gridKey": "5fc705f4dd53a6002d8f9173",
+            "beginsAt": 1749564000,
+            "endsAt": 1749567600,
+            "channelID": 1,
+            "protocol": "livetv"
+          }
+        ]
+      },
+      {
+        "ratingKey": "plex%3A%2F%2Fepisode%2Fdeadbeef0987654321",
+        "key": "/tv.plex.providers.epg.cloud:4/metadata/deadbeef0987654321",
+        "guid": "plex://episode/deadbeef0987654321",
+        "type": "episode",
+        "title": "ABC News Tonight",
+        "grandparentTitle": "ABC News Tonight",
+        "year": 2026,
+        "duration": 1800000,
+        "Media": [
+          {
+            "id": 65,
+            "channelCallSign": "ABCAUS",
+            "channelIdentifier": "5fc76c607dc1e8002d48a65d-aabbccddeeff",
+            "channelVcn": "002",
+            "gridKey": "aabbccddeeff",
+            "beginsAt": 1749567600,
+            "endsAt": 1749571200,
+            "channelID": 2,
+            "protocol": "livetv"
+          }
+        ]
+      }
+    ]
+  }
+}

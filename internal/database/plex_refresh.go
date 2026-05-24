@@ -17,20 +17,19 @@ import (
 // *plex.Client satisfies it; tests can stub it.
 type PlexAPI interface {
 	GetDVRs(ctx context.Context) ([]plex.DVR, error)
-	GetLineupChannels(ctx context.Context, lineupID string) ([]plex.LineupChannel, error)
-	GetGrid(ctx context.Context, gridKey string, beginsAt, endsAt time.Time) ([]plex.GridEntry, error)
+	GetLineupChannels(ctx context.Context, epgIdentifier string) ([]plex.LineupChannel, error)
+	GetGrid(ctx context.Context, epgIdentifier string, beginsAt, endsAt time.Time) ([]plex.GridEntry, error)
 }
 
 // PlexMatchStats summarises how many entities were matched and via which
 // source. Per-source counters are populated only for the relevant kind:
-// channels populate ByID/ByLCN/ByName; airings populate ByProgID/ByStartTime.
+// channels populate ByID/ByLCN/ByName; airings populate ByStartTime.
 type PlexMatchStats struct {
 	Total       int
 	Matched     int
 	ByID        int
 	ByLCN       int
 	ByName      int
-	ByProgID    int
 	ByStartTime int
 }
 
@@ -78,11 +77,10 @@ type airingUpdate struct {
 	plexRatingKey string
 }
 
-// dvrTask pairs a DVR's grid key with the lineup IDs it serves. RefreshPlex
-// walks one task per DVR.
+// dvrTask pairs one DVR with its EPG identifier. The identifier is both the
+// channels-endpoint path prefix and the grid-endpoint path prefix.
 type dvrTask struct {
-	gridKey   string
-	lineupIDs []string
+	epgIdentifier string
 }
 
 // RefreshPlex performs one Plex EPG enrichment cycle: discover DVRs, match
@@ -110,12 +108,12 @@ func (d *DB) RefreshPlex(ctx context.Context, client PlexAPI) (PlexPollResult, e
 		return result, nil
 	}
 
-	tasks, totalLineups := buildDVRTasks(dvrs)
-	result.Lineups = totalLineups
-	if totalLineups == 0 {
+	if len(dvrs) == 0 {
 		logging.Warn("WARN: Plex returned 0 DVRs — Plex Live TV / DVR may not be configured on this server.")
 	}
-	logging.Info(fmt.Sprintf("[plex] poll started (%d lineups discovered)", totalLineups))
+	tasks := buildDVRTasks(dvrs)
+	result.Lineups = len(tasks)
+	logging.Info(fmt.Sprintf("[plex] poll started (%d lineups discovered)", len(tasks)))
 
 	localChannels, err := d.GetChannels(ctx)
 	if err != nil {
@@ -138,40 +136,38 @@ func (d *DB) RefreshPlex(ctx context.Context, client PlexAPI) (PlexPollResult, e
 	return result, nil
 }
 
-// buildDVRTasks flattens the slice of DVRs returned by Plex into the dvrTask
-// shape RefreshPlex iterates, and returns the total lineup count.
-func buildDVRTasks(dvrs []plex.DVR) ([]dvrTask, int) {
+// buildDVRTasks emits one task per DVR keyed on its EPG identifier. DVRs
+// without an EPG identifier are skipped (they can't be queried).
+func buildDVRTasks(dvrs []plex.DVR) []dvrTask {
 	tasks := make([]dvrTask, 0, len(dvrs))
-	total := 0
 	for _, dvr := range dvrs {
-		tasks = append(tasks, dvrTask{gridKey: dvr.GridKey, lineupIDs: dvr.LineupIDs})
-		total += len(dvr.LineupIDs)
+		if dvr.EPGIdentifier == "" {
+			continue
+		}
+		tasks = append(tasks, dvrTask{epgIdentifier: dvr.EPGIdentifier})
 	}
-	return tasks, total
+	return tasks
 }
 
-// matchAllChannels walks every lineup, calls GetLineupChannels, and matches
-// each Plex channel against localChannels. Returns the Plex→local ID map and
-// the pending channel UPDATEs. Stats and unmatched entries are accumulated on
-// result.
+// matchAllChannels walks every DVR's channels endpoint and matches each Plex
+// channel against localChannels. Returns the Plex→local ID map and the pending
+// channel UPDATEs. Stats and unmatched entries are accumulated on result.
 func (d *DB) matchAllChannels(ctx context.Context, client PlexAPI, tasks []dvrTask, localChannels []model.Channel, result *PlexPollResult) (map[string]string, []channelUpdate) {
 	channelMatchMap := map[string]string{}
 	var updates []channelUpdate
 	for _, task := range tasks {
-		for _, lineupID := range task.lineupIDs {
-			pcs, err := client.GetLineupChannels(ctx, lineupID)
-			if err != nil {
-				msg := fmt.Sprintf("GetLineupChannels(%s): %v", lineupID, err)
-				result.Errors = append(result.Errors, msg)
-				logPlexFetchError(msg, err)
-				continue
-			}
-			for _, pc := range pcs {
-				u, ok := matchSingleChannel(pc, lineupID, localChannels, result)
-				if ok {
-					updates = append(updates, u)
-					channelMatchMap[pc.ID] = u.channelID
-				}
+		pcs, err := client.GetLineupChannels(ctx, task.epgIdentifier)
+		if err != nil {
+			msg := fmt.Sprintf("GetLineupChannels(%s): %v", task.epgIdentifier, err)
+			result.Errors = append(result.Errors, msg)
+			logPlexFetchError(msg, err)
+			continue
+		}
+		for _, pc := range pcs {
+			u, ok := matchSingleChannel(pc, task.epgIdentifier, localChannels, result)
+			if ok {
+				updates = append(updates, u)
+				channelMatchMap[pc.ID] = u.channelID
 			}
 		}
 	}
@@ -184,7 +180,7 @@ func (d *DB) matchAllChannels(ctx context.Context, client PlexAPI, tasks []dvrTa
 // matchSingleChannel pairs one Plex channel with a local candidate and
 // updates result's stats. Returns the pending UPDATE row and ok=true on
 // success; ok=false means the channel was logged as unmatched.
-func matchSingleChannel(pc plex.LineupChannel, lineupID string, localChannels []model.Channel, result *PlexPollResult) (channelUpdate, bool) {
+func matchSingleChannel(pc plex.LineupChannel, epgIdentifier string, localChannels []model.Channel, result *PlexPollResult) (channelUpdate, bool) {
 	result.ChannelMatches.Total++
 	matched, src := plex.MatchChannel(pc, localChannels)
 	if matched == nil {
@@ -201,7 +197,7 @@ func matchSingleChannel(pc plex.LineupChannel, lineupID string, localChannels []
 	return channelUpdate{
 		channelID:     matched.ID,
 		plexChannelID: pc.ID,
-		plexLineupID:  lineupID,
+		plexLineupID:  epgIdentifier,
 	}, true
 }
 
@@ -217,19 +213,19 @@ func tickChannelMatchSource(src plex.MatchSource, stats *PlexMatchStats) {
 	}
 }
 
-// matchAllAirings walks unique grid keys, fetches each grid, and matches each
-// entry against airings on its already-matched channel.
+// matchAllAirings walks unique EPG identifiers, fetches each grid, and matches
+// each entry against airings on its already-matched channel.
 func (d *DB) matchAllAirings(ctx context.Context, client PlexAPI, tasks []dvrTask, channelMatchMap map[string]string, gridStart, gridEnd time.Time, result *PlexPollResult) []airingUpdate {
 	var updates []airingUpdate
-	gridSeen := map[string]bool{}
+	seen := map[string]bool{}
 	for _, task := range tasks {
-		if task.gridKey == "" || gridSeen[task.gridKey] {
+		if task.epgIdentifier == "" || seen[task.epgIdentifier] {
 			continue
 		}
-		gridSeen[task.gridKey] = true
-		entries, err := client.GetGrid(ctx, task.gridKey, gridStart, gridEnd)
+		seen[task.epgIdentifier] = true
+		entries, err := client.GetGrid(ctx, task.epgIdentifier, gridStart, gridEnd)
 		if err != nil {
-			msg := fmt.Sprintf("GetGrid(%s): %v", task.gridKey, err)
+			msg := fmt.Sprintf("GetGrid(%s): %v", task.epgIdentifier, err)
 			result.Errors = append(result.Errors, msg)
 			logPlexFetchError(msg, err)
 			continue
@@ -239,12 +235,21 @@ func (d *DB) matchAllAirings(ctx context.Context, client PlexAPI, tasks []dvrTas
 	return updates
 }
 
-// matchGridEntries groups entries by Plex channel and pairs each group with
-// the airings on the corresponding local channel.
+// matchGridEntries groups entries by Media[0].channelIdentifier and pairs each
+// group with the airings on the corresponding local channel.
 func (d *DB) matchGridEntries(ctx context.Context, entries []plex.GridEntry, channelMatchMap map[string]string, gridStart, gridEnd time.Time, result *PlexPollResult) []airingUpdate {
 	byChannel := map[string][]plex.GridEntry{}
 	for _, e := range entries {
-		byChannel[e.Channel] = append(byChannel[e.Channel], e)
+		media, ok := e.PrimaryMedia()
+		if !ok {
+			result.AiringMatches.Total++
+			result.UnmatchedAirings = append(result.UnmatchedAirings, PlexUnmatchedAiring{
+				Title:  e.Title,
+				Reason: "no_media",
+			})
+			continue
+		}
+		byChannel[media.ChannelIdentifier] = append(byChannel[media.ChannelIdentifier], e)
 	}
 	var updates []airingUpdate
 	for plexChanID, gridEntries := range byChannel {
@@ -272,10 +277,14 @@ func matchSingleAiring(entry plex.GridEntry, localChannelID string, candidates [
 	result.AiringMatches.Total++
 	matched, src, reason := plex.MatchAiring(entry, candidates)
 	if matched == nil {
+		var startTime time.Time
+		if media, ok := entry.PrimaryMedia(); ok {
+			startTime = time.Unix(media.BeginsAt, 0).UTC()
+		}
 		result.UnmatchedAirings = append(result.UnmatchedAirings, PlexUnmatchedAiring{
 			ChannelID: localChannelID,
 			Title:     entry.Title,
-			StartTime: time.Unix(entry.BeginsAt, 0).UTC(),
+			StartTime: startTime,
 			Reason:    unmatchedReasonString(reason),
 		})
 		return airingUpdate{}, false
@@ -291,10 +300,7 @@ func matchSingleAiring(entry plex.GridEntry, localChannelID string, candidates [
 
 // tickAiringMatchSource increments the per-source counter for an airing match.
 func tickAiringMatchSource(src plex.MatchSource, stats *PlexMatchStats) {
-	switch src {
-	case plex.MatchSourceProgID:
-		stats.ByProgID++
-	case plex.MatchSourceStartTime:
+	if src == plex.MatchSourceStartTime {
 		stats.ByStartTime++
 	}
 }
@@ -413,8 +419,6 @@ func matchSourceName(s plex.MatchSource) string {
 		return "lcn"
 	case plex.MatchSourceName:
 		return "display-name"
-	case plex.MatchSourceProgID:
-		return "progid"
 	case plex.MatchSourceStartTime:
 		return "start-time"
 	}
@@ -427,10 +431,6 @@ func unmatchedReasonString(r plex.UnmatchedReason) string {
 	switch r {
 	case plex.UnmatchedNoCandidate:
 		return "no_candidate_airing"
-	case plex.UnmatchedNoProgID:
-		return "no_progid_in_plex"
-	case plex.UnmatchedProgIDMismatch:
-		return "progid_mismatch"
 	case plex.UnmatchedNoStartTimeMatch:
 		return "no_start_time_match"
 	}
@@ -471,8 +471,8 @@ func logChannelSummary(stats PlexMatchStats, unmatched []PlexUnmatchedChannel) {
 
 // logAiringSummary emits the per-poll INFO summary block for airing matches.
 func logAiringSummary(stats PlexMatchStats, unmatched []PlexUnmatchedAiring) {
-	logging.Info(fmt.Sprintf("[plex] airings: matched %d/%d (%d by progid, %d by start-time)",
-		stats.Matched, stats.Total, stats.ByProgID, stats.ByStartTime))
+	logging.Info(fmt.Sprintf("[plex] airings: matched %d/%d (%d by start-time)",
+		stats.Matched, stats.Total, stats.ByStartTime))
 	if len(unmatched) == 0 {
 		return
 	}
