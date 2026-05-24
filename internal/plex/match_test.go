@@ -151,10 +151,11 @@ func TestMatchChannel(t *testing.T) {
 }
 
 // makeEntry is a helper for MatchAiring tests that wraps a single Media block
-// with the supplied beginsAt timestamp around the typical fields.
-func makeEntry(ratingKey string, beginsAt int64) plex.GridEntry {
+// with the supplied beginsAt timestamp around the typical fields. The rating
+// key is irrelevant to MatchAiring's behaviour, so it's hardcoded here.
+func makeEntry(beginsAt int64) plex.GridEntry {
 	return plex.GridEntry{
-		RatingKey: ratingKey,
+		RatingKey: "rk",
 		Media: []plex.GridMedia{
 			{
 				ChannelIdentifier: "plex-channel",
@@ -179,7 +180,7 @@ func TestMatchAiring(t *testing.T) {
 	}{
 		{
 			name: "exact start time match",
-			plex: makeEntry("rk1", startUnix),
+			plex: makeEntry(startUnix),
 			candidates: []model.Airing{
 				{ChannelID: "ch1", Start: start.Add(2 * time.Hour)},
 				{ChannelID: "ch1", Start: start},
@@ -190,7 +191,7 @@ func TestMatchAiring(t *testing.T) {
 		},
 		{
 			name: "+3 minutes is within tolerance",
-			plex: makeEntry("rk1", startUnix),
+			plex: makeEntry(startUnix),
 			candidates: []model.Airing{
 				{ChannelID: "ch1", Start: start.Add(3 * time.Minute)},
 			},
@@ -200,7 +201,7 @@ func TestMatchAiring(t *testing.T) {
 		},
 		{
 			name: "+5 minutes is at boundary and must match",
-			plex: makeEntry("rk1", startUnix),
+			plex: makeEntry(startUnix),
 			candidates: []model.Airing{
 				{ChannelID: "ch1", Start: start.Add(5 * time.Minute)},
 			},
@@ -210,7 +211,7 @@ func TestMatchAiring(t *testing.T) {
 		},
 		{
 			name: "-5 minutes is at boundary and must match",
-			plex: makeEntry("rk1", startUnix),
+			plex: makeEntry(startUnix),
 			candidates: []model.Airing{
 				{ChannelID: "ch1", Start: start.Add(-5 * time.Minute)},
 			},
@@ -220,7 +221,7 @@ func TestMatchAiring(t *testing.T) {
 		},
 		{
 			name: "+6 minutes is outside tolerance and must miss",
-			plex: makeEntry("rk1", startUnix),
+			plex: makeEntry(startUnix),
 			candidates: []model.Airing{
 				{ChannelID: "ch1", Start: start.Add(6 * time.Minute)},
 			},
@@ -229,7 +230,7 @@ func TestMatchAiring(t *testing.T) {
 		},
 		{
 			name: "two candidates within tolerance — closest wins",
-			plex: makeEntry("rk1", startUnix),
+			plex: makeEntry(startUnix),
 			candidates: []model.Airing{
 				{ChannelID: "ch1", Start: start.Add(4 * time.Minute)},
 				{ChannelID: "ch1", Start: start.Add(2 * time.Minute)},
@@ -240,7 +241,7 @@ func TestMatchAiring(t *testing.T) {
 		},
 		{
 			name:       "no candidates returns UnmatchedNoCandidate",
-			plex:       makeEntry("rk1", startUnix),
+			plex:       makeEntry(startUnix),
 			candidates: nil,
 			wantSource: plex.MatchSourceNone,
 			wantReason: plex.UnmatchedNoCandidate,

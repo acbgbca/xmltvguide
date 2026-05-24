@@ -29,6 +29,7 @@ func newClient(t *testing.T, baseURL, token string) *plex.Client {
 
 func readFixture(t *testing.T, name string) string {
 	t.Helper()
+	// #nosec G304 -- test-only fixture loader; name is always a hardcoded constant from this test file.
 	b, err := os.ReadFile(filepath.Join("testdata", name))
 	if err != nil {
 		t.Fatalf("reading fixture %s: %v", name, err)
