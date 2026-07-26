@@ -34,7 +34,7 @@ RUN mkdir /scratch_data && chown 65532:65532 /scratch_data
 #   - /etc/ssl/certs/ca-certificates.crt (no manual copy needed)
 #   - /etc/passwd containing the `nonroot` user (UID/GID 65532)
 # Timezone data is embedded in the binary via `import _ "time/tzdata"`.
-FROM gcr.io/distroless/static-debian12:nonroot@sha256:aef9602f8710ec12bde19d593fed1f76c708531bb7aba205110f1029786ead7b
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:f5b485ea962d9bd1186b2f6b3a061191539b905b82ec395de78cbfae51f20e35
 
 COPY --from=builder /app/tvguide /tvguide
 # --chown is required on the COPY because Docker's COPY does not preserve the
