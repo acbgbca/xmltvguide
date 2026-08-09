@@ -8,7 +8,7 @@
     "eslint": "10.8.0",
     "eslint-plugin-sonarjs": "4.2.0",
     "eslint-plugin-unicorn": "72.0.0",
-    "globals": "17.8.0"
+    "globals": "17.9.0"
   },
   "scripts": {
     "test:ui": "playwright test"
