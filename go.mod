@@ -2,7 +2,7 @@ module github.com/acbgbca/xmltvguide
 
 go 1.25.0
 
-toolchain go1.26.5
+toolchain go1.26.6
 
 require modernc.org/sqlite v1.56.0
 
