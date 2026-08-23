@@ -2,9 +2,9 @@ module github.com/acbgbca/xmltvguide
 
 go 1.25.0
 
-toolchain go1.26.6
+toolchain go1.27.0
 
-require modernc.org/sqlite v1.56.0
+require modernc.org/sqlite v1.57.0
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
