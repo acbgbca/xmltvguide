@@ -1,5 +1,5 @@
 # ── Build stage ──────────────────────────────────────────────────
-FROM golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS builder
+FROM golang:1.27.0-alpine@sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc999fee45ea9d6c46dbc AS builder
 
 WORKDIR /app
 
@@ -34,7 +34,7 @@ RUN mkdir /scratch_data && chown 65532:65532 /scratch_data
 #   - /etc/ssl/certs/ca-certificates.crt (no manual copy needed)
 #   - /etc/passwd containing the `nonroot` user (UID/GID 65532)
 # Timezone data is embedded in the binary via `import _ "time/tzdata"`.
-FROM gcr.io/distroless/static-debian12:nonroot@sha256:1b7b9f0f0e0a1d2155f531db587cc48ec26aaf97ab64364225f5bf18a054e66a
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 
 COPY --from=builder /app/tvguide /tvguide
 # --chown is required on the COPY because Docker's COPY does not preserve the
