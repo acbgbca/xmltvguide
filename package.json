@@ -4,9 +4,9 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@microsoft/eslint-formatter-sarif": "3.1.0",
-    "@playwright/test": "1.62.1",
-    "eslint": "10.9.1",
-    "eslint-plugin-sonarjs": "4.2.0",
+    "@playwright/test": "1.63.0",
+    "eslint": "10.10.0",
+    "eslint-plugin-sonarjs": "4.2.1",
     "eslint-plugin-unicorn": "74.0.0",
     "globals": "17.12.0"
   },
